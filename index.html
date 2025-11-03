@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>N-Dimensional Vector Field Flow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            overflow: hidden;
+            transition: background 0.3s, color 0.3s;
+        }
+
+        /* Light theme */
+        body.light-theme {
+            background: #f5f5f5;
+            color: #212121;
+        }
+
+        body.light-theme #canvas {
+            filter: invert(1);
+        }
+
+        body.light-theme #grid-canvas {
+            filter: invert(1);
+        }
+
+        body.light-theme #controls {
+            background: rgba(255, 255, 255, 0.95);
+            border-color: #ccc;
+            color: #212121;
+        }
+
+        body.light-theme #controls h1 {
+            color: #2E7D32;
+        }
+
+        body.light-theme #controls h2 {
+            color: #1976D2;
+            border-color: #ddd;
+        }
+
+        body.light-theme label {
+            color: #555;
+        }
+
+        body.light-theme input[type="text"],
+        body.light-theme input[type="number"],
+        body.light-theme textarea,
+        body.light-theme select {
+            background: #fff;
+            border-color: #ccc;
+            color: #212121;
+        }
+
+        body.light-theme .slider-btn {
+            background: #e0e0e0;
+            color: #333;
+            border-color: #bbb;
+        }
+
+        body.light-theme .slider-btn:hover {
+            background: #d0d0d0;
+            border-color: #999;
+        }
+
+        body.light-theme .info {
+            color: #666;
+        }
+
+        body.light-theme #cursor-position {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: #ccc;
+            color: #2E7D32;
+        }
+
+        body.light-theme #debug-console {
+            background: rgba(250, 250, 250, 0.95);
+            border-color: #ccc;
+        }
+
+        body.light-theme #debug-header {
+            border-color: #ddd;
+        }
+
+        body.light-theme #debug-header h3 {
+            color: #2E7D32;
+        }
+
+        body.light-theme #debug-output {
+            background: #fff;
+            border-color: #ddd;
+            color: #212121;
+        }
+
+        body.light-theme .debug-log.info { color: #1976D2; }
+        body.light-theme .debug-log.warn { color: #F57C00; }
+        body.light-theme .debug-log.error { color: #C62828; }
+        body.light-theme .debug-log.verbose { color: #666; }
+
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: move;
+        }
+
+        #grid-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+
+        #cursor-position {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            background: rgba(30, 30, 30, 0.9);
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            color: #4CAF50;
+            z-index: 2;
+        }
+
+        #controls {
+            position: absolute;
+            top: 50px;
+            right: 20px;
+            background: rgba(30, 30, 30, 0.95);
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 12px;
+            width: 340px;
+            max-height: calc(90vh - 60px);
+            overflow-y: auto;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        }
+
+        #controls h1 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #4CAF50;
+        }
+
+        #controls h2 {
+            font-size: 13px;
+            margin: 10px 0 6px 0;
+            color: #64B5F6;
+            border-bottom: 1px solid #333;
+            padding-bottom: 3px;
+        }
+
+        .control-group {
+            margin-bottom: 10px;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .control-row .control-group {
+            margin-bottom: 0;
+        }
+
+        label {
+            display: block;
+            font-size: 11px;
+            margin-bottom: 3px;
+            color: #aaa;
+        }
+
+        input[type="text"],
+        input[type="number"],
+        textarea,
+        select {
+            width: 100%;
+            padding: 6px;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 32px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            margin: 3px 0;
+            flex: 1;
+        }
+
+        .range-value {
+            display: inline-block;
+            float: right;
+            font-size: 10px;
+            color: #888;
+        }
+
+        .slider-control {
+            display: flex;
+            gap: 3px;
+            align-items: center;
+        }
+
+        .slider-btn {
+            background: #333;
+            color: #ccc;
+            border: 1px solid #555;
+            padding: 1px 6px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            min-width: 22px;
+            text-align: center;
+            user-select: none;
+        }
+
+        .slider-btn:hover {
+            background: #444;
+            border-color: #666;
+        }
+
+        .slider-btn:active {
+            background: #222;
+        }
+
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            margin: 3px 3px 3px 0;
+        }
+
+        button:hover {
+            background: #45a049;
+        }
+
+        button.secondary {
+            background: #2196F3;
+        }
+
+        button.secondary:hover {
+            background: #0b7dda;
+        }
+
+        .dimension-inputs {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .dimension-input {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .dimension-input label {
+            min-width: 22px;
+            margin: 0;
+        }
+
+        .dimension-input input {
+            flex: 1;
+        }
+
+        .info {
+            font-size: 10px;
+            color: #666;
+            margin-top: 3px;
+            font-style: italic;
+        }
+
+        .floating-panel {
+            position: fixed;
+            right: 330px;
+            top: 50px;
+            width: 320px;
+            max-height: calc(90vh - 60px);
+            background: rgba(30, 30, 30, 0.98);
+            border: 1px solid #444;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+            z-index: 900;
+            animation: slideInFromLeft 0.2s ease-out;
+        }
+
+        @keyframes slideInFromLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        body.light-theme .floating-panel {
+            background: rgba(255, 255, 255, 0.98);
+            border-color: #ccc;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+        }
+
+        .floating-panel-header {
+            padding: 12px;
+            background: #252525;
+            border-bottom: 1px solid #444;
+        }
+
+        body.light-theme .floating-panel-header {
+            background: #f5f5f5;
+            border-bottom-color: #ddd;
+        }
+
+        .floating-panel-header h3 {
+            margin: 0;
+            font-size: 12px;
+            font-weight: 500;
+            color: #fff;
+        }
+
+        body.light-theme .floating-panel-header h3 {
+            color: #212121;
+        }
+
+        .floating-panel-content {
+            padding: 12px;
+            max-height: calc(90vh - 110px);
+            overflow-y: auto;
+        }
+
+        #gradient-preset-toggle {
+            border-bottom-color: #444 !important;
+        }
+
+        body.light-theme #gradient-preset-toggle {
+            border-bottom-color: #ddd !important;
+        }
+
+        #error-message {
+            background: #d32f2f;
+            color: white;
+            padding: 6px;
+            border-radius: 4px;
+            margin-top: 6px;
+            display: none;
+            font-size: 10px;
+        }
+
+        #debug-console {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(20, 20, 20, 0.95);
+            border-bottom: 1px solid #444;
+            width: 100%;
+            max-height: 350px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+        }
+
+        #debug-console.collapsed {
+            max-height: 36px;
+        }
+
+        #debug-header {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid #333;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        #debug-console.collapsed #debug-header {
+            border-bottom: none;
+        }
+
+        #debug-header h3 {
+            flex: 1;
+            margin: 0;
+            font-size: 14px;
+            color: #4CAF50;
+        }
+
+        #debug-toggle {
+            margin: 0 10px 0 0;
+        }
+
+        #debug-expand {
+            font-size: 12px;
+            color: #888;
+        }
+
+        #debug-body {
+            display: flex;
+            flex-direction: column;
+            padding: 10px;
+        }
+
+        #debug-console.collapsed #debug-body {
+            display: none;
+        }
+
+        #debug-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        #debug-verbosity {
+            flex: 1;
+        }
+
+        #debug-output {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 8px;
+            height: 240px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            color: #e0e0e0;
+            line-height: 1.4;
+        }
+
+        .debug-log {
+            margin: 2px 0;
+            padding: 2px 0;
+            border-bottom: 1px solid #282828;
+        }
+
+        .debug-log.info { color: #64B5F6; }
+        .debug-log.warn { color: #FFB74D; }
+        .debug-log.error { color: #E57373; }
+        .debug-log.verbose { color: #888; }
+
+        .debug-timestamp {
+            color: #666;
+            margin-right: 8px;
+        }
+
+        /* Gradient editor styles */
+        .gradient-stops {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            margin-bottom: 8px;
+        }
+
+        .gradient-stop {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .gradient-stop .color-picker {
+            width: 40px;
+            height: 25px;
+            padding: 0;
+            border: 1px solid #444;
+            cursor: pointer;
+        }
+
+        .gradient-stop .stop-position {
+            width: 60px;
+            padding: 4px;
+        }
+
+        .gradient-stop .remove-stop {
+            background: #d32f2f;
+            color: white;
+            border: none;
+            padding: 2px 8px;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .gradient-stop .remove-stop:hover {
+            background: #b71c1c;
+        }
+
+        .gradient-preview {
+            width: 100%;
+            height: 30px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+
+    <div id="controls">
+        <h1>N-Dimensional Vector Field</h1>
+
+        <div class="control-row">
+            <div class="control-group" style="flex: 1;">
+                <label>Theme:</label>
+                <select id="theme-selector">
+                    <option value="dark" selected>Dark Mode</option>
+                    <option value="light">Light Mode</option>
+                </select>
+            </div>
+
+            <div class="control-group" style="flex: 1;">
+                <label>Preset Examples:</label>
+                <select id="preset-selector">
+                    <option value="">-- Select Preset --</option>
+                    <option value="2d_rotation">Simple Rotation (2D)</option>
+                    <option value="2d_vortex">Vortex (2D)</option>
+                    <option value="2d_vanderpol">Van der Pol Oscillator (2D)</option>
+                    <option value="3d_lorenz">Lorenz Attractor (3D)</option>
+                    <option value="3d_rossler">Rössler Attractor (3D)</option>
+                    <option value="4d_hypersphere">4D Hypersphere Rotation</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Dimensions: <span class="range-value" id="dim-value">2</span></label>
+            <div class="slider-control">
+                <button class="slider-btn" data-slider="dimensions" data-action="decrease">-</button>
+                <input type="range" id="dimensions" min="2" max="6" value="2" step="1">
+                <button class="slider-btn" data-slider="dimensions" data-action="increase">+</button>
+            </div>
+            <div class="info">Number of dimensions in the system</div>
+        </div>
+
+        <h2>Vector Field Equations</h2>
+        <div id="dimension-inputs" class="dimension-inputs">
+            <!-- Dynamically generated -->
+        </div>
+        <div class="info">Enter math expressions using variables x, y, z, w, u, v</div>
+
+        <h2>Integrator</h2>
+        <div class="control-group">
+            <select id="integrator">
+                <option value="euler">Euler</option>
+                <option value="rk2" selected>Runge-Kutta 2 (Midpoint)</option>
+                <option value="rk4">Runge-Kutta 4</option>
+                <option value="custom">Custom (Advanced)</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Time Step: <span class="range-value" id="timestep-value">0.01</span></label>
+            <div class="slider-control">
+                <button class="slider-btn" data-slider="timestep" data-action="decrease">-</button>
+                <input type="range" id="timestep" min="0.001" max="1.0" value="0.01" step="0.001">
+                <button class="slider-btn" data-slider="timestep" data-action="increase">+</button>
+            </div>
+        </div>
+
+        <h2>2D Projection</h2>
+        <div class="control-group">
+            <select id="mapper">
+                <option value="select" selected>Select 2 Variables</option>
+                <option value="project">Linear Projection</option>
+                <option value="custom">Custom (Advanced)</option>
+            </select>
+        </div>
+
+        <div id="mapper-controls">
+            <!-- Dynamically generated based on mapper type -->
+        </div>
+
+        <h2>Rendering</h2>
+        <div class="control-group">
+            <label>Color Mode:</label>
+            <select id="color-mode">
+                <option value="white">Solid White</option>
+                <option value="velocity_magnitude">Velocity Magnitude</option>
+                <option value="velocity_angle">Velocity Angle</option>
+                <option value="velocity_combined">Velocity Angle + Magnitude</option>
+                <option value="expression">Expression</option>
+                <option value="custom">Custom (Advanced)</option>
+            </select>
+        </div>
+
+        <div class="control-group" id="gradient-button-container" style="display: none;">
+            <button id="open-gradient-editor" class="secondary" style="width: 100%;">Edit Gradient</button>
+            <div class="info">Customize color gradient for this mode</div>
+        </div>
+
+        <div id="expression-controls" style="display: none;">
+            <div class="control-group">
+                <label>Color Expression:</label>
+                <input type="text" id="color-expression" placeholder="e.g., sin(x*y), length(pos), dx*dy" value="x * y">
+                <div class="info">Expression that evaluates to [0,1]. Use x,y,z,w for position, dx,dy,dz,dw for velocity</div>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Particle Count: <span class="range-value" id="particles-value">1000</span></label>
+            <div class="slider-control">
+                <button class="slider-btn" data-slider="particles" data-action="decrease">-</button>
+                <input type="range" id="particles" min="1000" max="100000" value="1000" step="1000">
+                <button class="slider-btn" data-slider="particles" data-action="increase">+</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>Fade Speed: <span class="range-value" id="fade-value">0.999</span></label>
+            <div class="slider-control">
+                <button class="slider-btn" data-slider="fade" data-action="decrease">-</button>
+                <input type="range" id="fade" min="0" max="100" value="50" step="0.1">
+                <button class="slider-btn" data-slider="fade" data-action="increase">+</button>
+            </div>
+            <div class="info">Logarithmic scale: slower fade preserves trails longer</div>
+        </div>
+
+        <div class="control-group">
+            <label>Drop Probability: <span class="range-value" id="drop-value">0.000</span></label>
+            <div class="slider-control">
+                <button class="slider-btn" data-slider="drop" data-action="decrease">-</button>
+                <input type="range" id="drop" min="0" max="0.02" value="0" step="0.001">
+                <button class="slider-btn" data-slider="drop" data-action="increase">+</button>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="drop-low-velocity">
+                Drop low velocity particles (&lt;2% max speed)
+            </label>
+        </div>
+
+        <h2>Advanced</h2>
+        <div class="control-group">
+            <button id="open-rendering-settings" class="secondary" style="width: 100%;">Rendering Effects</button>
+            <div class="info">HDR, tone mapping, and particle intensity settings</div>
+        </div>
+
+        <div class="control-group">
+            <label>Storage Strategy:</label>
+            <select id="storage-strategy">
+                <option value="rgba">RGBA Encoded (broken!)</option>
+                <option value="float" selected>Float Textures (Modern)</option>
+            </select>
+            <div class="info">RGBA encoding has coordinate mapping bugs. Use Float textures. Requires page reload.</div>
+        </div>
+
+        <h2>Display Options</h2>
+        <div class="control-group">
+            <label>
+                <input type="checkbox" id="show-grid" checked>
+                Show coordinate grid
+            </label>
+        </div>
+
+        <div class="control-group">
+            <button id="reset" class="secondary">Reset View</button>
+            <button id="reset-particles" class="secondary">Clear Screen</button>
+            <button id="default-settings" class="secondary">Default Settings</button>
+            <button id="share-url" class="secondary">Share URL</button>
+        </div>
+
+        <div id="error-message"></div>
+    </div>
+
+    <canvas id="grid-canvas"></canvas>
+
+    <div id="cursor-position"></div>
+
+    <div id="debug-console" class="collapsed">
+        <div id="debug-header">
+            <input type="checkbox" id="debug-toggle" checked>
+            <h3>Debug Console</h3>
+            <span id="debug-expand">▶</span>
+        </div>
+        <div id="debug-body">
+            <div id="debug-controls">
+                <select id="debug-verbosity">
+                    <option value="info">Info</option>
+                    <option value="verbose">Verbose</option>
+                    <option value="warn">Warnings Only</option>
+                    <option value="error">Errors Only</option>
+                </select>
+                <button id="debug-log-shaders" class="secondary" style="padding: 4px 8px; margin: 0;">Log Shaders</button>
+                <button id="debug-buffer-stats" class="secondary" style="padding: 4px 8px; margin: 0;">Buffer Stats</button>
+                <button id="debug-copy" class="secondary" style="padding: 4px 8px; margin: 0;">Copy Log</button>
+                <button id="debug-clear" class="secondary" style="padding: 4px 8px; margin: 0;">Clear</button>
+            </div>
+            <div id="debug-output"></div>
+        </div>
+    </div>
+
+    <!-- Floating gradient panel -->
+    <div id="gradient-panel" class="floating-panel" style="display: none;">
+        <div class="floating-panel-header">
+            <h3>Gradient Editor</h3>
+        </div>
+        <div class="floating-panel-content">
+            <div id="gradient-preset-toggle" style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #444;">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="use-custom-gradient" style="margin-right: 8px;">
+                    <span>Apply to preset color modes</span>
+                </label>
+                <div class="info" style="margin-top: 5px;">When disabled, preset modes use built-in colors</div>
+            </div>
+            <div id="main-gradient-editor"></div>
+        </div>
+    </div>
+
+    <!-- Floating rendering settings panel -->
+    <div id="rendering-panel" class="floating-panel" style="display: none;">
+        <div class="floating-panel-header">
+            <h3>Rendering Effects</h3>
+        </div>
+        <div class="floating-panel-content">
+            <h4 style="margin: 0 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">HDR Rendering</h4>
+            <div class="control-group">
+                <label>
+                    <input type="checkbox" id="use-hdr" checked>
+                    Enable HDR (float framebuffers)
+                </label>
+                <div class="info">High Dynamic Range rendering with tone mapping</div>
+            </div>
+
+            <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Tone Mapping</h4>
+            <div class="control-group">
+                <label>Operator:</label>
+                <select id="tonemap-operator">
+                    <option value="aces" selected>ACES (Film-like)</option>
+                    <option value="reinhard">Reinhard (Simple)</option>
+                    <option value="reinhard_extended">Reinhard Extended</option>
+                    <option value="luminance_reinhard">Luminance Reinhard (Hue Preserving)</option>
+                    <option value="luminance_extended">Luminance Extended (Best for Attractors)</option>
+                    <option value="filmic">Filmic</option>
+                    <option value="uncharted2">Uncharted 2 (Game-style)</option>
+                    <option value="hable">Hable Filmic</option>
+                    <option value="linear">Linear (No Tone Mapping)</option>
+                </select>
+                <div class="info">Compresses HDR → LDR. Luminance modes preserve color hue/saturation perfectly.</div>
+            </div>
+
+            <div class="control-group">
+                <label>Exposure: <span class="range-value" id="exposure-value">1.00</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="exposure" data-action="decrease">-</button>
+                    <input type="range" id="exposure" min="0" max="100" value="50" step="0.1">
+                    <button class="slider-btn" data-slider="exposure" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="exposure" data-action="reset" title="Reset to default (1.0)">↺</button>
+                </div>
+                <div class="info">Logarithmic scale (0.01 - 10.0). Use low values (0.05-0.2) for attractor visualization with high gamma.</div>
+            </div>
+
+            <div class="control-group">
+                <label>Gamma: <span class="range-value" id="gamma-value">2.2</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="gamma" data-action="decrease">-</button>
+                    <input type="range" id="gamma" min="0" max="100" value="50" step="0.1">
+                    <button class="slider-btn" data-slider="gamma" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="gamma" data-action="reset" title="Reset to default (2.2)">↺</button>
+                </div>
+                <div class="info">Logarithmic scale (0.2 - 10.0). Use high values (3.0-10.0) for aggressive shadow lifting in attractors.</div>
+            </div>
+
+            <div class="control-group" id="white-point-control">
+                <label>White Point: <span class="range-value" id="white-point-value">2.0</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="white-point" data-action="decrease">-</button>
+                    <input type="range" id="white-point" min="1.0" max="10.0" value="2.0" step="0.1">
+                    <button class="slider-btn" data-slider="white-point" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="white-point" data-action="reset" title="Reset to default (2.0)">↺</button>
+                </div>
+                <div class="info">Brightest value that maps to white. Also used as bloom threshold.</div>
+            </div>
+
+            <!-- Bloom Effect (Hidden - WIP) -->
+            <div style="display: none;">
+                <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Bloom Effect</h4>
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="bloom-enabled">
+                        Enable Bloom (bright regions glow)
+                    </label>
+                    <div class="info">Extracts pixels above white point, blurs them, and adds glow.</div>
+                </div>
+
+                <div class="control-group">
+                    <label>Bloom Intensity: <span class="range-value" id="bloom-intensity-value">0.30</span></label>
+                    <div class="slider-control">
+                        <button class="slider-btn" data-slider="bloom-intensity" data-action="decrease">-</button>
+                        <input type="range" id="bloom-intensity" min="0" max="200" value="30" step="0.1">
+                        <button class="slider-btn" data-slider="bloom-intensity" data-action="increase">+</button>
+                        <button class="slider-btn" data-slider="bloom-intensity" data-action="reset" title="Reset to default (0.3)">↺</button>
+                    </div>
+                    <div class="info">Bloom layer strength (0.0 - 2.0). Higher = stronger glow.</div>
+                </div>
+
+                <div class="control-group">
+                    <label>Bloom Radius: <span class="range-value" id="bloom-radius-value">1.0</span></label>
+                    <div class="slider-control">
+                        <button class="slider-btn" data-slider="bloom-radius" data-action="decrease">-</button>
+                        <input type="range" id="bloom-radius" min="0.5" max="3.0" value="1.0" step="0.1">
+                        <button class="slider-btn" data-slider="bloom-radius" data-action="increase">+</button>
+                        <button class="slider-btn" data-slider="bloom-radius" data-action="reset" title="Reset to default (1.0)">↺</button>
+                    </div>
+                    <div class="info">Blur radius (0.5 - 3.0). Higher = wider glow spread.</div>
+                </div>
+
+                <div class="control-group">
+                    <label>Bloom Alpha: <span class="range-value" id="bloom-alpha-value">1.00</span></label>
+                    <div class="slider-control">
+                        <button class="slider-btn" data-slider="bloom-alpha" data-action="decrease">-</button>
+                        <input type="range" id="bloom-alpha" min="0" max="100" value="100" step="0.1">
+                        <button class="slider-btn" data-slider="bloom-alpha" data-action="increase">+</button>
+                        <button class="slider-btn" data-slider="bloom-alpha" data-action="reset" title="Reset to default (1.0)">↺</button>
+                    </div>
+                    <div class="info">Bloom transparency (0.0 - 1.0). Lower = more transparent, higher = more opaque.</div>
+                </div>
+            </div>
+
+            <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Particle Intensity</h4>
+            <div class="control-group">
+                <label>Intensity: <span class="range-value" id="particle-intensity-value">1.0</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="particle-intensity" data-action="decrease">-</button>
+                    <input type="range" id="particle-intensity" min="0" max="100" value="50" step="0.1">
+                    <button class="slider-btn" data-slider="particle-intensity" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="particle-intensity" data-action="reset" title="Reset to default (1.0)">↺</button>
+                </div>
+                <div class="info">Logarithmic scale (0.001 - 100.0). Brightness multiplier for particles. Use very low values (0.01-0.05) for attractor visualization.</div>
+            </div>
+
+            <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Color Saturation</h4>
+            <div class="control-group">
+                <label>Saturation: <span class="range-value" id="color-saturation-value">1.00</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="color-saturation" data-action="decrease">-</button>
+                    <input type="range" id="color-saturation" min="0" max="100" value="100" step="0.1">
+                    <button class="slider-btn" data-slider="color-saturation" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="color-saturation" data-action="reset" title="Reset to default (1.0)">↺</button>
+                </div>
+                <div class="info">Color saturation (0.0 - 1.0). Reduce for pastel colors ideal for attractor density visualization.</div>
+            </div>
+
+            <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Brightness Desaturation</h4>
+            <div class="control-group">
+                <label>Bright Desat: <span class="range-value" id="brightness-desat-value">0.00</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="brightness-desat" data-action="decrease">-</button>
+                    <input type="range" id="brightness-desat" min="0" max="100" value="0" step="0.1">
+                    <button class="slider-btn" data-slider="brightness-desat" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="brightness-desat" data-action="reset" title="Reset to default (0.0)">↺</button>
+                </div>
+                <div class="info">Desaturates bright regions (0.0 - 1.0). Prevents fully saturated colors in dense attractor areas.</div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script type="module" src="src/main.js"></script>
+</body>
+</html>
