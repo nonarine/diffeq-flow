@@ -3,7 +3,7 @@
  */
 
 import { Renderer } from './webgl/renderer.js';
-import { initControls, loadPreset } from './ui/controls.js';
+import { initControls, loadPreset } from './ui/controls-v2.js';
 import { logger } from './utils/debug-logger.js';
 
 // Initialize when DOM is ready
@@ -137,33 +137,14 @@ $(document).ready(function() {
     // Step 3: Initialize UI and start rendering
     function initUI(renderer, canvas) {
         // Initialize UI controls
-        const controlsResult = initControls(renderer, function(controlsData) {
-            const { state, saveSettings } = controlsData;
+        const manager = initControls(renderer, function(controlsData) {
+            const { manager, state, saveSettings } = controlsData;
 
-            // Apply initial state to renderer before starting
-            renderer.updateConfig({
-                dimensions: state.dimensions,
-                expressions: state.expressions,
-                integratorType: state.integrator,
-                mapperType: state.mapper,
-                mapperParams: state.mapperParams,
-                timestep: state.timestep,
-                particleCount: state.particleCount,
-                fadeOpacity: state.fadeOpacity,
-                dropProbability: state.dropProbability,
-                dropLowVelocity: state.dropLowVelocity,
-                colorMode: state.colorMode,
-                colorExpression: state.colorExpression,
-                colorGradient: state.colorGradient,
-                useCustomGradient: state.useCustomGradient,
-                // HDR and tone mapping settings
-                useHDR: state.useHDR,
-                tonemapOperator: state.tonemapOperator,
-                exposure: state.exposure,
-                gamma: state.gamma,
-                whitePoint: state.whitePoint,
-                particleIntensity: state.particleIntensity
-            });
+            // Get initial settings and apply to renderer
+            // ControlManager settings keys match renderer config keys exactly,
+            // so we can pass the settings object directly (no manual mapping!)
+            const settings = manager.getSettings();
+            renderer.updateConfig(settings);
 
             // Controls are ready, start rendering
             renderer.start();
@@ -173,6 +154,7 @@ $(document).ready(function() {
             window.loadPreset = loadPreset;
             window.logger = logger;
             window.saveSettings = saveSettings; // Make saveSettings available globally
+            window.manager = manager; // Make manager available for debugging
 
             logger.info('N-Dimensional Vector Field Renderer initialized!');
             logger.info('Available presets: ' + Object.keys(window.presets).join(', '));

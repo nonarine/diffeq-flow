@@ -339,14 +339,29 @@ export class ControlManager {
     }
 
     /**
-     * Attach event listeners to all controls
+     * Initialize all controls (create DOM elements)
      */
-    attachAllListeners() {
+    initializeControls() {
         const debouncedCallback = () => this.debouncedApply();
 
         for (const control of this.controls.values()) {
             control.attachListeners(debouncedCallback);
         }
+    }
+
+    /**
+     * Attach event listeners to all controls
+     * @deprecated Use initializeControls() instead
+     */
+    attachAllListeners() {
+        this.initializeControls();
+    }
+
+    /**
+     * Apply settings to all controls
+     */
+    applySettings(settings) {
+        this.setSettings(settings);
     }
 
     /**
