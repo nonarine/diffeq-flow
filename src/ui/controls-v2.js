@@ -29,6 +29,11 @@ export function initControls(renderer, callback) {
         debounceTime: 300,
         onApply: (settings) => {
             try {
+                // Transform implicitIterations into integratorParams
+                if (settings.implicitIterations !== undefined) {
+                    settings.integratorParams = { iterations: settings.implicitIterations };
+                }
+
                 // Apply settings directly to renderer
                 renderer.updateConfig(settings);
 
@@ -80,15 +85,29 @@ export function initControls(renderer, callback) {
     }));
 
     const integratorControl = manager.register(new SelectControl('integrator', 'rk2', {
-        settingsKey: 'integratorType'
+        settingsKey: 'integratorType',
+        onChange: (value) => {
+            // Show/hide implicit iterations slider based on integrator type
+            const isImplicit = value.startsWith('implicit-') || value === 'trapezoidal';
+            $('#implicit-iterations-group').toggle(isImplicit);
+        }
     }));
 
     const timestepControl = manager.register(new SliderControl('timestep', 0.01, {
         min: 0.001,
-        max: 0.1,
+        max: 2.5,
         step: 0.001,
         displayId: 'timestep-value',
         displayFormat: v => v.toFixed(4)
+    }));
+
+    const implicitIterationsControl = manager.register(new SliderControl('implicit-iterations', 4, {
+        settingsKey: 'implicitIterations',
+        min: 1,
+        max: 10,
+        step: 1,
+        displayId: 'implicit-iterations-value',
+        displayFormat: v => v.toFixed(0)
     }));
 
     // === Particle controls ===
@@ -479,6 +498,11 @@ export function initControls(renderer, callback) {
     updateWhitePointVisibility(manager.get('tonemap-operator').getValue());
     updateExpressionControls(manager.get('color-mode').getValue());
     updateGradientButtonVisibility(manager.get('color-mode').getValue());
+
+    // Initialize implicit iterations slider visibility
+    const currentIntegrator = manager.get('integrator').getValue();
+    const isImplicit = currentIntegrator.startsWith('implicit-') || currentIntegrator === 'trapezoidal';
+    $('#implicit-iterations-group').toggle(isImplicit);
 
     // Apply initial theme
     const theme = manager.get('theme-selector').getValue();

@@ -87,6 +87,8 @@ export function generateUpdateFragmentShader(dimensions, velocityExpressions, in
         `uniform sampler2D u_pos_${i};`
     ).join('\n');
 
+    // Note: Age is stored in alpha channel of u_pos_0 texture
+
     // Generate vector constructor from texture reads
     const vecType = `vec${dimensions}`;
     const readPositions = Array.from({ length: dimensions }, (_, i) =>
@@ -158,6 +160,9 @@ float rand2(vec2 co) {
 void main() {
     vec2 texcoord = gl_FragCoord.xy / u_particles_res;
 
+    // Read current age from alpha channel of u_pos_0
+    float current_age = texture2D(u_pos_0, texcoord).a;
+
     // Read current position from textures
     // Positions are stored as normalized [0,1] values, denormalize to world coords
     ${vecType} pos;
@@ -193,7 +198,8 @@ void main() {
     // Random drop: reset particle to random position with small probability
     // Also reset if particle exits the viewport or is too slow
     float drop_chance = rand(texcoord);
-    if (drop_chance < u_drop_rate || outside || too_slow) {
+    bool should_respawn = drop_chance < u_drop_rate || outside || too_slow;
+    if (should_respawn) {
         // Spawn particles 2% OUTSIDE viewport for natural flow-in effect (negative margin)
         // Use texcoord + rand_seed for truly independent random values per particle per frame
         const float margin = -0.02;
@@ -206,6 +212,14 @@ void main() {
             // For higher dimensions, use varied seeds for better distribution
             return `new_pos.${coords[i]} = -10.4 + rand(texcoord * ${i + 1}.37 + vec2(u_rand_seed * ${i + 3}.5)) * 20.8;`;
         }).join('\n        ')}
+    }
+
+    // Calculate new age (based on all spawn conditions)
+    float new_age;
+    if (should_respawn) {
+        new_age = 0.0; // Reset age for newly spawned particles
+    } else {
+        new_age = min(current_age + 0.5, 1.0); // Increment age, cap at 1.0
     }
 
     // Output the selected coordinate
@@ -224,6 +238,7 @@ void main() {
         if (i === 0) {
             return `if (u_out_coordinate == ${i}) {
         gl_FragColor = encodeFloat(${normalizeExpr});
+        gl_FragColor.a = new_age; // Store age in alpha channel
     }`;
         } else if (i === dimensions - 1) {
             return ` else {
@@ -296,6 +311,9 @@ void main() {
         (floor(a_index / u_particles_res) + 0.5) / u_particles_res
     );
 
+    // Read age from alpha channel of u_pos_0
+    float age = texture2D(u_pos_0, texcoord).a;
+
     // Read position from textures and denormalize to world coordinates
     ${vecType} pos;
     ${Array.from({ length: dimensions }, (_, i) => {
@@ -316,19 +334,25 @@ void main() {
     v_pos = pos;
     v_velocity = velocity;
 
-    // Project to 3D (with depth)
-    vec3 pos_3d = project_to_3d(pos);
+    // Skip newly spawned particles (age < 1) by moving them off-screen
+    if (age < 1.0) {
+        gl_Position = vec4(10.0, 10.0, 10.0, 1.0); // Far outside clip space
+        gl_PointSize = 0.0;
+    } else {
+        // Project to 3D (with depth)
+        vec3 pos_3d = project_to_3d(pos);
 
-    // Map to screen space
-    vec2 normalized = (pos_3d.xy - u_min) / (u_max - u_min);
+        // Map to screen space
+        vec2 normalized = (pos_3d.xy - u_min) / (u_max - u_min);
 
-    // Use depth value (normalized to [-1, 1] range)
-    // For now, assume depth is in similar range to x/y coordinates
-    float depth_normalized = (pos_3d.z - (u_min.x + u_min.y) * 0.5) / ((u_max.x - u_min.x + u_max.y - u_min.y) * 0.5);
-    depth_normalized = clamp(depth_normalized, -1.0, 1.0);
+        // Use depth value (normalized to [-1, 1] range)
+        // For now, assume depth is in similar range to x/y coordinates
+        float depth_normalized = (pos_3d.z - (u_min.x + u_min.y) * 0.5) / ((u_max.x - u_min.x + u_max.y - u_min.y) * 0.5);
+        depth_normalized = clamp(depth_normalized, -1.0, 1.0);
 
-    gl_Position = vec4(normalized * 2.0 - 1.0, depth_normalized, 1.0);
-    gl_PointSize = 1.0;
+        gl_Position = vec4(normalized * 2.0 - 1.0, depth_normalized, 1.0);
+        gl_PointSize = 1.0;
+    }
 }
 `;
 }

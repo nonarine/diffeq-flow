@@ -592,23 +592,42 @@
         <h2>Integrator</h2>
         <div class="control-group">
             <select id="integrator">
-                <option value="euler">Euler (Explicit)</option>
-                <option value="implicit">Implicit Euler (Backward)</option>
-                <option value="rk2" selected>Runge-Kutta 2 (Midpoint)</option>
-                <option value="rk4">Runge-Kutta 4</option>
-                <option value="symplectic">Symplectic Euler (Semi-implicit)</option>
-                <option value="custom">Custom (Advanced)</option>
+                <optgroup label="Explicit Methods">
+                    <option value="euler">Euler (1st order)</option>
+                    <option value="rk2" selected>Runge-Kutta 2 (2nd order)</option>
+                    <option value="rk4">Runge-Kutta 4 (4th order)</option>
+                </optgroup>
+                <optgroup label="Implicit Methods (A-stable)">
+                    <option value="implicit-euler">Implicit Euler (1st order)</option>
+                    <option value="implicit-midpoint">Implicit Midpoint (2nd order)</option>
+                    <option value="trapezoidal">Trapezoidal (2nd order)</option>
+                    <option value="implicit-rk4">Implicit RK4 (4th order)</option>
+                </optgroup>
+                <optgroup label="Special Methods">
+                    <option value="symplectic">Symplectic Euler (Energy-preserving)</option>
+                    <option value="custom">Custom (Advanced)</option>
+                </optgroup>
             </select>
-            <div class="info">Implicit: More stable for stiff systems. Symplectic: Energy-preserving for Hamiltonian systems.</div>
+            <div class="info">Implicit methods are more stable for stiff systems and allow larger timesteps. Symplectic methods preserve energy in Hamiltonian systems.</div>
         </div>
 
         <div class="control-group">
             <label>Time Step: <span class="range-value" id="timestep-value">0.01</span></label>
             <div class="slider-control">
                 <button class="slider-btn" data-slider="timestep" data-action="decrease">-</button>
-                <input type="range" id="timestep" min="0.001" max="1.0" value="0.01" step="0.001">
+                <input type="range" id="timestep" min="0.001" max="2.5" value="0.01" step="0.001">
                 <button class="slider-btn" data-slider="timestep" data-action="increase">+</button>
             </div>
+        </div>
+
+        <div class="control-group" id="implicit-iterations-group" style="display: none;">
+            <label>Fixed-Point Iterations: <span class="range-value" id="implicit-iterations-value">4</span></label>
+            <div class="slider-control">
+                <button class="slider-btn" data-slider="implicit-iterations" data-action="decrease">-</button>
+                <input type="range" id="implicit-iterations" min="1" max="10" value="4" step="1">
+                <button class="slider-btn" data-slider="implicit-iterations" data-action="increase">+</button>
+            </div>
+            <div class="info">Number of iterations for implicit method convergence. Higher = more accurate but slower.</div>
         </div>
 
         <h2>2D Projection</h2>

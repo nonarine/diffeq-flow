@@ -85,6 +85,101 @@ vec${dimensions} integrate(vec${dimensions} pos, float h) {
 }
 
 /**
+ * Implicit Midpoint (Implicit RK2)
+ * Solves: x(t+h) = x(t) + h*f((x(t) + x(t+h))/2) using fixed-point iteration
+ * 2nd order accurate, A-stable (excellent for stiff systems)
+ */
+export function implicitMidpointIntegrator(dimensions, iterations = 4) {
+    return {
+        name: 'Implicit Midpoint',
+        code: `
+// Implicit Midpoint integration (fixed-point iteration)
+vec${dimensions} integrate(vec${dimensions} pos, float h) {
+    // Start with explicit RK2 as initial guess
+    vec${dimensions} k1 = get_velocity(pos);
+    vec${dimensions} x_new = pos + h * get_velocity(pos + h * 0.5 * k1);
+
+    // Fixed-point iteration: x_new = x + h * f((x + x_new)/2)
+    for (int i = 0; i < ${iterations}; i++) {
+        vec${dimensions} x_mid = (pos + x_new) * 0.5;
+        x_new = pos + h * get_velocity(x_mid);
+    }
+
+    return x_new;
+}
+`
+    };
+}
+
+/**
+ * Trapezoidal Rule (Implicit RK2)
+ * Solves: x(t+h) = x(t) + h/2 * (f(x(t)) + f(x(t+h))) using fixed-point iteration
+ * 2nd order accurate, A-stable
+ */
+export function trapezoidalIntegrator(dimensions, iterations = 4) {
+    return {
+        name: 'Trapezoidal',
+        code: `
+// Trapezoidal Rule integration (fixed-point iteration)
+vec${dimensions} integrate(vec${dimensions} pos, float h) {
+    vec${dimensions} f0 = get_velocity(pos);
+
+    // Start with explicit Euler as initial guess
+    vec${dimensions} x_new = pos + h * f0;
+
+    // Fixed-point iteration: x_new = x + h/2 * (f(x) + f(x_new))
+    for (int i = 0; i < ${iterations}; i++) {
+        vec${dimensions} f_new = get_velocity(x_new);
+        x_new = pos + h * 0.5 * (f0 + f_new);
+    }
+
+    return x_new;
+}
+`
+    };
+}
+
+/**
+ * Implicit RK4 (Gauss-Legendre)
+ * Fully implicit 4th order method, excellent stability
+ * Uses simplified 2-stage Gauss-Legendre with fixed-point iteration
+ */
+export function implicitRK4Integrator(dimensions, iterations = 5) {
+    return {
+        name: 'Implicit RK4',
+        code: `
+// Implicit RK4 (Gauss-Legendre 2-stage) integration
+vec${dimensions} integrate(vec${dimensions} pos, float h) {
+    // Gauss-Legendre coefficients for 2-stage method
+    const float a11 = 0.25;
+    const float a12 = 0.25 - sqrt(3.0) / 6.0;
+    const float a21 = 0.25 + sqrt(3.0) / 6.0;
+    const float a22 = 0.25;
+    const float b1 = 0.5;
+    const float b2 = 0.5;
+    const float c1 = 0.5 - sqrt(3.0) / 6.0;
+    const float c2 = 0.5 + sqrt(3.0) / 6.0;
+
+    // Start with explicit RK4 as initial guess
+    vec${dimensions} k1_guess = get_velocity(pos);
+    vec${dimensions} k2_guess = get_velocity(pos + h * 0.5 * k1_guess);
+
+    vec${dimensions} k1 = k1_guess;
+    vec${dimensions} k2 = k2_guess;
+
+    // Fixed-point iteration to solve implicit stages
+    for (int i = 0; i < ${iterations}; i++) {
+        k1 = get_velocity(pos + h * (a11 * k1 + a12 * k2));
+        k2 = get_velocity(pos + h * (a21 * k1 + a22 * k2));
+    }
+
+    return pos + h * (b1 * k1 + b2 * k2);
+}
+`
+    };
+}
+
+/**
  * Symplectic Euler (Semi-implicit Euler) for Hamiltonian systems
  * Assumes even dimensions are positions, odd dimensions are velocities
  * Updates velocities first, then positions using new velocities
@@ -161,10 +256,19 @@ export function getIntegrator(name, dimensions, params = {}) {
             return rk2Integrator(dimensions);
         case 'rk4':
             return rk4Integrator(dimensions);
-        case 'implicit':
+        case 'implicit-euler':
             return implicitEulerIntegrator(dimensions, params.iterations || 3);
+        case 'implicit-midpoint':
+            return implicitMidpointIntegrator(dimensions, params.iterations || 4);
+        case 'trapezoidal':
+            return trapezoidalIntegrator(dimensions, params.iterations || 4);
+        case 'implicit-rk4':
+            return implicitRK4Integrator(dimensions, params.iterations || 5);
         case 'symplectic':
             return symplecticEulerIntegrator(dimensions);
+        // Legacy alias
+        case 'implicit':
+            return implicitEulerIntegrator(dimensions, params.iterations || 3);
         default:
             return rk4Integrator(dimensions); // Default to RK4
     }

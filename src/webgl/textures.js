@@ -22,6 +22,8 @@ export class TextureManager {
             this.writeTextures.push(this.createTexture());
         }
 
+        // Note: Age is stored in alpha channel of dimension 0, no separate age textures needed
+
         // Texture units start from 0
         this.textureUnitOffset = 0;
     }
@@ -93,6 +95,37 @@ export class TextureManager {
                 null
             );
         }
+
+        // Initialize alpha channel of dimension 0 to age = 1.0 so particles render immediately
+        // Age is stored in alpha channel of u_pos_0
+        const ArrayType = this.strategy.getArrayType();
+        const componentsPerValue = this.strategy.getComponentsPerValue();
+
+        // For float textures (RGBA format), set alpha channel to 1.0
+        if (format.format === gl.RGBA) {
+            // Re-read the data[0] texture to modify alpha channel
+            const dim0Data = data[0];
+            for (let i = 0; i < this.resolution * this.resolution; i++) {
+                // Alpha is the 4th component (index 3) in RGBA
+                if (componentsPerValue === 4) {
+                    dim0Data[i * 4 + 3] = 1.0; // Set age = 1.0
+                }
+            }
+
+            // Re-upload dimension 0 with modified alpha
+            gl.bindTexture(gl.TEXTURE_2D, this.readTextures[0]);
+            gl.texImage2D(
+                gl.TEXTURE_2D,
+                0,
+                format.internalFormat,
+                this.resolution,
+                this.resolution,
+                0,
+                format.format,
+                format.type,
+                dim0Data
+            );
+        }
     }
 
     /**
@@ -129,6 +162,8 @@ export class TextureManager {
         const temp = this.readTextures;
         this.readTextures = this.writeTextures;
         this.writeTextures = temp;
+
+        // Age is now in alpha channel of dimension 0, swapped with position textures
     }
 
     /**

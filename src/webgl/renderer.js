@@ -313,6 +313,8 @@ export class Renderer {
 
             this.updateProgram = createProgram(gl, updateVertexShader, updateFragmentShader);
 
+            // Note: Age is now stored in alpha channel of u_pos_0, no separate age shader needed
+
             // Create draw program
             const drawVertexShader = generateDrawVertexShader(this.dimensions, mapper.code, velocityGLSL, this.strategy);
             const drawFragmentShader = generateDrawFragmentShader(this.dimensions, colorCode, usesMaxVelocity);
@@ -418,10 +420,11 @@ export class Renderer {
 
         // Set uniforms
         const resolution = this.particleSystem.getResolution();
+        const randSeed = Math.random(); // Generate once per frame for consistency
         gl.uniform2f(gl.getUniformLocation(program, 'u_min'), this.bbox.min[0], this.bbox.min[1]);
         gl.uniform2f(gl.getUniformLocation(program, 'u_max'), this.bbox.max[0], this.bbox.max[1]);
         gl.uniform1f(gl.getUniformLocation(program, 'u_h'), this.timestep);
-        gl.uniform1f(gl.getUniformLocation(program, 'u_rand_seed'), Math.random());
+        gl.uniform1f(gl.getUniformLocation(program, 'u_rand_seed'), randSeed);
         gl.uniform1f(gl.getUniformLocation(program, 'u_drop_rate'), this.dropProbability);
         gl.uniform1f(gl.getUniformLocation(program, 'u_particles_res'), resolution);
         gl.uniform1f(gl.getUniformLocation(program, 'u_max_velocity'), this.maxVelocity);
@@ -446,6 +449,8 @@ export class Renderer {
             gl.viewport(0, 0, resolution, resolution);
             gl.drawArrays(gl.TRIANGLES, 0, 6);
         }
+
+        // Age is now stored in alpha channel of u_pos_0, no separate update needed
 
         // Swap textures
         this.textureManager.swap();
@@ -530,7 +535,7 @@ export class Renderer {
         gl.enableVertexAttribArray(aIndexLoc);
         gl.vertexAttribPointer(aIndexLoc, 1, gl.FLOAT, false, 0, 0);
 
-        // Bind position textures
+        // Bind position textures (age is in alpha channel of u_pos_0)
         this.textureManager.bindReadTextures(program);
 
         // Set uniforms
@@ -910,6 +915,9 @@ export class Renderer {
             dimensionData.push(this.textureManager.readTexture(dim));
         }
 
+        // Age is now stored in alpha channel of dimension 0 texture
+        // We'll read it directly from dimensionData[0]
+
         const componentsPerValue = this.strategy.getComponentsPerValue();
         const ArrayType = this.strategy.getArrayType();
 
@@ -938,13 +946,19 @@ export class Renderer {
                 position.push(worldValue.toFixed(3));
             }
 
+            // Decode age value from alpha channel of dimension 0
+            // For RGBA textures, alpha is the 4th component (index 3)
+            const dim0Data = dimensionData[0];
+            const ageValue = componentsPerValue === 4 ? dim0Data[texelIdx + 3] : 1.0;
+
             samples.push({
                 particle: particleIdx,
-                position: position.join(', ')
+                position: position.join(', '),
+                age: ageValue.toFixed(2)
             });
         }
 
-        logger.verbose(`Frame ${this.frame}: Sampled ${sampleCount} particles`, {
+        logger.verbose(`Frame ${this.frame}: Sampled ${sampleCount} particles (with age)`, {
             bounds: `[${this.bbox.min[0].toFixed(3)}, ${this.bbox.min[1].toFixed(3)}] to [${this.bbox.max[0].toFixed(3)}, ${this.bbox.max[1].toFixed(3)}]`,
             samples: samples
         });
