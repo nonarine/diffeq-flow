@@ -513,8 +513,95 @@ $(document).ready(function() {
         updateCursorDisplay();
     }
 
+    // Step 6: Initialize accordion for controls sections
+    function initAccordion() {
+        const ACCORDION_STATE_KEY = 'accordionState';
+
+        // Load saved accordion state from localStorage
+        let savedState = {};
+        try {
+            const saved = localStorage.getItem(ACCORDION_STATE_KEY);
+            if (saved) {
+                savedState = JSON.parse(saved);
+            }
+        } catch (e) {
+            console.warn('Failed to load accordion state', e);
+        }
+
+        // Get all h2 headers in the controls panel
+        $('#controls h2').each(function(index) {
+            const $header = $(this);
+            const $section = $header.next('.accordion-section');
+
+            if ($section.length === 0) return; // Skip if no accordion section follows
+
+            // Use the header text as a unique identifier
+            const sectionId = $header.text().trim();
+
+            // Determine initial state (default to expanded for first section, collapsed for others)
+            const isCollapsed = savedState.hasOwnProperty(sectionId)
+                ? savedState[sectionId]
+                : (index > 0); // First section open, rest collapsed
+
+            // Set initial state
+            if (isCollapsed) {
+                $header.addClass('collapsed');
+                $section.addClass('collapsed');
+            } else {
+                // Set max-height for smooth transition
+                $section.css('max-height', $section[0].scrollHeight + 'px');
+            }
+
+            // Add click handler
+            $header.on('click', function() {
+                const $h2 = $(this);
+                const $content = $h2.next('.accordion-section');
+                const isCurrentlyCollapsed = $h2.hasClass('collapsed');
+
+                if (isCurrentlyCollapsed) {
+                    // Expand
+                    $h2.removeClass('collapsed');
+                    $content.css('max-height', $content[0].scrollHeight + 'px');
+                    $content.removeClass('collapsed');
+                } else {
+                    // Collapse
+                    $content.css('max-height', $content[0].scrollHeight + 'px');
+                    // Force reflow
+                    $content[0].offsetHeight;
+                    $content.css('max-height', '0');
+                    $h2.addClass('collapsed');
+                    $content.addClass('collapsed');
+                }
+
+                // Save state to localStorage
+                savedState[sectionId] = !isCurrentlyCollapsed;
+                try {
+                    localStorage.setItem(ACCORDION_STATE_KEY, JSON.stringify(savedState));
+                } catch (e) {
+                    console.warn('Failed to save accordion state', e);
+                }
+            });
+
+            // Update max-height when window resizes or content changes
+            const updateMaxHeight = () => {
+                if (!$section.hasClass('collapsed')) {
+                    $section.css('max-height', $section[0].scrollHeight + 'px');
+                }
+            };
+
+            // Create a ResizeObserver to watch for content changes
+            if (typeof ResizeObserver !== 'undefined') {
+                const observer = new ResizeObserver(updateMaxHeight);
+                observer.observe($section[0]);
+            }
+        });
+
+        logger.info('Accordion initialized with ' + $('#controls h2').length + ' sections');
+    }
+
     // Run initialization sequence in order
     initDebugConsole(function() {
+        initAccordion(); // Initialize accordion early (doesn't depend on renderer)
         initRenderer(function(renderer, canvas) {
             setupPanZoom(renderer, canvas);
             setupGridAndCursor(renderer, canvas);

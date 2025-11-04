@@ -52,19 +52,16 @@ export class DimensionInputsControl extends Control {
     setValue(expressions) {
         if (!Array.isArray(expressions)) return;
 
-        // Ensure we have the right number of inputs first
-        this.updateInputs(expressions.length);
-
-        // Set values
-        expressions.forEach((expr, i) => {
-            $(`#expr-${i}`).val(expr);
-        });
+        // Ensure we have the right number of inputs first, passing the new values
+        this.updateInputs(expressions.length, expressions);
     }
 
     /**
      * Update dimension inputs based on current dimension count
+     * @param {number|null} dimensions - Number of dimensions (null = use current)
+     * @param {Array|null} newValues - Optional new values to set (overrides current values)
      */
-    updateInputs(dimensions = null) {
+    updateInputs(dimensions = null, newValues = null) {
         if (dimensions === null) {
             dimensions = this.getDimensions();
         }
@@ -75,16 +72,23 @@ export class DimensionInputsControl extends Control {
             return;
         }
 
-        // Get current values before clearing (check if elements exist first)
-        const firstElement = $(`#expr-0`);
-        const currentExpressions = firstElement.length > 0 ? this.getValue() : this.defaultValue;
+        // Determine what values to use
+        let valuesToUse;
+        if (newValues && Array.isArray(newValues)) {
+            // Use provided new values
+            valuesToUse = newValues;
+        } else {
+            // Get current values before clearing (check if elements exist first)
+            const firstElement = $(`#expr-0`);
+            valuesToUse = firstElement.length > 0 ? this.getValue() : this.defaultValue;
+        }
 
         // Clear and rebuild
         container.empty();
 
         for (let i = 0; i < dimensions; i++) {
             const varName = this.varNames[i];
-            const defaultValue = currentExpressions[i] || this.defaultValue[i] || '0';
+            const defaultValue = valuesToUse[i] || this.defaultValue[i] || '0';
 
             const div = $('<div class="dimension-input"></div>');
             div.append(`<label>d${varName}/dt =</label>`);

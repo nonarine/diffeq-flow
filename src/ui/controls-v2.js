@@ -809,29 +809,50 @@ function loadPreset(name, manager) {
     const preset = window.presets[name];
     if (!preset) {
         console.error('Preset not found:', name);
+        logger.error(`Preset not found: ${name}`);
         return;
     }
 
-    // Get current settings
-    const currentSettings = manager.getSettings();
+    logger.info(`Loading preset: ${preset.name || name} (dimensions=${preset.dimensions}, expressions=${preset.expressions.length})`);
 
     // Update dimensions
     const dimensionsControl = manager.get('dimensions');
     if (dimensionsControl) {
+        logger.verbose(`Setting dimensions to ${preset.dimensions}`);
         dimensionsControl.setValue(preset.dimensions);
+        const actualValue = dimensionsControl.getValue();
+        logger.verbose(`Dimensions value after set: ${actualValue}`);
     }
 
-    // Wait for dimension inputs to be created
-    setTimeout(() => {
-        // Update expressions
-        const expressionsControl = manager.get('expressions');
-        if (expressionsControl) {
-            expressionsControl.setValue(preset.expressions);
+    // Update expressions (which will also update input count)
+    const expressionsControl = manager.get('dimension-inputs');
+    if (expressionsControl) {
+        logger.verbose(`PRESET expressions to set: [${preset.expressions.join(', ')}]`);
+        expressionsControl.setValue(preset.expressions);
+
+        // Check what got set in the DOM
+        for (let i = 0; i < preset.expressions.length; i++) {
+            const domValue = $(`#expr-${i}`).val();
+            logger.verbose(`  expr-${i} DOM value: "${domValue}"`);
         }
 
-        // Apply changes
-        manager.apply();
-    }, 100);
+        const actualExpressions = expressionsControl.getValue();
+        logger.verbose(`Expressions after getValue(): [${actualExpressions.join(', ')}]`);
+    } else {
+        logger.error('Could not find dimension-inputs control!');
+    }
+
+    // Update mapper controls to match new dimensions
+    const mapperParamsControl = manager.get('mapperParams');
+    if (mapperParamsControl) {
+        logger.verbose('Updating mapper controls');
+        mapperParamsControl.updateControls();
+    }
+
+    // Apply changes immediately (no debounce for preset loading)
+    logger.verbose('Applying preset settings to renderer');
+    manager.apply();
+    logger.info(`Preset ${preset.name || name} loaded successfully`);
 }
 
 /**

@@ -48,6 +48,10 @@
             border-color: #ddd;
         }
 
+        body.light-theme #controls h2:hover {
+            background: rgba(25, 118, 210, 0.1);
+        }
+
         body.light-theme label {
             color: #555;
         }
@@ -179,12 +183,71 @@
             color: #4CAF50;
         }
 
+        #display-options {
+            position: absolute;
+            top: 50px;
+            left: 20px;
+            background: rgba(30, 30, 30, 0.95);
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 12px;
+            width: 240px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            z-index: 100;
+        }
+
+        #display-options h1 {
+            font-size: 16px;
+            margin-bottom: 10px;
+            color: #4CAF50;
+        }
+
+        body.light-theme #display-options {
+            background: rgba(255, 255, 255, 0.95);
+            border-color: #ccc;
+            color: #212121;
+        }
+
+        body.light-theme #display-options h1 {
+            color: #2E7D32;
+        }
+
         #controls h2 {
             font-size: 13px;
             margin: 10px 0 6px 0;
             color: #64B5F6;
             border-bottom: 1px solid #333;
-            padding-bottom: 3px;
+            padding: 6px 8px 6px 0;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.2s;
+        }
+
+        #controls h2:hover {
+            background: rgba(100, 181, 246, 0.1);
+        }
+
+        #controls h2::after {
+            content: '▼';
+            font-size: 10px;
+            transition: transform 0.2s;
+        }
+
+        #controls h2.collapsed::after {
+            transform: rotate(-90deg);
+        }
+
+        .accordion-section {
+            overflow: hidden;
+            transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
+        }
+
+        .accordion-section.collapsed {
+            max-height: 0 !important;
+            opacity: 0;
         }
 
         .control-group {
@@ -584,142 +647,157 @@
         </div>
 
         <h2>Vector Field Equations</h2>
-        <div id="dimension-inputs" class="dimension-inputs">
-            <!-- Dynamically generated -->
+        <div class="accordion-section">
+            <div id="dimension-inputs" class="dimension-inputs">
+                <!-- Dynamically generated -->
+            </div>
+            <div class="info">Enter math expressions using variables x, y, z, w, u, v</div>
         </div>
-        <div class="info">Enter math expressions using variables x, y, z, w, u, v</div>
 
         <h2>Integrator</h2>
-        <div class="control-group">
-            <select id="integrator">
-                <optgroup label="Explicit Methods">
-                    <option value="euler">Euler (1st order)</option>
-                    <option value="rk2" selected>Runge-Kutta 2 (2nd order)</option>
-                    <option value="rk4">Runge-Kutta 4 (4th order)</option>
-                </optgroup>
-                <optgroup label="Implicit Methods (A-stable)">
-                    <option value="implicit-euler">Implicit Euler (1st order)</option>
-                    <option value="implicit-midpoint">Implicit Midpoint (2nd order)</option>
-                    <option value="trapezoidal">Trapezoidal (2nd order)</option>
-                    <option value="implicit-rk4">Implicit RK4 (4th order)</option>
-                </optgroup>
-                <optgroup label="Special Methods">
-                    <option value="symplectic">Symplectic Euler (Energy-preserving)</option>
-                    <option value="custom">Custom (Advanced)</option>
-                </optgroup>
-            </select>
-            <div class="info">Implicit methods are more stable for stiff systems and allow larger timesteps. Symplectic methods preserve energy in Hamiltonian systems.</div>
-        </div>
-
-        <div class="control-group">
-            <label>Time Step: <span class="range-value" id="timestep-value">0.01</span></label>
-            <div class="slider-control">
-                <button class="slider-btn" data-slider="timestep" data-action="decrease">-</button>
-                <input type="range" id="timestep" min="0.001" max="2.5" value="0.01" step="0.001">
-                <button class="slider-btn" data-slider="timestep" data-action="increase">+</button>
+        <div class="accordion-section">
+            <div class="control-group">
+                <select id="integrator">
+                    <optgroup label="Explicit Methods">
+                        <option value="euler">Euler (1st order)</option>
+                        <option value="rk2" selected>Runge-Kutta 2 (2nd order)</option>
+                        <option value="rk4">Runge-Kutta 4 (4th order)</option>
+                    </optgroup>
+                    <optgroup label="Implicit Methods (A-stable)">
+                        <option value="implicit-euler">Implicit Euler (1st order)</option>
+                        <option value="implicit-midpoint">Implicit Midpoint (2nd order)</option>
+                        <option value="trapezoidal">Trapezoidal (2nd order)</option>
+                        <option value="implicit-rk4">Implicit RK4 (4th order)</option>
+                    </optgroup>
+                    <optgroup label="Special Methods">
+                        <option value="symplectic">Symplectic Euler (Energy-preserving)</option>
+                        <option value="custom">Custom (Advanced)</option>
+                    </optgroup>
+                </select>
+                <div class="info">Implicit methods are more stable for stiff systems and allow larger timesteps. Symplectic methods preserve energy in Hamiltonian systems.</div>
             </div>
-        </div>
 
-        <div class="control-group" id="implicit-iterations-group" style="display: none;">
-            <label>Fixed-Point Iterations: <span class="range-value" id="implicit-iterations-value">4</span></label>
-            <div class="slider-control">
-                <button class="slider-btn" data-slider="implicit-iterations" data-action="decrease">-</button>
-                <input type="range" id="implicit-iterations" min="1" max="10" value="4" step="1">
-                <button class="slider-btn" data-slider="implicit-iterations" data-action="increase">+</button>
+            <div class="control-group">
+                <label>Time Step: <span class="range-value" id="timestep-value">0.01</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="timestep" data-action="decrease">-</button>
+                    <input type="range" id="timestep" min="0.001" max="2.5" value="0.01" step="0.001">
+                    <button class="slider-btn" data-slider="timestep" data-action="increase">+</button>
+                </div>
             </div>
-            <div class="info">Number of iterations for implicit method convergence. Higher = more accurate but slower.</div>
+
+            <div class="control-group" id="implicit-iterations-group" style="display: none;">
+                <label>Fixed-Point Iterations: <span class="range-value" id="implicit-iterations-value">4</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="implicit-iterations" data-action="decrease">-</button>
+                    <input type="range" id="implicit-iterations" min="1" max="10" value="4" step="1">
+                    <button class="slider-btn" data-slider="implicit-iterations" data-action="increase">+</button>
+                </div>
+                <div class="info">Number of iterations for implicit method convergence. Higher = more accurate but slower.</div>
+            </div>
         </div>
 
         <h2>2D Projection</h2>
-        <div class="control-group">
-            <select id="mapper">
-                <option value="select" selected>Select 2 Variables</option>
-                <option value="project">Linear Projection</option>
-                <option value="custom">Custom (Advanced)</option>
-            </select>
-        </div>
+        <div class="accordion-section">
+            <div class="control-group">
+                <select id="mapper">
+                    <option value="select" selected>Select 2 Variables</option>
+                    <option value="project">Linear Projection</option>
+                    <option value="custom">Custom (Advanced)</option>
+                </select>
+            </div>
 
-        <div id="mapper-controls">
-            <!-- Dynamically generated based on mapper type -->
+            <div id="mapper-controls">
+                <!-- Dynamically generated based on mapper type -->
+            </div>
         </div>
 
         <h2>Rendering</h2>
-        <div class="control-group">
-            <label>Color Mode:</label>
-            <select id="color-mode">
-                <option value="white">Solid White</option>
-                <option value="velocity_magnitude">Velocity Magnitude</option>
-                <option value="velocity_angle">Velocity Angle</option>
-                <option value="velocity_combined">Velocity Angle + Magnitude</option>
-                <option value="expression">Expression</option>
-                <option value="custom">Custom (Advanced)</option>
-            </select>
-        </div>
-
-        <div class="control-group" id="gradient-button-container" style="display: none;">
-            <button id="open-gradient-editor" class="secondary" style="width: 100%;">Edit Gradient</button>
-            <div class="info">Customize color gradient for this mode</div>
-        </div>
-
-        <div id="expression-controls" style="display: none;">
+        <div class="accordion-section">
             <div class="control-group">
-                <label>Color Expression:</label>
-                <input type="text" id="color-expression" placeholder="e.g., sin(x*y), length(pos), dx*dy" value="x * y">
-                <div class="info">Expression that evaluates to [0,1]. Use x,y,z,w for position, dx,dy,dz,dw for velocity</div>
+                <label>Color Mode:</label>
+                <select id="color-mode">
+                    <option value="white">Solid White</option>
+                    <option value="velocity_magnitude">Velocity Magnitude</option>
+                    <option value="velocity_angle">Velocity Angle</option>
+                    <option value="velocity_combined">Velocity Angle + Magnitude</option>
+                    <option value="expression">Expression</option>
+                    <option value="custom">Custom (Advanced)</option>
+                </select>
             </div>
-        </div>
 
-        <div class="control-group">
-            <label>Particle Count: <span class="range-value" id="particles-value">1000</span></label>
-            <div class="slider-control">
-                <button class="slider-btn" data-slider="particles" data-action="decrease">-</button>
-                <input type="range" id="particles" min="100" max="5000000" value="1000" step="10000">
-                <button class="slider-btn" data-slider="particles" data-action="increase">+</button>
+            <div class="control-group" id="gradient-button-container" style="display: none;">
+                <button id="open-gradient-editor" class="secondary" style="width: 100%;">Edit Gradient</button>
+                <div class="info">Customize color gradient for this mode</div>
             </div>
-        </div>
 
-        <div class="control-group">
-            <label>Fade Speed: <span class="range-value" id="fade-value">0.999</span></label>
-            <div class="slider-control">
-                <button class="slider-btn" data-slider="fade" data-action="decrease">-</button>
-                <input type="range" id="fade" min="0" max="100" value="50" step="0.1">
-                <button class="slider-btn" data-slider="fade" data-action="increase">+</button>
+            <div id="expression-controls" style="display: none;">
+                <div class="control-group">
+                    <label>Color Expression:</label>
+                    <input type="text" id="color-expression" placeholder="e.g., sin(x*y), length(pos), dx*dy" value="x * y">
+                    <div class="info">Expression that evaluates to [0,1]. Use x,y,z,w for position, dx,dy,dz,dw for velocity</div>
+                </div>
             </div>
-            <div class="info">Logarithmic scale: slower fade preserves trails longer</div>
-        </div>
 
-        <div class="control-group">
-            <label>Drop Probability: <span class="range-value" id="drop-value">0.000</span></label>
-            <div class="slider-control">
-                <button class="slider-btn" data-slider="drop" data-action="decrease">-</button>
-                <input type="range" id="drop" min="0" max="0.02" value="0" step="0.001">
-                <button class="slider-btn" data-slider="drop" data-action="increase">+</button>
+            <div class="control-group">
+                <label>Particle Count: <span class="range-value" id="particles-value">1000</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="particles" data-action="decrease">-</button>
+                    <input type="range" id="particles" min="100" max="5000000" value="1000" step="10000">
+                    <button class="slider-btn" data-slider="particles" data-action="increase">+</button>
+                </div>
             </div>
-        </div>
 
-        <div class="control-group">
-            <label>
-                <input type="checkbox" id="drop-low-velocity">
-                Drop low velocity particles (&lt;2% max speed)
-            </label>
+            <div class="control-group">
+                <label>Fade Speed: <span class="range-value" id="fade-value">0.999</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="fade" data-action="decrease">-</button>
+                    <input type="range" id="fade" min="0" max="100" value="50" step="0.1">
+                    <button class="slider-btn" data-slider="fade" data-action="increase">+</button>
+                </div>
+                <div class="info">Logarithmic scale: slower fade preserves trails longer</div>
+            </div>
+
+            <div class="control-group">
+                <label>Drop Probability: <span class="range-value" id="drop-value">0.000</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="drop" data-action="decrease">-</button>
+                    <input type="range" id="drop" min="0" max="0.02" value="0" step="0.001">
+                    <button class="slider-btn" data-slider="drop" data-action="increase">+</button>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>
+                    <input type="checkbox" id="drop-low-velocity">
+                    Drop low velocity particles (&lt;2% max speed)
+                </label>
+            </div>
+
+            <div class="control-group">
+                <button id="open-rendering-settings" class="secondary" style="width: 100%;">Rendering Effects</button>
+                <div class="info">HDR, tone mapping, and particle intensity settings</div>
+            </div>
         </div>
 
         <h2>Advanced</h2>
-        <div class="control-group">
-            <button id="open-rendering-settings" class="secondary" style="width: 100%;">Rendering Effects</button>
-            <div class="info">HDR, tone mapping, and particle intensity settings</div>
+        <div class="accordion-section">
+            <div class="control-group">
+                <label>Storage Strategy:</label>
+                <select id="storage-strategy">
+                    <option value="rgba">RGBA Encoded (broken!)</option>
+                    <option value="float" selected>Float Textures (Modern)</option>
+                </select>
+                <div class="info">RGBA encoding has coordinate mapping bugs. Use Float textures. Requires page reload.</div>
+            </div>
         </div>
 
-        <div class="control-group">
-            <label>Storage Strategy:</label>
-            <select id="storage-strategy">
-                <option value="rgba">RGBA Encoded (broken!)</option>
-                <option value="float" selected>Float Textures (Modern)</option>
-            </select>
-            <div class="info">RGBA encoding has coordinate mapping bugs. Use Float textures. Requires page reload.</div>
-        </div>
+        <div id="error-message"></div>
+    </div>
 
-        <h2>Display Options</h2>
+    <div id="display-options">
+        <h1>Display</h1>
+
         <div class="control-group">
             <label>
                 <input type="checkbox" id="show-grid" checked>
@@ -733,8 +811,6 @@
             <button id="default-settings" class="secondary">Default Settings</button>
             <button id="share-url" class="secondary">Share URL</button>
         </div>
-
-        <div id="error-message"></div>
     </div>
 
     <canvas id="grid-canvas"></canvas>
