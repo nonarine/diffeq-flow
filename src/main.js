@@ -500,6 +500,15 @@ $(document).ready(function() {
         // Redraw grid periodically to catch bbox changes
         setInterval(drawGrid, 100);
 
+        // Update FPS counter
+        const fpsCounter = document.getElementById('fps-counter');
+        function updateFPS() {
+            if (renderer && renderer.fps !== undefined) {
+                fpsCounter.textContent = `FPS: ${renderer.fps}`;
+            }
+        }
+        setInterval(updateFPS, 500); // Update every 500ms
+
         resizeGridCanvas();
         updateCursorDisplay();
     }

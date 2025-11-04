@@ -121,7 +121,12 @@ export class FramebufferManager {
                 this.createTexture()
             ];
 
-            // Attach textures to framebuffers
+            // Create shared depth buffer for both framebuffers
+            this.depthBuffer = gl.createRenderbuffer();
+            gl.bindRenderbuffer(gl.RENDERBUFFER, this.depthBuffer);
+            gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, this.width, this.height);
+
+            // Attach textures and depth buffer to framebuffers
             for (let i = 0; i < 2; i++) {
                 gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[i]);
                 gl.framebufferTexture2D(
@@ -130,6 +135,14 @@ export class FramebufferManager {
                     gl.TEXTURE_2D,
                     this.textures[i],
                     0
+                );
+
+                // Attach depth buffer
+                gl.framebufferRenderbuffer(
+                    gl.FRAMEBUFFER,
+                    gl.DEPTH_ATTACHMENT,
+                    gl.RENDERBUFFER,
+                    this.depthBuffer
                 );
 
                 // Check framebuffer status
@@ -143,6 +156,11 @@ export class FramebufferManager {
             this.framebuffers = [gl.createFramebuffer()];
             this.textures = [this.createTexture()];
 
+            // Create depth buffer
+            this.depthBuffer = gl.createRenderbuffer();
+            gl.bindRenderbuffer(gl.RENDERBUFFER, this.depthBuffer);
+            gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, this.width, this.height);
+
             gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[0]);
             gl.framebufferTexture2D(
                 gl.FRAMEBUFFER,
@@ -150,6 +168,14 @@ export class FramebufferManager {
                 gl.TEXTURE_2D,
                 this.textures[0],
                 0
+            );
+
+            // Attach depth buffer
+            gl.framebufferRenderbuffer(
+                gl.FRAMEBUFFER,
+                gl.DEPTH_ATTACHMENT,
+                gl.RENDERBUFFER,
+                this.depthBuffer
             );
 
             this.checkFramebufferStatus(0);
@@ -335,10 +361,22 @@ export class FramebufferManager {
         this.width = width;
         this.height = height;
 
+        const gl = this.gl;
+
         // Delete old textures
         for (const texture of this.textures) {
-            this.gl.deleteTexture(texture);
+            gl.deleteTexture(texture);
         }
+
+        // Delete old depth buffer
+        if (this.depthBuffer) {
+            gl.deleteRenderbuffer(this.depthBuffer);
+        }
+
+        // Recreate depth buffer with new size
+        this.depthBuffer = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, this.depthBuffer);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, width, height);
 
         // Recreate textures
         this.textures = [];
@@ -346,13 +384,21 @@ export class FramebufferManager {
             this.textures.push(this.createTexture());
 
             // Reattach to framebuffer
-            this.gl.bindFramebuffer(this.gl.FRAMEBUFFER, this.framebuffers[i]);
-            this.gl.framebufferTexture2D(
-                this.gl.FRAMEBUFFER,
-                this.gl.COLOR_ATTACHMENT0,
-                this.gl.TEXTURE_2D,
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffers[i]);
+            gl.framebufferTexture2D(
+                gl.FRAMEBUFFER,
+                gl.COLOR_ATTACHMENT0,
+                gl.TEXTURE_2D,
                 this.textures[i],
                 0
+            );
+
+            // Reattach depth buffer
+            gl.framebufferRenderbuffer(
+                gl.FRAMEBUFFER,
+                gl.DEPTH_ATTACHMENT,
+                gl.RENDERBUFFER,
+                this.depthBuffer
             );
 
             this.checkFramebufferStatus(i);

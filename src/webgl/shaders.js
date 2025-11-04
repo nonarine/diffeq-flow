@@ -316,12 +316,18 @@ void main() {
     v_pos = pos;
     v_velocity = velocity;
 
-    // Project to 2D
-    vec2 pos_2d = project_to_2d(pos);
+    // Project to 3D (with depth)
+    vec3 pos_3d = project_to_3d(pos);
 
     // Map to screen space
-    vec2 normalized = (pos_2d - u_min) / (u_max - u_min);
-    gl_Position = vec4(normalized * 2.0 - 1.0, 0.0, 1.0);
+    vec2 normalized = (pos_3d.xy - u_min) / (u_max - u_min);
+
+    // Use depth value (normalized to [-1, 1] range)
+    // For now, assume depth is in similar range to x/y coordinates
+    float depth_normalized = (pos_3d.z - (u_min.x + u_min.y) * 0.5) / ((u_max.x - u_min.x + u_max.y - u_min.y) * 0.5);
+    depth_normalized = clamp(depth_normalized, -1.0, 1.0);
+
+    gl_Position = vec4(normalized * 2.0 - 1.0, depth_normalized, 1.0);
     gl_PointSize = 1.0;
 }
 `;

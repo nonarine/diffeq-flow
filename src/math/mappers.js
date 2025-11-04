@@ -4,33 +4,47 @@
  */
 
 /**
- * Select mapper - choose 2 dimensions to display
+ * Select mapper - choose 2 dimensions to display (with optional depth)
  * @param {number} dim1 - First dimension index (0-based)
  * @param {number} dim2 - Second dimension index (0-based)
  * @param {number} totalDims - Total number of dimensions
+ * @param {number} depthDim - Depth dimension index (optional, defaults to 2 or -1 if not available)
  */
-export function selectMapper(dim1, dim2, totalDims) {
+export function selectMapper(dim1, dim2, totalDims, depthDim = null) {
+    // Auto-select depth dimension if not specified
+    if (depthDim === null) {
+        // Use dimension 2 if we have at least 3 dimensions, otherwise -1
+        depthDim = totalDims >= 3 ? 2 : -1;
+    }
+
+    const hasDepth = depthDim >= 0 && depthDim < totalDims;
+
     return {
         name: 'Select',
-        params: { dim1, dim2 },
+        params: { dim1, dim2, depthDim },
         code: `
-// Select 2 dimensions for display
+// Select 2 dimensions for display${hasDepth ? ' (with depth)' : ''}
 vec2 project_to_2d(vec${totalDims} pos) {
     return vec2(pos[${dim1}], pos[${dim2}]);
+}
+
+vec3 project_to_3d(vec${totalDims} pos) {
+    return vec3(pos[${dim1}], pos[${dim2}], ${hasDepth ? `pos[${depthDim}]` : '0.0'});
 }
 `
     };
 }
 
 /**
- * Linear projection mapper - apply 2×N matrix projection
- * @param {number[][]} matrix - 2×N projection matrix
+ * Linear projection mapper - apply 2×N or 3×N matrix projection
+ * @param {number[][]} matrix - 2×N or 3×N projection matrix
  * @param {number} dimensions - Number of dimensions
  */
 export function linearProjectionMapper(matrix, dimensions) {
     // Generate GLSL code for matrix multiplication
     const row1 = matrix[0].map((val, i) => `${val.toFixed(6)} * pos[${i}]`).join(' + ');
     const row2 = matrix[1].map((val, i) => `${val.toFixed(6)} * pos[${i}]`).join(' + ');
+    const row3 = matrix[2] ? matrix[2].map((val, i) => `${val.toFixed(6)} * pos[${i}]`).join(' + ') : null;
 
     return {
         name: 'Linear Projection',
@@ -41,6 +55,14 @@ vec2 project_to_2d(vec${dimensions} pos) {
     return vec2(
         ${row1},
         ${row2}
+    );
+}
+
+vec3 project_to_3d(vec${dimensions} pos) {
+    return vec3(
+        ${row1},
+        ${row2},
+        ${row3 || '0.0'}
     );
 }
 `
@@ -62,9 +84,13 @@ export function orthographicMapper(axis, dimensions) {
         name: 'Orthographic',
         params: { axis },
         code: `
-// Orthographic projection (remove axis ${axis})
+// Orthographic projection (remove axis ${axis}, use as depth)
 vec2 project_to_2d(vec${dimensions} pos) {
     return vec2(pos[${dim1}], pos[${dim2}]);
+}
+
+vec3 project_to_3d(vec${dimensions} pos) {
+    return vec3(pos[${dim1}], pos[${dim2}], pos[${axis}]);
 }
 `
     };
@@ -89,6 +115,16 @@ vec2 project_to_2d(vec3 pos) {
 
     return vec2(theta, phi);
 }
+
+vec3 project_to_3d(vec3 pos) {
+    float r = length(pos);
+    if (r < 0.001) return vec3(0.0, 0.0, 0.0);
+
+    float theta = atan(pos.y, pos.x);
+    float phi = acos(pos.z / r);
+
+    return vec3(theta, phi, r);  // Use radius as depth
+}
 `
     };
 }
@@ -108,6 +144,12 @@ vec2 project_to_2d(vec${dimensions} pos) {
     if (abs(denom) < 0.001) denom = 0.001;
     return vec2(pos[0] / denom, pos[1] / denom);
 }
+
+vec3 project_to_3d(vec${dimensions} pos) {
+    float denom = 1.0 - pos[${dimensions - 1}];
+    if (abs(denom) < 0.001) denom = 0.001;
+    return vec3(pos[0] / denom, pos[1] / denom, pos[${dimensions - 1}]);
+}
 `
     };
 }
@@ -120,7 +162,8 @@ export function getMapper(type, dimensions, params = {}) {
         case 'select': {
             const dim1 = params.dim1 !== undefined ? params.dim1 : 0;
             const dim2 = params.dim2 !== undefined ? params.dim2 : Math.min(1, dimensions - 1);
-            return selectMapper(dim1, dim2, dimensions);
+            const depthDim = params.depthDim !== undefined ? params.depthDim : null;
+            return selectMapper(dim1, dim2, dimensions, depthDim);
         }
 
         case 'project': {

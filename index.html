@@ -82,6 +82,12 @@
             color: #2E7D32;
         }
 
+        body.light-theme #fps-counter {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: #ccc;
+            color: #2E7D32;
+        }
+
         body.light-theme #debug-console {
             background: rgba(250, 250, 250, 0.95);
             border-color: #ccc;
@@ -136,7 +142,21 @@
             font-family: 'Courier New', monospace;
             font-size: 12px;
             color: #4CAF50;
-            z-index: 2;
+        }
+
+        #fps-counter {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(30, 30, 30, 0.9);
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: bold;
+            color: #4CAF50;
+            z-index: 10;
         }
 
         #controls {
@@ -572,11 +592,14 @@
         <h2>Integrator</h2>
         <div class="control-group">
             <select id="integrator">
-                <option value="euler">Euler</option>
+                <option value="euler">Euler (Explicit)</option>
+                <option value="implicit">Implicit Euler (Backward)</option>
                 <option value="rk2" selected>Runge-Kutta 2 (Midpoint)</option>
                 <option value="rk4">Runge-Kutta 4</option>
+                <option value="symplectic">Symplectic Euler (Semi-implicit)</option>
                 <option value="custom">Custom (Advanced)</option>
             </select>
+            <div class="info">Implicit: More stable for stiff systems. Symplectic: Energy-preserving for Hamiltonian systems.</div>
         </div>
 
         <div class="control-group">
@@ -631,7 +654,7 @@
             <label>Particle Count: <span class="range-value" id="particles-value">1000</span></label>
             <div class="slider-control">
                 <button class="slider-btn" data-slider="particles" data-action="decrease">-</button>
-                <input type="range" id="particles" min="1000" max="100000" value="1000" step="1000">
+                <input type="range" id="particles" min="100" max="5000000" value="1000" step="10000">
                 <button class="slider-btn" data-slider="particles" data-action="increase">+</button>
             </div>
         </div>
@@ -699,6 +722,8 @@
 
     <div id="cursor-position"></div>
 
+    <div id="fps-counter">FPS: --</div>
+
     <div id="debug-console" class="collapsed">
         <div id="debug-header">
             <input type="checkbox" id="debug-toggle" checked>
@@ -752,6 +777,14 @@
                     Enable HDR (float framebuffers)
                 </label>
                 <div class="info">High Dynamic Range rendering with tone mapping</div>
+            </div>
+
+            <div class="control-group">
+                <label>
+                    <input type="checkbox" id="use-depth-test">
+                    Enable Depth Testing (Plasma Mode)
+                </label>
+                <div class="info">Use Z-buffer to occlude particles by depth. Creates layered density effect in 3D systems.</div>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Tone Mapping</h4>

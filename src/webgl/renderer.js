@@ -77,6 +77,7 @@ export class Renderer {
         this.dimensions = 2;
         this.expressions = ['-y', 'x'];
         this.integratorType = 'rk4';
+        this.integratorParams = { iterations: 3 }; // For implicit methods
         this.mapperType = 'select';
         this.mapperParams = { dim1: 0, dim2: 1 };
         this.colorMode = 'white';
@@ -91,6 +92,9 @@ export class Renderer {
         this.gamma = config.gamma !== undefined ? config.gamma : 2.2;
         this.whitePoint = config.whitePoint !== undefined ? config.whitePoint : 2.0;
         this.particleIntensity = config.particleIntensity !== undefined ? config.particleIntensity : 1.0;
+
+        // Depth testing (plasma mode)
+        this.useDepthTest = config.useDepthTest !== undefined ? config.useDepthTest : false;
         this.colorSaturation = config.colorSaturation !== undefined ? config.colorSaturation : 1.0; // 0.0 = grayscale, 1.0 = full saturation
         this.brightnessDesaturation = config.brightnessDesaturation !== undefined ? config.brightnessDesaturation : 0.0; // 0.0 = no desat, 1.0 = full desat at bright areas
 
@@ -262,7 +266,7 @@ export class Renderer {
             logger.verbose('Generated velocity GLSL', { expressions: this.expressions, glsl: velocityGLSL });
 
             // Get integrator code
-            const integrator = getIntegrator(this.integratorType, this.dimensions);
+            const integrator = getIntegrator(this.integratorType, this.dimensions, this.integratorParams);
 
             // Get mapper code
             const mapper = getMapper(this.mapperType, this.dimensions, this.mapperParams);
@@ -684,7 +688,21 @@ export class Renderer {
         // Draw particles to current framebuffer
         this.framebufferManager.bind();
 
+        // Enable depth testing if configured (plasma mode)
+        if (this.useDepthTest) {
+            gl.enable(gl.DEPTH_TEST);
+            gl.depthFunc(gl.LESS);  // Closer particles occlude farther ones
+
+            // Clear depth buffer (color is not cleared - we want trails from fade)
+            gl.clear(gl.DEPTH_BUFFER_BIT);
+        }
+
         this.drawParticles();
+
+        // Disable depth test after particle drawing (if it was enabled)
+        if (this.useDepthTest) {
+            gl.disable(gl.DEPTH_TEST);
+        }
 
         // Apply bloom effect (extract bright regions, blur, combine)
         this.applyBloom();
@@ -953,8 +971,24 @@ export class Renderer {
      */
     start() {
         this.isRunning = true;
+        this.frameCount = 0;
+        this.lastFpsUpdate = performance.now();
+        this.fps = 0;
+
         const loop = () => {
             if (!this.isRunning) return;
+
+            // Update FPS counter
+            this.frameCount++;
+            const now = performance.now();
+            const elapsed = now - this.lastFpsUpdate;
+
+            if (elapsed >= 500) { // Update FPS every 500ms
+                this.fps = Math.round((this.frameCount * 1000) / elapsed);
+                this.frameCount = 0;
+                this.lastFpsUpdate = now;
+            }
+
             this.render();
             requestAnimationFrame(loop);
         };
@@ -1029,6 +1063,12 @@ export class Renderer {
         if (config.integratorType !== undefined && config.integratorType !== this.integratorType) {
             logger.info(`Changing integrator: ${this.integratorType} → ${config.integratorType}`);
             this.integratorType = config.integratorType;
+            needsRecompile = true;
+        }
+
+        if (config.integratorParams !== undefined) {
+            logger.verbose('Updating integrator parameters', config.integratorParams);
+            this.integratorParams = { ...this.integratorParams, ...config.integratorParams };
             needsRecompile = true;
         }
 
@@ -1150,6 +1190,10 @@ export class Renderer {
         if (config.brightnessDesaturation !== undefined) {
             logger.verbose(`Brightness desaturation: ${this.brightnessDesaturation} → ${config.brightnessDesaturation}`);
             this.brightnessDesaturation = config.brightnessDesaturation;
+        }
+        if (config.useDepthTest !== undefined) {
+            logger.verbose(`Depth testing: ${this.useDepthTest} → ${config.useDepthTest}`);
+            this.useDepthTest = config.useDepthTest;
         }
         if (config.bloomEnabled !== undefined) {
             logger.verbose(`Bloom enabled: ${this.bloomEnabled} → ${config.bloomEnabled}`);

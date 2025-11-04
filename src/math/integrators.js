@@ -60,22 +60,91 @@ vec${dimensions} integrate(vec${dimensions} pos, float h) {
 }
 
 /**
- * Symplectic Euler (for Hamiltonian systems)
+ * Implicit Euler (Backward Euler)
+ * Solves: x(t+h) = x(t) + h*f(x(t+h)) using fixed-point iteration
+ * More stable than explicit Euler, especially for stiff systems
+ */
+export function implicitEulerIntegrator(dimensions, iterations = 3) {
+    return {
+        name: 'Implicit Euler',
+        code: `
+// Implicit Euler integration (fixed-point iteration)
+vec${dimensions} integrate(vec${dimensions} pos, float h) {
+    // Start with explicit Euler as initial guess
+    vec${dimensions} x_new = pos + h * get_velocity(pos);
+
+    // Fixed-point iteration: x_new = x + h * f(x_new)
+    for (int i = 0; i < ${iterations}; i++) {
+        x_new = pos + h * get_velocity(x_new);
+    }
+
+    return x_new;
+}
+`
+    };
+}
+
+/**
+ * Symplectic Euler (Semi-implicit Euler) for Hamiltonian systems
+ * Assumes even dimensions are positions, odd dimensions are velocities
+ * Updates velocities first, then positions using new velocities
  * Preserves energy better than standard Euler
  */
 export function symplecticEulerIntegrator(dimensions) {
-    // Note: This requires splitting position and velocity
-    // For now, using standard Euler, but can be extended
+    const coords = ['x', 'y', 'z', 'w'];
+
+    // Generate unrolled update code for each position/velocity pair
+    let updateCode = '';
+
+    if (dimensions % 2 === 0) {
+        // For even dimensions, treat pairs as (position, velocity)
+        const numPairs = dimensions / 2;
+        for (let i = 0; i < numPairs; i++) {
+            const posIdx = i * 2;
+            const velIdx = i * 2 + 1;
+            const posCoord = coords[posIdx];
+            const velCoord = coords[velIdx];
+
+            updateCode += `
+    // Pair ${i}: position[${posIdx}], velocity[${velIdx}]
+    // Update velocity first (using current position)
+    result.${velCoord} = pos.${velCoord} + h * vel.${velCoord};
+    // Update position using new velocity
+    result.${posCoord} = pos.${posCoord} + h * result.${velCoord};`;
+        }
+    } else {
+        // For odd dimensions, update all but last dimension in pairs
+        const numPairs = Math.floor(dimensions / 2);
+        for (let i = 0; i < numPairs; i++) {
+            const posIdx = i * 2;
+            const velIdx = i * 2 + 1;
+            const posCoord = coords[posIdx];
+            const velCoord = coords[velIdx];
+
+            updateCode += `
+    // Pair ${i}: position[${posIdx}], velocity[${velIdx}]
+    result.${velCoord} = pos.${velCoord} + h * vel.${velCoord};
+    result.${posCoord} = pos.${posCoord} + h * result.${velCoord};`;
+        }
+
+        // Handle last dimension with standard Euler
+        const lastCoord = coords[dimensions - 1];
+        updateCode += `
+    // Last dimension (odd): standard Euler
+    result.${lastCoord} = pos.${lastCoord} + h * vel.${lastCoord};`;
+    }
+
     return {
         name: 'Symplectic Euler',
         code: `
 // Symplectic Euler integration
-// Note: Works best for systems with position-velocity splitting
+// Assumes alternating position/velocity pairs: (x0, v0, x1, v1, ...)
 vec${dimensions} integrate(vec${dimensions} pos, float h) {
-    vec${dimensions} velocity = get_velocity(pos);
-    // First update velocity, then position (symplectic)
-    // This is a simplified version; proper implementation depends on system structure
-    return pos + h * velocity;
+    vec${dimensions} vel = get_velocity(pos);
+    vec${dimensions} result = pos;
+${updateCode}
+
+    return result;
 }
 `
     };
@@ -84,7 +153,7 @@ vec${dimensions} integrate(vec${dimensions} pos, float h) {
 /**
  * Get integrator by name
  */
-export function getIntegrator(name, dimensions) {
+export function getIntegrator(name, dimensions, params = {}) {
     switch (name) {
         case 'euler':
             return eulerIntegrator(dimensions);
@@ -92,6 +161,8 @@ export function getIntegrator(name, dimensions) {
             return rk2Integrator(dimensions);
         case 'rk4':
             return rk4Integrator(dimensions);
+        case 'implicit':
+            return implicitEulerIntegrator(dimensions, params.iterations || 3);
         case 'symplectic':
             return symplecticEulerIntegrator(dimensions);
         default:

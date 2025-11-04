@@ -96,8 +96,8 @@ export function initControls(renderer, callback) {
     const particleCountControl = manager.register(new SliderControl('particles', 1000, {
         settingsKey: 'particleCount',
         min: 100,
-        max: 10000,
-        step: 100,
+        max: 5000000,
+        step: 10000,
         displayId: 'particles-value',
         displayFormat: v => v.toFixed(0)
     }));
@@ -180,6 +180,10 @@ export function initControls(renderer, callback) {
         settingsKey: 'useHDR'
     }));
 
+    const useDepthTestControl = manager.register(new CheckboxControl('use-depth-test', false, {
+        settingsKey: 'useDepthTest'
+    }));
+
     const tonemapOperatorControl = manager.register(new SelectControl('tonemap-operator', 'aces', {
         settingsKey: 'tonemapOperator',
         onChange: (value) => {
@@ -188,10 +192,10 @@ export function initControls(renderer, callback) {
     }));
 
     const exposureControl = manager.register(new LogSliderControl('exposure', 1.0, {
-        minValue: 0.01,
+        minValue: 0.001,
         maxValue: 10.0,
         displayId: 'exposure-value',
-        displayFormat: v => v.toFixed(2)
+        displayFormat: v => v.toFixed(3)
     }));
 
     const gammaControl = manager.register(new LogSliderControl('gamma', 2.2, {
@@ -588,6 +592,13 @@ function loadSettingsFromURLOrStorage() {
                 console.log('Loaded settings from URL parameter');
                 // Save to localStorage for future visits
                 localStorage.setItem('vectorFieldSettings', JSON.stringify(settings));
+
+                // Clean URL by removing the 's' parameter (keep other params like 'storage')
+                urlParams.delete('s');
+                const newSearch = urlParams.toString();
+                const newUrl = window.location.pathname + (newSearch ? '?' + newSearch : '');
+                window.history.replaceState({}, '', newUrl);
+                console.log('URL cleaned, settings now in localStorage');
             }
         } else {
             // Fall back to localStorage
@@ -669,19 +680,50 @@ function shareSettings(settings) {
 
     const shareUrl = url.toString();
 
-    // Copy to clipboard
-    navigator.clipboard.writeText(shareUrl).then(() => {
-        const button = $('#share-url');
-        const originalText = button.text();
-        button.text('URL Copied!');
-        setTimeout(() => {
-            button.text(originalText);
-        }, 2000);
-    }).catch(err => {
-        console.error('Failed to copy URL to clipboard:', err);
-        // Fallback: show the URL in an alert
-        alert('Share this URL:\n\n' + shareUrl);
-    });
+    // Copy to clipboard (only available in secure contexts: HTTPS or localhost)
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(shareUrl).then(() => {
+            const button = $('#share-url');
+            const originalText = button.text();
+            button.text('URL Copied!');
+            setTimeout(() => {
+                button.text(originalText);
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy URL to clipboard:', err);
+            // Fallback: show the URL in an alert
+            alert('Share this URL:\n\n' + shareUrl);
+        });
+    } else {
+        // Clipboard API not available (HTTP, not HTTPS)
+        // Fallback: select the URL in a temporary input field
+        const tempInput = document.createElement('input');
+        tempInput.value = shareUrl;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        tempInput.setSelectionRange(0, 99999); // For mobile
+
+        try {
+            // Try old execCommand method
+            const success = document.execCommand('copy');
+            document.body.removeChild(tempInput);
+
+            if (success) {
+                const button = $('#share-url');
+                const originalText = button.text();
+                button.text('URL Copied!');
+                setTimeout(() => {
+                    button.text(originalText);
+                }, 2000);
+            } else {
+                throw new Error('execCommand failed');
+            }
+        } catch (err) {
+            document.body.removeChild(tempInput);
+            // Final fallback: show the URL
+            alert('Copy this URL to share:\n\n' + shareUrl);
+        }
+    }
 }
 
 /**
