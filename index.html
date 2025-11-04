@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>N-Dimensional Vector Field Flow</title>
     <style>
         * {
@@ -807,7 +810,7 @@
 
         <div class="control-group">
             <button id="reset" class="secondary">Reset View</button>
-            <button id="reset-particles" class="secondary">Clear Screen</button>
+            <button id="reset-particles" class="secondary">Clear Screen (C)</button>
             <button id="default-settings" class="secondary">Default Settings</button>
             <button id="share-url" class="secondary">Share URL</button>
         </div>
@@ -1016,6 +1019,67 @@
     </div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script type="module" src="src/main.js"></script>
+    <!-- Register Service Worker and wait for it to be ready before loading modules -->
+    <script>
+        (async function() {
+            // Use timestamp as version
+            const version = Date.now();
+
+            // Register and activate service worker first (if available)
+            if ('serviceWorker' in navigator) {
+                try {
+                    // Unregister all existing service workers first (clean slate)
+                    const registrations = await navigator.serviceWorker.getRegistrations();
+                    for (let registration of registrations) {
+                        await registration.unregister();
+                        console.log('Unregistered old service worker');
+                    }
+
+                    // Register fresh service worker
+                    const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+                    console.log('Service Worker registered for cache-busting', registration);
+
+                    // Wait for service worker to be active
+                    await new Promise((resolve) => {
+                        if (registration.active) {
+                            resolve();
+                        } else if (registration.installing) {
+                            registration.installing.addEventListener('statechange', function() {
+                                if (this.state === 'activated') {
+                                    resolve();
+                                }
+                            });
+                        } else if (registration.waiting) {
+                            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+                            resolve();
+                        }
+                    });
+
+                    // Wait for controller
+                    if (!navigator.serviceWorker.controller) {
+                        console.log('Waiting for service worker to take control...');
+                        await new Promise((resolve) => {
+                            navigator.serviceWorker.addEventListener('controllerchange', resolve, { once: true });
+                        });
+                    }
+
+                    console.log('Service Worker is active and controlling page');
+                    console.log('Controller:', navigator.serviceWorker.controller);
+                } catch (error) {
+                    console.warn('Service Worker registration failed:', error);
+                }
+            } else {
+                console.warn('Service Workers not supported in this browser');
+            }
+
+            // Load main.js with version
+            const script = document.createElement('script');
+            script.type = 'module';
+            script.src = `src/main.js?v=${version}`;
+            document.body.appendChild(script);
+
+            console.log(`Loading main.js entry point with version: ${version}`);
+        })();
+    </script>
 </body>
 </html>

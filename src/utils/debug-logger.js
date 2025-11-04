@@ -8,6 +8,8 @@ class DebugLogger {
         this.verbosity = 'info'; // info, verbose, warn, error
         this.maxLogs = 100;
         this.logs = [];
+        this.consoleHooked = false;
+        this.originalConsole = {};
     }
 
     /**
@@ -74,15 +76,16 @@ class DebugLogger {
             this.logs.shift();
         }
 
-        // Also log to console for debugging
+        // Also log to console for debugging (use original console to avoid infinite loop)
+        const consoleMethod = this.consoleHooked ? this.originalConsole.log : console.log;
         const consoleMsg = `[${timestamp}] ${message}`;
         if (data) {
-            console.log(consoleMsg, data);
+            consoleMethod(consoleMsg, data);
         } else {
-            console.log(consoleMsg);
+            consoleMethod(consoleMsg);
         }
         if (stack) {
-            console.log('Stack trace:', stack);
+            consoleMethod('Stack trace:', stack);
         }
 
         // Trigger UI update
@@ -189,6 +192,83 @@ class DebugLogger {
      */
     getLogs() {
         return this.logs;
+    }
+
+    /**
+     * Hook browser console methods to echo to debug console
+     */
+    hookConsole() {
+        if (this.consoleHooked) {
+            this.warn('Console already hooked');
+            return;
+        }
+
+        // Store original console methods
+        this.originalConsole = {
+            log: console.log,
+            info: console.info,
+            warn: console.warn,
+            error: console.error
+        };
+
+        const self = this;
+
+        // Override console.log
+        console.log = function(...args) {
+            self.originalConsole.log.apply(console, args);
+            const message = args.map(arg =>
+                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+            ).join(' ');
+            self.info('[console] ' + message);
+        };
+
+        // Override console.info
+        console.info = function(...args) {
+            self.originalConsole.info.apply(console, args);
+            const message = args.map(arg =>
+                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+            ).join(' ');
+            self.info('[console] ' + message);
+        };
+
+        // Override console.warn
+        console.warn = function(...args) {
+            self.originalConsole.warn.apply(console, args);
+            const message = args.map(arg =>
+                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+            ).join(' ');
+            self.warn('[console] ' + message);
+        };
+
+        // Override console.error
+        console.error = function(...args) {
+            self.originalConsole.error.apply(console, args);
+            const message = args.map(arg =>
+                typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
+            ).join(' ');
+            self.error('[console] ' + message);
+        };
+
+        this.consoleHooked = true;
+        this.info('Console hooked - browser console calls will echo to debug console');
+    }
+
+    /**
+     * Unhook browser console methods (restore original behavior)
+     */
+    unhookConsole() {
+        if (!this.consoleHooked) {
+            this.warn('Console not hooked');
+            return;
+        }
+
+        console.log = this.originalConsole.log;
+        console.info = this.originalConsole.info;
+        console.warn = this.originalConsole.warn;
+        console.error = this.originalConsole.error;
+
+        this.consoleHooked = false;
+        this.info('Console unhooked - restored original behavior');
     }
 }
 

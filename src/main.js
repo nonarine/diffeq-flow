@@ -85,6 +85,12 @@ $(document).ready(function() {
 
         logger.info('Debug console initialized');
 
+        // Make logger globally available
+        window.logger = logger;
+
+        // Hook console methods to echo to debug console
+        logger.hookConsole();
+
         callback();
     }
 
@@ -513,7 +519,24 @@ $(document).ready(function() {
         updateCursorDisplay();
     }
 
-    // Step 6: Initialize accordion for controls sections
+    // Step 6: Setup keyboard shortcuts
+    function setupKeyboardShortcuts(renderer) {
+        document.addEventListener('keydown', (e) => {
+            // Clear screen: Press 'C' key (with no modifiers to avoid conflicts)
+            if (e.key === 'c' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+                // Don't trigger if user is typing in an input field
+                if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+                    return;
+                }
+
+                e.preventDefault();
+                renderer.clearScreen();
+                logger.info('Screen cleared via keyboard shortcut (C)');
+            }
+        });
+    }
+
+    // Step 7: Initialize accordion for controls sections
     function initAccordion() {
         const ACCORDION_STATE_KEY = 'accordionState';
 
@@ -605,6 +628,7 @@ $(document).ready(function() {
         initRenderer(function(renderer, canvas) {
             setupPanZoom(renderer, canvas);
             setupGridAndCursor(renderer, canvas);
+            setupKeyboardShortcuts(renderer);
             initUI(renderer, canvas);
         });
     });
