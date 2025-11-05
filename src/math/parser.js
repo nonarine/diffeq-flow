@@ -328,7 +328,23 @@ function toGLSL(rpn, variables) {
             const a = stack.pop();
 
             if (token.value === '^') {
-                stack.push(`pow(${a}, ${b})`);
+                // Optimize: expand small integer exponents instead of using pow()
+                const expMatch = b.match(/^(\d+)\.0$/);
+                if (expMatch) {
+                    const n = parseInt(expMatch[1]);
+                    if (n === 0) {
+                        stack.push('1.0');
+                    } else if (n === 1) {
+                        stack.push(a);
+                    } else if (n <= 4) {
+                        // Expand x^n as x*x*...
+                        stack.push(`(${Array(n).fill(a).join(' * ')})`);
+                    } else {
+                        stack.push(`pow(${a}, ${b})`);
+                    }
+                } else {
+                    stack.push(`pow(${a}, ${b})`);
+                }
             } else if (token.value === '%') {
                 stack.push(`mod(${a}, ${b})`);
             } else {

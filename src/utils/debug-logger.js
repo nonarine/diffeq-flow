@@ -5,7 +5,7 @@
 class DebugLogger {
     constructor() {
         this.enabled = true;
-        this.verbosity = 'info'; // info, verbose, warn, error
+        this.verbosity = 'info'; // verbose, debug, info, warn, error
         this.maxLogs = 100;
         this.logs = [];
         this.consoleHooked = false;
@@ -34,9 +34,10 @@ class DebugLogger {
 
         const levels = {
             verbose: 0,
-            info: 1,
-            warn: 2,
-            error: 3
+            debug: 1,
+            info: 2,
+            warn: 3,
+            error: 4
         };
 
         return levels[level] >= levels[this.verbosity];
@@ -97,6 +98,10 @@ class DebugLogger {
      */
     verbose(message, data) {
         this.log('verbose', message, data);
+    }
+
+    debug(message, data) {
+        this.log('debug', message, data);
     }
 
     info(message, data) {
@@ -219,7 +224,7 @@ class DebugLogger {
             const message = args.map(arg =>
                 typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
             ).join(' ');
-            self.info('[console] ' + message);
+            self.debug('[console.log] ' + message);
         };
 
         // Override console.info
@@ -228,7 +233,7 @@ class DebugLogger {
             const message = args.map(arg =>
                 typeof arg === 'object' ? JSON.stringify(arg) : String(arg)
             ).join(' ');
-            self.info('[console] ' + message);
+            self.debug('[console.info] ' + message);
         };
 
         // Override console.warn

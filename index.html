@@ -115,6 +115,7 @@
         }
 
         body.light-theme .debug-log.info { color: #1976D2; }
+        body.light-theme .debug-log.debug { color: #546E7A; }
         body.light-theme .debug-log.warn { color: #F57C00; }
         body.light-theme .debug-log.error { color: #C62828; }
         body.light-theme .debug-log.verbose { color: #666; }
@@ -550,6 +551,7 @@
         }
 
         .debug-log.info { color: #64B5F6; }
+        .debug-log.debug { color: #90A4AE; }
         .debug-log.warn { color: #FFB74D; }
         .debug-log.error { color: #E57373; }
         .debug-log.verbose { color: #888; }
@@ -680,6 +682,15 @@
                 <div class="info">Implicit methods are more stable for stiff systems and allow larger timesteps. Symplectic methods preserve energy in Hamiltonian systems.</div>
             </div>
 
+            <div class="control-group" id="solution-method-group" style="display: none;">
+                <label>Solution Method</label>
+                <select id="solution-method">
+                    <option value="fixed-point">Fixed-Point Iteration</option>
+                    <option value="newton">Newton's Method</option>
+                </select>
+                <div class="info">Fixed-point creates interesting chaotic artifacts. Newton's method converges faster and is more accurate.</div>
+            </div>
+
             <div class="control-group">
                 <label>Time Step: <span class="range-value" id="timestep-value">0.01</span></label>
                 <div class="slider-control">
@@ -690,13 +701,13 @@
             </div>
 
             <div class="control-group" id="implicit-iterations-group" style="display: none;">
-                <label>Fixed-Point Iterations: <span class="range-value" id="implicit-iterations-value">4</span></label>
+                <label>Solver Iterations: <span class="range-value" id="implicit-iterations-value">4</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="implicit-iterations" data-action="decrease">-</button>
                     <input type="range" id="implicit-iterations" min="1" max="10" value="4" step="1">
                     <button class="slider-btn" data-slider="implicit-iterations" data-action="increase">+</button>
                 </div>
-                <div class="info">Number of iterations for implicit method convergence. Higher = more accurate but slower.</div>
+                <div class="info">Number of iterations for implicit solver. Higher = more accurate but slower. Newton converges faster than fixed-point.</div>
             </div>
         </div>
 
@@ -832,11 +843,14 @@
             <div id="debug-controls">
                 <select id="debug-verbosity">
                     <option value="info">Info</option>
+                    <option value="debug">Debug</option>
                     <option value="verbose">Verbose</option>
                     <option value="warn">Warnings Only</option>
                     <option value="error">Errors Only</option>
                 </select>
-                <button id="debug-log-shaders" class="secondary" style="padding: 4px 8px; margin: 0;">Log Shaders</button>
+                <button id="debug-log-update-shader" class="secondary" style="padding: 4px 8px; margin: 0;">Log Update</button>
+                <button id="debug-log-draw-shader" class="secondary" style="padding: 4px 8px; margin: 0;">Log Draw</button>
+                <button id="debug-log-screen-shader" class="secondary" style="padding: 4px 8px; margin: 0;">Log Screen</button>
                 <button id="debug-buffer-stats" class="secondary" style="padding: 4px 8px; margin: 0;">Buffer Stats</button>
                 <button id="debug-copy" class="secondary" style="padding: 4px 8px; margin: 0;">Copy Log</button>
                 <button id="debug-clear" class="secondary" style="padding: 4px 8px; margin: 0;">Clear</button>
@@ -1018,6 +1032,8 @@
         </div>
     </div>
 
+    <!-- Nerdamer for symbolic differentiation (Jacobian computation) -->
+    <script src="https://cdn.jsdelivr.net/npm/nerdamer@latest/all.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <!-- Register Service Worker and wait for it to be ready before loading modules -->
     <script>

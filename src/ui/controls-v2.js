@@ -87,10 +87,15 @@ export function initControls(renderer, callback) {
     const integratorControl = manager.register(new SelectControl('integrator', 'rk2', {
         settingsKey: 'integratorType',
         onChange: (value) => {
-            // Show/hide implicit iterations slider based on integrator type
+            // Show/hide implicit method controls based on integrator type
             const isImplicit = value.startsWith('implicit-') || value === 'trapezoidal';
             $('#implicit-iterations-group').toggle(isImplicit);
+            $('#solution-method-group').toggle(isImplicit);
         }
+    }));
+
+    const solutionMethodControl = manager.register(new SelectControl('solution-method', 'fixed-point', {
+        settingsKey: 'solutionMethod'
     }));
 
     const timestepControl = manager.register(new SliderControl('timestep', 0.01, {
@@ -490,8 +495,34 @@ export function initControls(renderer, callback) {
 
     // Then load and apply saved settings
     const savedSettings = loadSettingsFromURLOrStorage();
+
+    // WORKAROUND: Newton's method fails to compile correctly on initial page load
+    // (possibly due to Nerdamer not being fully initialized, or timing issues with
+    // symbolic differentiation during shader compilation). To avoid this, we always
+    // start in fixed-point mode and switch to Newton after a delay if needed.
+    let delayedSolutionMethod = null;
+    if (savedSettings && savedSettings.solutionMethod === 'newton') {
+        logger.info('Newton\'s method detected in saved settings - will apply after delay');
+        delayedSolutionMethod = 'newton';
+        savedSettings.solutionMethod = 'fixed-point'; // Force fixed-point initially
+    }
+
     if (savedSettings) {
         manager.applySettings(savedSettings);
+    }
+
+    // Apply Newton's method after a delay if it was in saved settings
+    if (delayedSolutionMethod === 'newton') {
+        logger.info('Scheduling delayed Newton\'s method activation in 3 seconds...');
+        setTimeout(() => {
+            logger.info('Applying delayed Newton\'s method activation');
+            // Replicate exactly what happens when you select from the dropdown:
+            // 1. Set the value in the DOM element
+            $('#solution-method').val('newton');
+            // 2. Trigger the 'change' event (this fires onChange handler + debounced apply)
+            $('#solution-method').trigger('change');
+            logger.info('Triggered solution-method dropdown change event');
+        }, 3000); // 3 second delay
     }
 
     // Initialize special UI states
@@ -499,10 +530,11 @@ export function initControls(renderer, callback) {
     updateExpressionControls(manager.get('color-mode').getValue());
     updateGradientButtonVisibility(manager.get('color-mode').getValue());
 
-    // Initialize implicit iterations slider visibility
+    // Initialize implicit method controls visibility
     const currentIntegrator = manager.get('integrator').getValue();
     const isImplicit = currentIntegrator.startsWith('implicit-') || currentIntegrator === 'trapezoidal';
     $('#implicit-iterations-group').toggle(isImplicit);
+    $('#solution-method-group').toggle(isImplicit);
 
     // Apply initial theme
     const theme = manager.get('theme-selector').getValue();

@@ -61,12 +61,30 @@ $(document).ready(function() {
             logger.clear();
         });
 
-        $('#debug-log-shaders').on('click', function() {
-            if (window.renderer && typeof window.renderer.logShaders === 'function') {
-                window.renderer.logShaders();
+        $('#debug-log-update-shader').on('click', function() {
+            if (window.renderer && typeof window.renderer.logUpdateShader === 'function') {
+                window.renderer.logUpdateShader();
             } else {
                 console.warn('Renderer not available yet');
-                logger.warn('Renderer not initialized - cannot log shaders');
+                logger.warn('Renderer not initialized - cannot log update shader');
+            }
+        });
+
+        $('#debug-log-draw-shader').on('click', function() {
+            if (window.renderer && typeof window.renderer.logDrawShader === 'function') {
+                window.renderer.logDrawShader();
+            } else {
+                console.warn('Renderer not available yet');
+                logger.warn('Renderer not initialized - cannot log draw shader');
+            }
+        });
+
+        $('#debug-log-screen-shader').on('click', function() {
+            if (window.renderer && typeof window.renderer.logScreenShader === 'function') {
+                window.renderer.logScreenShader();
+            } else {
+                console.warn('Renderer not available yet');
+                logger.warn('Renderer not initialized - cannot log screen shader');
             }
         });
 

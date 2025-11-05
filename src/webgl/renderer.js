@@ -78,6 +78,7 @@ export class Renderer {
         this.expressions = ['-y', 'x'];
         this.integratorType = 'rk4';
         this.integratorParams = { iterations: 3 }; // For implicit methods
+        this.solutionMethod = 'fixed-point'; // For implicit methods: 'fixed-point' or 'newton'
         this.mapperType = 'select';
         this.mapperParams = { dim1: 0, dim2: 1 };
         this.colorMode = 'white';
@@ -265,8 +266,13 @@ export class Renderer {
             const velocityGLSL = parseVectorField(this.expressions);
             logger.verbose('Generated velocity GLSL', { expressions: this.expressions, glsl: velocityGLSL });
 
-            // Get integrator code
-            const integrator = getIntegrator(this.integratorType, this.dimensions, this.integratorParams);
+            // Get integrator code (pass expressions and solutionMethod for Newton's method support)
+            const integratorParams = {
+                ...this.integratorParams,
+                expressions: this.expressions,
+                solutionMethod: this.solutionMethod
+            };
+            const integrator = getIntegrator(this.integratorType, this.dimensions, integratorParams);
 
             // Get mapper code
             const mapper = getMapper(this.mapperType, this.dimensions, this.mapperParams);
@@ -1017,12 +1023,17 @@ export class Renderer {
     }
 
     /**
-     * Clear the screen (remove all particle trails)
+     * Clear the screen (remove all particle trails and reinitialize particles)
      */
     clearScreen() {
         // Clear all framebuffers to black
         this.framebufferManager.clearAll(0, 0, 0, 1);
-        logger.verbose('Screen cleared');
+
+        // Reinitialize all particles to random positions
+        this.particleSystem.initializeParticles();
+        this.textureManager.initializeData(this.particleSystem.getAllData());
+
+        logger.verbose('Screen cleared and particles reinitialized');
     }
 
     /**
@@ -1067,11 +1078,13 @@ export class Renderer {
             // Create velocity evaluators for computing statistics in JavaScript
             try {
                 this.velocityEvaluators = createVelocityEvaluators(config.expressions);
+                logger.verbose('Velocity evaluators created successfully');
             } catch (error) {
                 logger.warn('Failed to create velocity evaluators', error);
                 this.velocityEvaluators = null;
             }
             needsRecompile = true;
+            logger.info('  needsRecompile flag set to true (expressions change)');
         }
 
         if (config.integratorType !== undefined && config.integratorType !== this.integratorType) {
@@ -1085,6 +1098,18 @@ export class Renderer {
             this.integratorParams = { ...this.integratorParams, ...config.integratorParams };
             needsRecompile = true;
         }
+
+        // BUG: Newton's method sometimes fails to compile correctly on initial page load,
+        // possibly due to Nerdamer not being fully initialized or timing issues with
+        // symbolic differentiation. Workaround is in controls-v2.js where we delay
+        // Newton's method activation by 3 seconds on startup.
+        if (config.solutionMethod !== undefined && config.solutionMethod !== this.solutionMethod) {
+            logger.info(`Changing solution method: ${this.solutionMethod} → ${config.solutionMethod}`);
+            this.solutionMethod = config.solutionMethod;
+            needsRecompile = true;
+            logger.info(`  needsRecompile flag set to true (solutionMethod change)`);
+        }
+        logger.info('Solution method update complete, continuing...');
 
         if (config.mapperType !== undefined && config.mapperType !== this.mapperType) {
             logger.info(`Changing mapper: ${this.mapperType} → ${config.mapperType}`);
@@ -1255,15 +1280,25 @@ export class Renderer {
             this.clearScreen(); // Clear trails when view changes
         }
 
+        logger.info(`Checking needsRecompile flag: ${needsRecompile}`);
+
         if (needsRecompile) {
             logger.info('Recompiling shaders...');
-            const error = this.compileShaders();
-            if (error) {
-                logger.error('Recompilation failed', error);
-                throw new Error(error);
+            try {
+                const error = this.compileShaders();
+                if (error) {
+                    logger.error('Recompilation failed', error);
+                    throw new Error(error);
+                }
+                this.frame = 0; // Reset frame counter
+                logger.info('Clearing screen after recompilation...');
+                this.clearScreen(); // Clear old particles that were computed with old vector field
+                logger.info('Configuration updated successfully, shaders recompiled');
+            } catch (e) {
+                logger.error('EXCEPTION during shader recompilation:', e);
+                logger.error('Stack trace:', e.stack);
+                throw e;
             }
-            this.frame = 0; // Reset frame counter
-            logger.info('Configuration updated successfully, shaders recompiled');
         } else {
             logger.info('Configuration updated (no recompile needed)');
         }
@@ -1487,5 +1522,53 @@ export class Renderer {
         console.log('=== END SHADER ===');
 
         logger.info('Shaders logged to console');
+    }
+
+    /**
+     * Log update shader (contains integrator and Jacobian)
+     */
+    logUpdateShader() {
+        if (!this.shaderSource) {
+            console.warn('No shader source available');
+            return;
+        }
+
+        console.log('=== UPDATE FRAGMENT SHADER (Integrator + Jacobian) ===');
+        console.log(this.shaderSource.updateFragment);
+        console.log('=== END SHADER ===');
+
+        logger.info('Update shader logged to browser console');
+    }
+
+    /**
+     * Log draw shader (contains color computations)
+     */
+    logDrawShader() {
+        if (!this.shaderSource) {
+            console.warn('No shader source available');
+            return;
+        }
+
+        console.log('=== DRAW FRAGMENT SHADER (Color Mode) ===');
+        console.log(this.shaderSource.drawFragment);
+        console.log('=== END SHADER ===');
+
+        logger.info('Draw shader logged to browser console');
+    }
+
+    /**
+     * Log screen shader (contains tone mapping)
+     */
+    logScreenShader() {
+        if (!this.shaderSource || !this.shaderSource.screenFragment) {
+            console.warn('No screen shader source available');
+            return;
+        }
+
+        console.log('=== SCREEN FRAGMENT SHADER (Tone Mapping) ===');
+        console.log(this.shaderSource.screenFragment);
+        console.log('=== END SHADER ===');
+
+        logger.info('Screen shader logged to browser console');
     }
 }
