@@ -141,7 +141,7 @@
 
         #cursor-position {
             position: absolute;
-            bottom: 10px;
+            bottom: 220px;
             left: 10px;
             background: rgba(30, 30, 30, 0.9);
             border: 1px solid #444;
@@ -150,6 +150,65 @@
             font-family: 'Courier New', monospace;
             font-size: 12px;
             color: #4CAF50;
+            z-index: 100;
+        }
+
+        #histogram-panel {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            width: 300px;
+            background: rgba(30, 30, 30, 0.95);
+            border: 1px solid #444;
+            border-radius: 4px;
+            z-index: 100;
+        }
+
+        #histogram-panel.collapsed #histogram-body {
+            display: none;
+        }
+
+        #histogram-header {
+            padding: 8px 12px;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        #histogram-header:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        #histogram-header h4 {
+            margin: 0;
+            font-size: 12px;
+            color: #4CAF50;
+            flex: 1;
+        }
+
+        #histogram-expand {
+            font-size: 10px;
+            color: #888;
+        }
+
+        #histogram-body {
+            padding: 8px 12px;
+            border-top: 1px solid #444;
+        }
+
+        #histogram-canvas {
+            width: 100%;
+            height: 120px;
+            display: block;
+        }
+
+        #histogram-info {
+            margin-top: 8px;
+            font-family: 'Courier New', monospace;
+            font-size: 10px;
+            color: #888;
         }
 
         #fps-counter {
@@ -745,6 +804,25 @@
                 <div class="info">Customize color gradient for this mode</div>
             </div>
 
+            <div class="control-group" id="velocity-scaling-container" style="display: none;">
+                <label>Velocity Scaling:</label>
+                <select id="velocity-scale-mode">
+                    <option value="percentile95">95th Percentile (Recommended)</option>
+                    <option value="percentile90">90th Percentile</option>
+                    <option value="average">Average</option>
+                    <option value="max">Maximum</option>
+                </select>
+                <div class="info">What velocity to map to full color saturation. Percentiles ignore outliers for better color distribution.</div>
+            </div>
+
+            <div class="control-group" id="velocity-log-container" style="display: none;">
+                <label>
+                    <input type="checkbox" id="velocity-log-scale">
+                    Logarithmic Velocity Scale
+                </label>
+                <div class="info">Maps velocity using log scale for better visualization when velocity range is very large</div>
+            </div>
+
             <div id="expression-controls" style="display: none;">
                 <div class="control-group">
                     <label>Color Expression:</label>
@@ -831,6 +909,20 @@
 
     <div id="cursor-position"></div>
 
+    <div id="histogram-panel">
+        <div id="histogram-header">
+            <h4>HDR Brightness Histogram</h4>
+            <span id="histogram-expand">▼</span>
+        </div>
+        <div id="histogram-body">
+            <canvas id="histogram-canvas"></canvas>
+            <div id="histogram-info">
+                Avg: <span id="hist-avg">--</span> | Max: <span id="hist-max">--</span><br>
+                Max Vel: <span id="hist-vel">--</span>
+            </div>
+        </div>
+    </div>
+
     <div id="fps-counter">FPS: --</div>
 
     <div id="debug-console" class="collapsed">
@@ -851,6 +943,7 @@
                 <button id="debug-log-update-shader" class="secondary" style="padding: 4px 8px; margin: 0;">Log Update</button>
                 <button id="debug-log-draw-shader" class="secondary" style="padding: 4px 8px; margin: 0;">Log Draw</button>
                 <button id="debug-log-screen-shader" class="secondary" style="padding: 4px 8px; margin: 0;">Log Screen</button>
+                <button id="debug-log-stats-shaders" class="secondary" style="padding: 4px 8px; margin: 0;">Log Stats</button>
                 <button id="debug-buffer-stats" class="secondary" style="padding: 4px 8px; margin: 0;">Buffer Stats</button>
                 <button id="debug-copy" class="secondary" style="padding: 4px 8px; margin: 0;">Copy Log</button>
                 <button id="debug-clear" class="secondary" style="padding: 4px 8px; margin: 0;">Clear</button>
@@ -1028,6 +1121,17 @@
                     <button class="slider-btn" data-slider="brightness-desat" data-action="reset" title="Reset to default (0.0)">↺</button>
                 </div>
                 <div class="info">Desaturates bright regions (0.0 - 1.0). Prevents fully saturated colors in dense attractor areas.</div>
+            </div>
+
+            <div class="control-group">
+                <label>Saturation Buildup: <span class="range-value" id="saturation-buildup-value">0.00</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="saturation-buildup" data-action="decrease">-</button>
+                    <input type="range" id="saturation-buildup" min="0" max="100" value="0" step="0.1">
+                    <button class="slider-btn" data-slider="saturation-buildup" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="saturation-buildup" data-action="reset" title="Reset to default (0.0)">↺</button>
+                </div>
+                <div class="info">Desaturates dim regions, saturates bright regions (0.0 - 1.0). Sparse trails look washed out, dense accumulations pop with full color. Higher values = more aggressive effect.</div>
             </div>
         </div>
     </div>

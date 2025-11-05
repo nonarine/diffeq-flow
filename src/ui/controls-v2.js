@@ -174,6 +174,7 @@ export function initControls(renderer, callback) {
         onChange: (value) => {
             updateExpressionControls(value);
             updateGradientButtonVisibility(value);
+            updateVelocityScalingVisibility(value);
         }
     }));
 
@@ -187,6 +188,14 @@ export function initControls(renderer, callback) {
 
     const gradientControl = manager.register(new GradientControl(getDefaultGradient(), {
         settingsKey: 'colorGradient'
+    }));
+
+    const velocityScaleModeControl = manager.register(new SelectControl('velocity-scale-mode', 'percentile95', {
+        settingsKey: 'velocityScaleMode'
+    }));
+
+    const velocityLogScaleControl = manager.register(new CheckboxControl('velocity-log-scale', false, {
+        settingsKey: 'velocityLogScale'
     }));
 
     // === Expression inputs (custom control) ===
@@ -216,10 +225,10 @@ export function initControls(renderer, callback) {
     }));
 
     const exposureControl = manager.register(new LogSliderControl('exposure', 1.0, {
-        minValue: 0.001,
+        minValue: 0.0001,
         maxValue: 10.0,
         displayId: 'exposure-value',
-        displayFormat: v => v.toFixed(3)
+        displayFormat: v => v.toFixed(4)
     }));
 
     const gammaControl = manager.register(new LogSliderControl('gamma', 2.2, {
@@ -255,6 +264,12 @@ export function initControls(renderer, callback) {
     const brightnessDesatControl = manager.register(new PercentSliderControl('brightness-desat', 0.0, {
         settingsKey: 'brightnessDesaturation',
         displayId: 'brightness-desat-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    const saturationBuildupControl = manager.register(new PercentSliderControl('saturation-buildup', 0.0, {
+        settingsKey: 'brightnessSaturation',
+        displayId: 'saturation-buildup-value',
         displayFormat: v => v.toFixed(2)
     }));
 
@@ -529,6 +544,7 @@ export function initControls(renderer, callback) {
     updateWhitePointVisibility(manager.get('tonemap-operator').getValue());
     updateExpressionControls(manager.get('color-mode').getValue());
     updateGradientButtonVisibility(manager.get('color-mode').getValue());
+    updateVelocityScalingVisibility(manager.get('color-mode').getValue());
 
     // Initialize implicit method controls visibility
     const currentIntegrator = manager.get('integrator').getValue();
@@ -627,6 +643,22 @@ function updateGradientButtonVisibility(colorMode) {
         $('#gradient-preset-toggle').hide();
     } else {
         $('#gradient-preset-toggle').show();
+    }
+}
+
+/**
+ * Update velocity scaling controls visibility
+ */
+function updateVelocityScalingVisibility(colorMode) {
+    const usesVelocity = colorMode === 'velocity_magnitude' ||
+                         colorMode === 'velocity_combined';
+
+    if (usesVelocity) {
+        $('#velocity-scaling-container').show();
+        $('#velocity-log-container').show();
+    } else {
+        $('#velocity-scaling-container').hide();
+        $('#velocity-log-container').hide();
     }
 }
 

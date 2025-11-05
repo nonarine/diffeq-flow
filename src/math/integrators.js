@@ -304,10 +304,67 @@ vec${dimensions} integrate(vec${dimensions} pos, float h) {
 
 /**
  * Implicit Midpoint (Implicit RK2)
- * Solves: x(t+h) = x(t) + h*f((x(t) + x(t+h))/2) using fixed-point iteration
+ * Solves: x(t+h) = x(t) + h*f((x(t) + x(t+h))/2)
+ * Can use either fixed-point iteration or Newton's method
  * 2nd order accurate, A-stable (excellent for stiff systems)
  */
-export function implicitMidpointIntegrator(dimensions, iterations = 4) {
+export function implicitMidpointIntegrator(dimensions, iterations = 4, solutionMethod = 'fixed-point', expressions = null) {
+    logger.info(`*** Implicit Midpoint integrator requested: solutionMethod=${solutionMethod}, hasExpressions=${!!expressions}`);
+
+    if (solutionMethod === 'newton' && expressions) {
+        // Try to compute Jacobian symbolically
+        logger.info('Computing Jacobian for Newton\'s method (Implicit Midpoint)');
+
+        const jacobian = computeSymbolicJacobian(expressions, dimensions);
+
+        if (isValidJacobian(jacobian)) {
+            // Newton's method with symbolic Jacobian
+            const jacobianGLSL = generateJacobianGLSL(jacobian, dimensions);
+            const matType = dimensions === 2 ? 'mat2' : dimensions === 3 ? 'mat3' : 'mat4';
+            const vecType = `vec${dimensions}`;
+            const inverseFuncName = `inverse${dimensions}`;
+
+            logger.info('✓ Successfully using Newton\'s method for Implicit Midpoint');
+
+            return {
+                name: 'Implicit Midpoint (Newton)',
+                code: `
+${jacobianGLSL}
+
+// Implicit Midpoint integration (Newton's method)
+${vecType} integrate(${vecType} pos, float h) {
+    // Start with explicit RK2 as initial guess
+    ${vecType} k1 = get_velocity(pos);
+    ${vecType} x_new = pos + h * get_velocity(pos + h * 0.5 * k1);
+
+    // Newton's method: solve F(x_new) = x_new - pos - h*f((pos + x_new)/2) = 0
+    for (int i = 0; i < ${iterations}; i++) {
+        ${vecType} x_mid = (pos + x_new) * 0.5;
+        ${vecType} f_mid = get_velocity(x_mid);
+        ${vecType} F = x_new - pos - h * f_mid;
+
+        // J = I - h/2 * df/dx (chain rule at midpoint)
+        ${matType} J = ${matType}(1.0) - (h * 0.5) * computeJacobian(x_mid);
+
+        // Newton step: x_new -= J^(-1) * F
+        ${vecType} delta = ${inverseFuncName}(J) * F;
+        x_new -= delta;
+    }
+
+    return x_new;
+}
+`
+            };
+        } else {
+            logger.warn('✗ Failed to compute Jacobian for Newton\'s method (Implicit Midpoint)');
+            logger.warn('Falling back to fixed-point iteration');
+        }
+    } else if (solutionMethod === 'newton' && !expressions) {
+        logger.warn('✗ Newton\'s method requested but no expressions provided (Implicit Midpoint)');
+        logger.warn('Falling back to fixed-point iteration');
+    }
+
+    // Default: Fixed-point iteration
     return {
         name: 'Implicit Midpoint',
         code: `
@@ -331,10 +388,67 @@ vec${dimensions} integrate(vec${dimensions} pos, float h) {
 
 /**
  * Trapezoidal Rule (Implicit RK2)
- * Solves: x(t+h) = x(t) + h/2 * (f(x(t)) + f(x(t+h))) using fixed-point iteration
+ * Solves: x(t+h) = x(t) + h/2 * (f(x(t)) + f(x(t+h)))
+ * Can use either fixed-point iteration or Newton's method
  * 2nd order accurate, A-stable
  */
-export function trapezoidalIntegrator(dimensions, iterations = 4) {
+export function trapezoidalIntegrator(dimensions, iterations = 4, solutionMethod = 'fixed-point', expressions = null) {
+    logger.info(`*** Trapezoidal integrator requested: solutionMethod=${solutionMethod}, hasExpressions=${!!expressions}`);
+
+    if (solutionMethod === 'newton' && expressions) {
+        // Try to compute Jacobian symbolically
+        logger.info('Computing Jacobian for Newton\'s method (Trapezoidal)');
+
+        const jacobian = computeSymbolicJacobian(expressions, dimensions);
+
+        if (isValidJacobian(jacobian)) {
+            // Newton's method with symbolic Jacobian
+            const jacobianGLSL = generateJacobianGLSL(jacobian, dimensions);
+            const matType = dimensions === 2 ? 'mat2' : dimensions === 3 ? 'mat3' : 'mat4';
+            const vecType = `vec${dimensions}`;
+            const inverseFuncName = `inverse${dimensions}`;
+
+            logger.info('✓ Successfully using Newton\'s method for Trapezoidal');
+
+            return {
+                name: 'Trapezoidal (Newton)',
+                code: `
+${jacobianGLSL}
+
+// Trapezoidal Rule integration (Newton's method)
+${vecType} integrate(${vecType} pos, float h) {
+    ${vecType} f0 = get_velocity(pos);
+
+    // Start with explicit Euler as initial guess
+    ${vecType} x_new = pos + h * f0;
+
+    // Newton's method: solve F(x_new) = x_new - pos - h/2*(f(pos) + f(x_new)) = 0
+    for (int i = 0; i < ${iterations}; i++) {
+        ${vecType} f_new = get_velocity(x_new);
+        ${vecType} F = x_new - pos - h * 0.5 * (f0 + f_new);
+
+        // J = I - h/2 * df/dx
+        ${matType} J = ${matType}(1.0) - (h * 0.5) * computeJacobian(x_new);
+
+        // Newton step: x_new -= J^(-1) * F
+        ${vecType} delta = ${inverseFuncName}(J) * F;
+        x_new -= delta;
+    }
+
+    return x_new;
+}
+`
+            };
+        } else {
+            logger.warn('✗ Failed to compute Jacobian for Newton\'s method (Trapezoidal)');
+            logger.warn('Falling back to fixed-point iteration');
+        }
+    } else if (solutionMethod === 'newton' && !expressions) {
+        logger.warn('✗ Newton\'s method requested but no expressions provided (Trapezoidal)');
+        logger.warn('Falling back to fixed-point iteration');
+    }
+
+    // Default: Fixed-point iteration
     return {
         name: 'Trapezoidal',
         code: `
@@ -360,13 +474,102 @@ vec${dimensions} integrate(vec${dimensions} pos, float h) {
 /**
  * Implicit RK4 (Gauss-Legendre)
  * Fully implicit 4th order method, excellent stability
- * Uses simplified 2-stage Gauss-Legendre with fixed-point iteration
+ * Uses simplified 2-stage Gauss-Legendre
+ * Can use either fixed-point iteration or Newton's method
+ *
+ * Note: This uses a simplified Newton's method that treats each stage separately
+ * (Gauss-Seidel style). A full Newton's method would solve the coupled 2N×2N system
+ * for both stages simultaneously, which is more accurate but significantly more complex.
+ * The simplified approach offers a good balance of accuracy and implementation complexity.
  */
-export function implicitRK4Integrator(dimensions, iterations = 5) {
+export function implicitRK4Integrator(dimensions, iterations = 5, solutionMethod = 'fixed-point', expressions = null) {
+    logger.info(`*** Implicit RK4 integrator requested: solutionMethod=${solutionMethod}, hasExpressions=${!!expressions}`);
+
+    if (solutionMethod === 'newton' && expressions) {
+        // Try to compute Jacobian symbolically
+        logger.info('Computing Jacobian for Newton\'s method (Implicit RK4 - simplified)');
+
+        const jacobian = computeSymbolicJacobian(expressions, dimensions);
+
+        if (isValidJacobian(jacobian)) {
+            // Simplified Newton's method with symbolic Jacobian
+            const jacobianGLSL = generateJacobianGLSL(jacobian, dimensions);
+            const matType = dimensions === 2 ? 'mat2' : dimensions === 3 ? 'mat3' : 'mat4';
+            const vecType = `vec${dimensions}`;
+            const inverseFuncName = `inverse${dimensions}`;
+
+            logger.info('✓ Successfully using simplified Newton\'s method for Implicit RK4');
+
+            return {
+                name: 'Implicit RK4 (Newton)',
+                code: `
+${jacobianGLSL}
+
+// Implicit RK4 (Gauss-Legendre 2-stage) integration (simplified Newton's method)
+${vecType} integrate(${vecType} pos, float h) {
+    // Gauss-Legendre coefficients for 2-stage method
+    const float a11 = 0.25;
+    const float a12 = 0.25 - sqrt(3.0) / 6.0;
+    const float a21 = 0.25 + sqrt(3.0) / 6.0;
+    const float a22 = 0.25;
+    const float b1 = 0.5;
+    const float b2 = 0.5;
+    const float c1 = 0.5 - sqrt(3.0) / 6.0;
+    const float c2 = 0.5 + sqrt(3.0) / 6.0;
+
+    // Start with explicit RK4 as initial guess
+    ${vecType} k1_guess = get_velocity(pos);
+    ${vecType} k2_guess = get_velocity(pos + h * 0.5 * k1_guess);
+
+    ${vecType} k1 = k1_guess;
+    ${vecType} k2 = k2_guess;
+
+    // Simplified Newton's method: solve each stage separately (Gauss-Seidel style)
+    // Full coupled Newton would solve a 2N×2N system for both k1 and k2 simultaneously
+    for (int i = 0; i < ${iterations}; i++) {
+        // Solve for k1: F1(k1) = k1 - f(pos + h*(a11*k1 + a12*k2)) = 0
+        ${vecType} X1 = pos + h * (a11 * k1 + a12 * k2);
+        ${vecType} f1 = get_velocity(X1);
+        ${vecType} F1 = k1 - f1;
+
+        // J1 = I - h*a11*df/dx (partial derivative, treating k2 as constant)
+        ${matType} J1 = ${matType}(1.0) - (h * a11) * computeJacobian(X1);
+
+        // Newton step for k1
+        ${vecType} delta1 = ${inverseFuncName}(J1) * F1;
+        k1 -= delta1;
+
+        // Solve for k2: F2(k2) = k2 - f(pos + h*(a21*k1 + a22*k2)) = 0
+        ${vecType} X2 = pos + h * (a21 * k1 + a22 * k2);
+        ${vecType} f2 = get_velocity(X2);
+        ${vecType} F2 = k2 - f2;
+
+        // J2 = I - h*a22*df/dx (partial derivative, treating k1 as constant)
+        ${matType} J2 = ${matType}(1.0) - (h * a22) * computeJacobian(X2);
+
+        // Newton step for k2
+        ${vecType} delta2 = ${inverseFuncName}(J2) * F2;
+        k2 -= delta2;
+    }
+
+    return pos + h * (b1 * k1 + b2 * k2);
+}
+`
+            };
+        } else {
+            logger.warn('✗ Failed to compute Jacobian for Newton\'s method (Implicit RK4)');
+            logger.warn('Falling back to fixed-point iteration');
+        }
+    } else if (solutionMethod === 'newton' && !expressions) {
+        logger.warn('✗ Newton\'s method requested but no expressions provided (Implicit RK4)');
+        logger.warn('Falling back to fixed-point iteration');
+    }
+
+    // Default: Fixed-point iteration
     return {
         name: 'Implicit RK4',
         code: `
-// Implicit RK4 (Gauss-Legendre 2-stage) integration
+// Implicit RK4 (Gauss-Legendre 2-stage) integration (fixed-point iteration)
 vec${dimensions} integrate(vec${dimensions} pos, float h) {
     // Gauss-Legendre coefficients for 2-stage method
     const float a11 = 0.25;
@@ -481,11 +684,11 @@ export function getIntegrator(name, dimensions, params = {}) {
         case 'implicit-euler':
             return implicitEulerIntegrator(dimensions, iterations, solutionMethod, expressions);
         case 'implicit-midpoint':
-            return implicitMidpointIntegrator(dimensions, params.iterations || 4);
+            return implicitMidpointIntegrator(dimensions, params.iterations || 4, solutionMethod, expressions);
         case 'trapezoidal':
-            return trapezoidalIntegrator(dimensions, params.iterations || 4);
+            return trapezoidalIntegrator(dimensions, params.iterations || 4, solutionMethod, expressions);
         case 'implicit-rk4':
-            return implicitRK4Integrator(dimensions, params.iterations || 5);
+            return implicitRK4Integrator(dimensions, params.iterations || 5, solutionMethod, expressions);
         case 'symplectic':
             return symplecticEulerIntegrator(dimensions);
         // Legacy alias

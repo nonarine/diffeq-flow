@@ -88,6 +88,15 @@ $(document).ready(function() {
             }
         });
 
+        $('#debug-log-stats-shaders').on('click', function() {
+            if (window.renderer && typeof window.renderer.logStatsShaders === 'function') {
+                window.renderer.logStatsShaders();
+            } else {
+                console.warn('Renderer not available yet');
+                logger.warn('Renderer not initialized - cannot log stats shaders');
+            }
+        });
+
         $('#debug-buffer-stats').on('click', function() {
             if (window.renderer && typeof window.renderer.logBufferStats === 'function') {
                 window.renderer.logBufferStats();
@@ -532,6 +541,69 @@ $(document).ready(function() {
             }
         }
         setInterval(updateFPS, 500); // Update every 500ms
+
+        // Histogram panel
+        const histogramPanel = $('#histogram-panel');
+        const histogramCanvas = document.getElementById('histogram-canvas');
+        const histogramCtx = histogramCanvas.getContext('2d');
+
+        // Make histogram panel collapsible
+        $('#histogram-header').on('click', function() {
+            histogramPanel.toggleClass('collapsed');
+            $('#histogram-expand').text(histogramPanel.hasClass('collapsed') ? '▶' : '▼');
+        });
+
+        // Draw histogram
+        function drawHistogram() {
+            if (!renderer) return;
+
+            const stats = renderer.getBufferStats();
+            if (!stats || !stats.histogram || stats.histogram.length === 0) return;
+
+            const canvas = histogramCanvas;
+            const ctx = histogramCtx;
+            const dpr = window.devicePixelRatio || 1;
+
+            // Set canvas resolution
+            canvas.width = canvas.clientWidth * dpr;
+            canvas.height = canvas.clientHeight * dpr;
+            ctx.scale(dpr, dpr);
+
+            const width = canvas.clientWidth;
+            const height = canvas.clientHeight;
+
+            // Clear
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Find max count for scaling
+            const maxCount = Math.max(...stats.histogram);
+            if (maxCount === 0) return;
+
+            // Draw bars
+            const barWidth = width / stats.histogram.length;
+            ctx.fillStyle = '#4CAF50';
+
+            stats.histogram.forEach((count, i) => {
+                const barHeight = (count / maxCount) * (height - 4);
+                const x = i * barWidth;
+                const y = height - barHeight;
+                ctx.fillRect(x, y, barWidth - 1, barHeight);
+            });
+
+            // Update info
+            $('#hist-avg').text(stats.avgBrightness.toFixed(1));
+            $('#hist-max').text(stats.maxBrightness.toFixed(0));
+
+            // Check if velocity is available
+            if (stats.maxVelocity !== undefined && stats.maxVelocity !== null) {
+                $('#hist-vel').text(stats.maxVelocity.toFixed(2));
+            } else {
+                $('#hist-vel').text('--');
+            }
+        }
+
+        setInterval(drawHistogram, 1000); // Update every second
 
         resizeGridCanvas();
         updateCursorDisplay();

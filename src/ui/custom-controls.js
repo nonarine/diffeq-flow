@@ -3,7 +3,28 @@
  * Extends the base Control class for specialized behaviors
  */
 
-import { Control } from './control-base.js';
+import { Control, CheckboxControl } from './control-base.js';
+
+/**
+ * FloatCheckboxControl - checkbox that outputs 0.0 or 1.0 instead of boolean
+ * Useful for shader uniforms that expect floats
+ */
+export class FloatCheckboxControl extends CheckboxControl {
+    constructor(id, defaultValue, options = {}) {
+        super(id, defaultValue, options);
+    }
+
+    getValue() {
+        const checked = super.getValue();
+        return checked ? 1.0 : 0.0;
+    }
+
+    setValue(value) {
+        // Accept both boolean and numeric values
+        const checked = (typeof value === 'number') ? (value > 0.5) : value;
+        super.setValue(checked);
+    }
+}
 
 /**
  * DimensionInputsControl - manages dynamic expression inputs

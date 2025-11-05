@@ -5,6 +5,8 @@
 import { TextureManager } from './textures.js';
 import { FramebufferManager } from './framebuffer.js';
 import { BloomManager } from './bloom.js';
+import { BufferStatsManager } from './buffer-stats.js';
+import { VelocityStatsManager } from './velocity-stats.js';
 import { ParticleSystem } from '../particles/system.js';
 import {
     createProgram,
@@ -76,6 +78,16 @@ export class Renderer {
         // Initialize state
         this.dimensions = 2;
         this.expressions = ['-y', 'x'];
+
+        // Create velocity evaluators for sampling
+        try {
+            this.velocityEvaluators = createVelocityEvaluators(this.expressions);
+            logger.verbose('Initial velocity evaluators created');
+        } catch (error) {
+            logger.warn('Failed to create initial velocity evaluators', error);
+            this.velocityEvaluators = null;
+        }
+
         this.integratorType = 'rk4';
         this.integratorParams = { iterations: 3 }; // For implicit methods
         this.solutionMethod = 'fixed-point'; // For implicit methods: 'fixed-point' or 'newton'
@@ -85,6 +97,8 @@ export class Renderer {
         this.colorExpression = 'x * y'; // Default expression for expression mode
         this.colorGradient = getDefaultGradient(); // Default gradient
         this.useCustomGradient = false; // Apply custom gradient to preset modes
+        this.velocityScaleMode = 'percentile95'; // 'max', 'average', 'percentile90', 'percentile95'
+        this.velocityLogScale = false; // Use logarithmic scaling for velocity colors
 
         // HDR rendering settings
         this.useHDR = config.useHDR !== undefined ? config.useHDR : true;
@@ -98,6 +112,7 @@ export class Renderer {
         this.useDepthTest = config.useDepthTest !== undefined ? config.useDepthTest : false;
         this.colorSaturation = config.colorSaturation !== undefined ? config.colorSaturation : 1.0; // 0.0 = grayscale, 1.0 = full saturation
         this.brightnessDesaturation = config.brightnessDesaturation !== undefined ? config.brightnessDesaturation : 0.0; // 0.0 = no desat, 1.0 = full desat at bright areas
+        this.brightnessSaturation = config.brightnessSaturation !== undefined ? config.brightnessSaturation : 0.0; // 0.0 = no effect, 1.0 = dim areas fully desaturated
 
         // Bloom settings (disabled by default - WIP)
         this.bloomEnabled = config.bloomEnabled !== undefined ? config.bloomEnabled : false;
@@ -207,6 +222,12 @@ export class Renderer {
             bloomSize: this.bloomManager.isEnabled() ?
                 `${this.bloomManager.getBloomSize().width}x${this.bloomManager.getBloomSize().height}` : 'N/A'
         });
+
+        // Create buffer statistics manager
+        this.bufferStatsManager = new BufferStatsManager(gl);
+        this.velocityStatsManager = new VelocityStatsManager(gl);
+        this.statsUpdateInterval = 60; // Update stats every 60 frames
+        this.statsCoarseMode = true; // Use coarse sampling by default
 
         // Create full-screen quad buffer
         this.quadBuffer = this.createBuffer(new Float32Array([
@@ -335,8 +356,20 @@ export class Renderer {
                 updateVertex: updateVertexShader,
                 updateFragment: updateFragmentShader,
                 drawVertex: drawVertexShader,
-                drawFragment: drawFragmentShader
+                drawFragment: drawFragmentShader,
+                velocityField: velocityGLSL  // Store for velocity stats manager
             };
+
+            // Initialize velocity stats manager with current velocity field
+            if (this.velocityStatsManager) {
+                this.velocityStatsManager.dispose(); // Clean up old instance
+                const initSuccess = this.velocityStatsManager.initialize(this.dimensions, velocityGLSL);
+                if (initSuccess) {
+                    logger.verbose('Velocity stats manager initialized');
+                } else {
+                    logger.warn('Failed to initialize velocity stats manager');
+                }
+            }
 
             // Create screen programs
             const screenVertexShader = generateScreenVertexShader();
@@ -401,10 +434,8 @@ export class Renderer {
             this.sampleParticleData();
         }
 
-        // Calculate particle statistics every 120 frames for aggregate data
-        if (this.frame % 120 === 0) {
-            this.calculateParticleStatistics();
-            // Debug: log shader uniforms
+        // Debug: log shader uniforms occasionally
+        if (this.frame % 600 === 0) {
             logger.verbose(`Frame ${this.frame}: Shader uniforms`, {
                 u_min: [this.bbox.min[0], this.bbox.min[1]],
                 u_max: [this.bbox.max[0], this.bbox.max[1]],
@@ -433,7 +464,8 @@ export class Renderer {
         gl.uniform1f(gl.getUniformLocation(program, 'u_rand_seed'), randSeed);
         gl.uniform1f(gl.getUniformLocation(program, 'u_drop_rate'), this.dropProbability);
         gl.uniform1f(gl.getUniformLocation(program, 'u_particles_res'), resolution);
-        gl.uniform1f(gl.getUniformLocation(program, 'u_max_velocity'), this.maxVelocity);
+        const velocityScale = this.getVelocityScale();
+        gl.uniform1f(gl.getUniformLocation(program, 'u_max_velocity'), velocityScale);
         gl.uniform1f(gl.getUniformLocation(program, 'u_drop_low_velocity'), this.dropLowVelocity ? 1.0 : 0.0);
         gl.uniform1f(gl.getUniformLocation(program, 'u_velocity_threshold'), this.lowVelocityThreshold);
 
@@ -478,31 +510,40 @@ export class Renderer {
         // This allows overlapping particles to create bright HDR values
         gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
 
-        // Update max velocity tracker using adaptive sampling and exponential moving average
+        // Update max velocity tracker using GPU-based sampling and exponential moving average
         this.framesSinceLastSample++;
 
         // Adaptive sampling: sample more frequently when velocity is changing
         if (this.framesSinceLastSample >= this.velocitySampleInterval) {
             this.framesSinceLastSample = 0;
 
-            // Sample several particles and take the MAXIMUM (for proper color scaling)
-            let maxSample = 0;
-            const numSamples = 5;
+            // GPU-based velocity sampling (much faster than CPU approach)
+            if (this.velocityStatsManager && this.velocityStatsManager.initialized) {
+                const posTextures = this.textureManager.getReadTextures();
+                const stats = this.velocityStatsManager.compute(posTextures, this.bbox, this.particleSystem.getResolution());
 
-            for (let i = 0; i < numSamples; i++) {
-                const sampleVelocity = this.sampleParticleVelocity();
-                maxSample = Math.max(maxSample, sampleVelocity);
+                // Log occasionally for debugging
+                if (this.frame % 600 === 0 && stats.sampleCount > 0) {
+                    logger.debug(`GPU velocity stats: avg=${stats.avgVelocity.toFixed(3)}, max=${stats.maxVelocity.toFixed(3)} (${stats.sampleCount} samples)`);
+                }
+
+                // Update max velocity with exponential moving average
+                if (stats.maxVelocity > 0) {
+                    // Use asymmetric blending: faster response to increases, slower to decreases
+                    const alpha = stats.maxVelocity > this.maxVelocity ?
+                                 this.velocityEMAAlpha * 2 : // Faster tracking upward
+                                 this.velocityEMAAlpha;      // Slower decay downward
+
+                    this.prevMaxVelocity = this.maxVelocity;
+                    this.maxVelocity = alpha * stats.maxVelocity + (1 - alpha) * this.maxVelocity;
+                }
+            } else {
+                // Manager not initialized - log warning once
+                if (!this.velocityStatsWarningLogged) {
+                    logger.warn('Velocity stats manager not initialized - max velocity will not be computed');
+                    this.velocityStatsWarningLogged = true;
+                }
             }
-
-            // Exponential moving average: blend new max sample with existing estimate
-            // This creates smooth transitions instead of hard jumps
-            // Use asymmetric blending: faster response to increases, slower to decreases
-            const alpha = maxSample > this.maxVelocity ?
-                         this.velocityEMAAlpha * 2 : // Faster tracking upward
-                         this.velocityEMAAlpha;      // Slower decay downward
-
-            this.prevMaxVelocity = this.maxVelocity;
-            this.maxVelocity = alpha * maxSample + (1 - alpha) * this.maxVelocity;
 
             // Calculate relative change rate (normalized by current value)
             const relativeChange = Math.abs(this.maxVelocity - this.prevMaxVelocity) /
@@ -553,11 +594,37 @@ export class Renderer {
 
         // Set max velocity uniform if needed
         if (this.usesMaxVelocity) {
-            gl.uniform1f(gl.getUniformLocation(program, 'u_max_velocity'), this.maxVelocity);
+            const velocityScale = this.getVelocityScale();
+            gl.uniform1f(gl.getUniformLocation(program, 'u_max_velocity'), velocityScale);
+            gl.uniform1f(gl.getUniformLocation(program, 'u_velocity_log_scale'), this.velocityLogScale ? 1.0 : 0.0);
         }
 
         // Draw particles
         gl.drawArrays(gl.POINTS, 0, this.particleSystem.getActualParticleCount());
+    }
+
+    /**
+     * Get velocity scale value based on selected mode
+     */
+    getVelocityScale() {
+        if (!this.velocityStatsManager || !this.velocityStatsManager.initialized) {
+            return this.maxVelocity;
+        }
+
+        const stats = this.velocityStatsManager.getCached();
+
+        switch (this.velocityScaleMode) {
+            case 'max':
+                return stats.maxVelocity || this.maxVelocity;
+            case 'average':
+                return stats.avgVelocity || this.maxVelocity;
+            case 'percentile90':
+                return stats.percentile90 || stats.avgVelocity || this.maxVelocity;
+            case 'percentile95':
+                return stats.percentile95 || stats.avgVelocity || this.maxVelocity;
+            default:
+                return this.maxVelocity;
+        }
     }
 
     /**
@@ -750,18 +817,82 @@ export class Renderer {
             gl.uniform1i(gl.getUniformLocation(this.tonemapProgram, 'u_bloom_enabled'), 0);
         }
 
+        // Get cached buffer stats
+        const stats = this.bufferStatsManager.getCached();
+
         gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_exposure'), this.exposure);
         gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_gamma'), this.gamma);
         gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_whitePoint'), this.whitePoint);
         gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_brightness_desat'), this.brightnessDesaturation);
+        gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_brightness_sat'), this.brightnessSaturation);
+        gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_hdr_max_brightness'), stats.maxBrightness);
+        gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_hdr_avg_brightness'), stats.avgBrightness);
 
         gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        // Update buffer statistics periodically
+        if (!this.frame) this.frame = 0;
+        this.frame++;
+
+        if (this.frame % this.statsUpdateInterval === 0) {
+            const hdrTexture = this.framebufferManager.getCurrentTexture();
+            const newStats = this.bufferStatsManager.compute(
+                hdrTexture,
+                this.canvas.width,
+                this.canvas.height,
+                this.statsCoarseMode
+            );
+
+            // Log stats occasionally for debugging
+            if (this.frame % (this.statsUpdateInterval * 10) === 0) {
+                logger.info('HDR Buffer Stats (sampled)', {
+                    avgBrightness: newStats.avgBrightness.toFixed(2),
+                    maxBrightness: newStats.maxBrightness.toFixed(2),
+                    sampledPixels: newStats.sampledPixels,
+                    sampleRate: newStats.sampleRate
+                });
+            }
+        }
     }
 
     /**
-     * Calculate particle statistics (min/max/avg) for debugging
+     * Get current HDR buffer statistics (using cached values from BufferStatsManager)
      */
-    calculateParticleStatistics() {
+    getBufferStats() {
+        const stats = this.bufferStatsManager.getCached();
+        // Add velocity info from GPU-based velocity stats
+        const velStats = this.velocityStatsManager ? this.velocityStatsManager.getCached() : null;
+        stats.maxVelocity = this.maxVelocity; // EMA-smoothed max velocity
+        stats.avgVelocity = velStats ? velStats.avgVelocity : 0;
+        stats.velocitySampleCount = velStats ? velStats.sampleCount : 0; // 64 GPU samples
+        return stats;
+    }
+
+    /**
+     * Log HDR buffer statistics to console
+     */
+    logBufferStats() {
+        const stats = this.getBufferStats(); // Use getBufferStats to include velocity
+        const age = Date.now() - stats.timestamp;
+
+        logger.info('=== HDR Buffer Statistics (Sampled) ===');
+        logger.info(`Cached age: ${(age / 1000).toFixed(1)}s`);
+        logger.info(`Sample rate: every ${stats.sampleRate}th pixel (${stats.sampledPixels} total)`);
+        logger.info(`Red   - Min: ${stats.red.min.toFixed(6)}, Max: ${stats.red.max.toFixed(6)}, Avg: ${stats.red.avg.toFixed(6)}`);
+        logger.info(`Green - Min: ${stats.green.min.toFixed(6)}, Max: ${stats.green.max.toFixed(6)}, Avg: ${stats.green.avg.toFixed(6)}`);
+        logger.info(`Blue  - Min: ${stats.blue.min.toFixed(6)}, Max: ${stats.blue.max.toFixed(6)}, Avg: ${stats.blue.avg.toFixed(6)}`);
+        logger.info(`Max Brightness: ${stats.maxBrightness.toFixed(6)}`);
+        logger.info(`Avg Brightness: ${stats.avgBrightness.toFixed(6)}`);
+        logger.info(`Max Velocity: ${stats.maxVelocity.toFixed(6)} (GPU-sampled, ${stats.velocitySampleCount} particles, EMA-smoothed)`);
+        if (stats.avgVelocity) {
+            logger.info(`Avg Velocity: ${stats.avgVelocity.toFixed(6)}`);
+        }
+    }
+
+    /**
+     * DEPRECATED: Old particle statistics (removed - use BufferStatsManager instead)
+     */
+    calculateParticleStatistics_REMOVED() {
         const resolution = this.particleSystem.getResolution();
 
         // Read back texture data for each dimension
@@ -897,14 +1028,38 @@ export class Renderer {
             return 0;
         }
 
-        const velocity = [];
-        for (let dim = 0; dim < this.dimensions; dim++) {
-            velocity.push(this.velocityEvaluators[dim](...position));
-        }
+        try {
+            const velocity = [];
+            for (let dim = 0; dim < this.dimensions; dim++) {
+                const vel = this.velocityEvaluators[dim](...position);
+                velocity.push(vel);
+            }
 
-        // Compute magnitude
-        const magnitudeSquared = velocity.reduce((sum, v) => sum + v * v, 0);
-        return Math.sqrt(magnitudeSquared);
+            // Compute magnitude
+            const magnitudeSquared = velocity.reduce((sum, v) => sum + v * v, 0);
+            const magnitude = Math.sqrt(magnitudeSquared);
+
+            // Check for invalid values
+            if (!isFinite(magnitude)) {
+                if (!this.velocityNaNWarningLogged) {
+                    logger.warn('Invalid velocity magnitude detected', {
+                        position,
+                        velocity,
+                        magnitude
+                    });
+                    this.velocityNaNWarningLogged = true;
+                }
+                return 0;
+            }
+
+            return magnitude;
+        } catch (error) {
+            if (!this.velocityErrorLogged) {
+                logger.error('Error computing velocity', error);
+                this.velocityErrorLogged = true;
+            }
+            return 0;
+        }
     }
 
     /**
@@ -1151,6 +1306,18 @@ export class Renderer {
             needsRecompile = true;
         }
 
+        if (config.velocityScaleMode !== undefined && config.velocityScaleMode !== this.velocityScaleMode) {
+            logger.info(`Changing velocity scale mode: ${this.velocityScaleMode} → ${config.velocityScaleMode}`);
+            this.velocityScaleMode = config.velocityScaleMode;
+            // No recompile needed - just changes which value we use
+        }
+
+        if (config.velocityLogScale !== undefined && config.velocityLogScale !== this.velocityLogScale) {
+            logger.info(`Changing velocity log scale: ${this.velocityLogScale} → ${config.velocityLogScale}`);
+            this.velocityLogScale = config.velocityLogScale;
+            needsRecompile = true; // Needs recompile to change shader code
+        }
+
         if (config.timestep !== undefined) {
             logger.verbose(`Timestep: ${this.timestep} → ${config.timestep}`);
             this.timestep = config.timestep;
@@ -1229,6 +1396,10 @@ export class Renderer {
         if (config.brightnessDesaturation !== undefined) {
             logger.verbose(`Brightness desaturation: ${this.brightnessDesaturation} → ${config.brightnessDesaturation}`);
             this.brightnessDesaturation = config.brightnessDesaturation;
+        }
+        if (config.brightnessSaturation !== undefined) {
+            logger.verbose(`Brightness saturation: ${this.brightnessSaturation} → ${config.brightnessSaturation}`);
+            this.brightnessSaturation = config.brightnessSaturation;
         }
         if (config.useDepthTest !== undefined) {
             logger.verbose(`Depth testing: ${this.useDepthTest} → ${config.useDepthTest}`);
@@ -1570,5 +1741,42 @@ export class Renderer {
         console.log('=== END SHADER ===');
 
         logger.info('Screen shader logged to browser console');
+    }
+
+    /**
+     * Log diagnostic stats shaders (velocity and brightness)
+     */
+    logStatsShaders() {
+        logger.info('=== DIAGNOSTIC STATS SHADERS ===');
+
+        // Log velocity stats shader
+        if (this.velocityStatsManager && this.velocityStatsManager.getShaderSource) {
+            const velShader = this.velocityStatsManager.getShaderSource();
+            if (velShader) {
+                console.log('=== VELOCITY STATS FRAGMENT SHADER ===');
+                console.log(velShader);
+                console.log('=== END SHADER ===');
+            } else {
+                console.warn('Velocity stats shader not available');
+            }
+        } else {
+            console.warn('VelocityStatsManager not initialized or no getShaderSource method');
+        }
+
+        // Log buffer stats shader (brightness histogram)
+        if (this.bufferStatsManager && this.bufferStatsManager.getShaderSource) {
+            const bufferShader = this.bufferStatsManager.getShaderSource();
+            if (bufferShader) {
+                console.log('=== BRIGHTNESS STATS FRAGMENT SHADER ===');
+                console.log(bufferShader);
+                console.log('=== END SHADER ===');
+            } else {
+                console.warn('Buffer stats shader not available');
+            }
+        } else {
+            console.warn('BufferStatsManager not initialized or no getShaderSource method');
+        }
+
+        logger.info('Stats shaders logged to browser console');
     }
 }

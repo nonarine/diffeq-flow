@@ -191,7 +191,14 @@ export function generateGradientColorMode(modeName, dimensions, gradientGLSL) {
         case 'velocity_magnitude':
             valueExpression = `
     float speed = length(velocity);
-    float normalized = clamp(speed / max(u_max_velocity, 0.1), 0.0, 1.0);
+    float normalized;
+    if (u_velocity_log_scale > 0.5) {
+        // Logarithmic scaling: log(1 + speed) / log(1 + max_velocity)
+        normalized = clamp(log(1.0 + speed) / log(1.0 + max(u_max_velocity, 0.1)), 0.0, 1.0);
+    } else {
+        // Linear scaling
+        normalized = clamp(speed / max(u_max_velocity, 0.1), 0.0, 1.0);
+    }
     return evaluateGradient(normalized);`;
             break;
 
@@ -207,7 +214,14 @@ export function generateGradientColorMode(modeName, dimensions, gradientGLSL) {
     float speed = length(velocity);
     float angle = atan(velocity.y, velocity.x);
     float hue = (angle + 3.14159265) / (2.0 * 3.14159265);
-    float saturation = clamp(speed / max(u_max_velocity, 0.1), 0.0, 1.0);
+    float saturation;
+    if (u_velocity_log_scale > 0.5) {
+        // Logarithmic scaling: log(1 + speed) / log(1 + max_velocity)
+        saturation = clamp(log(1.0 + speed) / log(1.0 + max(u_max_velocity, 0.1)), 0.0, 1.0);
+    } else {
+        // Linear scaling
+        saturation = clamp(speed / max(u_max_velocity, 0.1), 0.0, 1.0);
+    }
 
     // Get color from gradient based on angle
     vec3 fullColor = evaluateGradient(hue);

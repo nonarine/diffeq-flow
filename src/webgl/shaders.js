@@ -367,7 +367,7 @@ precision highp float;
 varying vec${dimensions} v_pos;
 varying vec${dimensions} v_velocity;
 
-${usesMaxVelocity ? 'uniform float u_max_velocity;' : ''}
+${usesMaxVelocity ? 'uniform float u_max_velocity;\nuniform float u_velocity_log_scale;' : ''}
 uniform float u_particle_intensity;
 uniform float u_color_saturation;
 
@@ -486,6 +486,9 @@ uniform float u_exposure;
 uniform float u_gamma;
 uniform float u_whitePoint;
 uniform float u_brightness_desat;
+uniform float u_brightness_sat;
+uniform float u_hdr_max_brightness;
+uniform float u_hdr_avg_brightness;
 
 varying vec2 v_texcoord;
 
@@ -502,23 +505,60 @@ void main() {
         hdrColor = mix(hdrColor, hdrColor + bloomColor, u_bloom_alpha);
     }
 
+    // Calculate HDR brightness once for both effects (Rec. 709 luminance)
+    float hdrBrightness = dot(hdrColor, vec3(0.2126, 0.7152, 0.0722));
+    vec3 hdrGray = vec3(hdrBrightness);
+
+    // Get adaptive thresholds based on actual HDR buffer statistics
+    float avgBrightness = max(u_hdr_avg_brightness, 0.1); // Avoid division by zero
+    float maxBrightness = max(u_hdr_max_brightness, 1.0);
+
+    // Work in log space to handle the massive dynamic range (0.1 to 100,000+)
+    float logAvg = log2(avgBrightness + 1.0);
+    float logMax = log2(maxBrightness + 1.0);
+    float logBrightness = log2(hdrBrightness + 1.0);
+
+    // Apply brightness-based DESATURATION (desaturates BRIGHT regions)
+    // Prevents oversaturation and RGB clipping in dense accumulations
+    if (u_brightness_desat > 0.0) {
+        // Target brighter-than-average regions (where particles accumulate)
+        // Start desaturating at 2x average, full desat at 100x average
+        // This hits the actual bright accumulations, not just the max peaks
+        float brightStart = avgBrightness * 2.0;
+        float brightEnd = avgBrightness * 100.0;
+        float logBrightStart = log2(brightStart + 1.0);
+        float logBrightEnd = log2(brightEnd + 1.0);
+        float desatFactor = smoothstep(logBrightStart, logBrightEnd, logBrightness) * u_brightness_desat;
+
+        // Blend toward grayscale
+        hdrColor = mix(hdrColor, hdrGray, desatFactor);
+    }
+
+    // Apply brightness-based SATURATION BUILDUP (desaturates DIM regions)
+    // Creates effect where sparse particles are washed out, dense accumulations pop with color
+    if (u_brightness_sat > 0.0) {
+        // Slider controls the threshold: higher values = more aggressive desaturation
+        // - At 0.3: pixels below ~1000x average are desaturated
+        // - At 0.5: pixels below ~4000x average are desaturated
+        // - At 1.0: pixels below ~137,000 (max) are desaturated (very aggressive)
+        float threshold = avgBrightness * pow(10.0, u_brightness_sat * 3.0); // 1x to 1000x average
+        float logThreshold = log2(threshold + 1.0);
+
+        // Narrow transition for sharp cutoff
+        float logTransitionStart = log2(avgBrightness * 0.1 + 1.0); // 10% of average
+        float satFactor = smoothstep(logTransitionStart, logThreshold, logBrightness);
+
+        // Apply the effect: low brightness gets desaturated AND dimmed
+        float desatAmount = (1.0 - satFactor) * u_brightness_sat;
+        hdrColor = mix(hdrColor, hdrGray, desatAmount);
+
+        // Also reduce brightness in desaturated regions
+        // This makes sparse trails even more subtle (both dim and colorless)
+        hdrColor *= (1.0 - desatAmount * 0.5); // Reduce brightness by up to 50%
+    }
+
     // Apply tone mapping operator
     vec3 tonemapped = tonemap(hdrColor);
-
-    // Apply brightness-based desaturation (before gamma)
-    // Desaturates bright regions to prevent RGB channel clipping
-    if (u_brightness_desat > 0.0) {
-        // Calculate brightness (Rec. 709 luminance)
-        float brightness = dot(tonemapped, vec3(0.2126, 0.7152, 0.0722));
-
-        // Smooth transition: start desaturating at 0.3 brightness, full at 0.75
-        // This catches bright regions early before they hit RGB max
-        float desatFactor = smoothstep(0.3, 0.75, brightness) * u_brightness_desat;
-
-        // Blend toward grayscale based on brightness
-        vec3 gray = vec3(brightness);
-        tonemapped = mix(tonemapped, gray, desatFactor);
-    }
 
     // Apply gamma correction
     vec3 ldrColor = applyGamma(tonemapped);
