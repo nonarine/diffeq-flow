@@ -5,6 +5,8 @@
 import { TextureManager } from './textures.js';
 import { FramebufferManager } from './framebuffer.js';
 import { BloomManager } from './bloom.js';
+import { BilateralFilterManager } from './bilateral.js';
+import { SMAAManager } from './smaa.js';
 import { BufferStatsManager } from './buffer-stats.js';
 import { VelocityStatsManager } from './velocity-stats.js';
 import { ParticleSystem } from '../particles/system.js';
@@ -122,6 +124,26 @@ export class Renderer {
         this.bloomAlpha = config.bloomAlpha !== undefined ? config.bloomAlpha : 1.0;
         this.currentBloomTexture = null; // Stores bloom texture for current frame
 
+        // SMAA settings (morphological antialiasing)
+        this.smaaEnabled = config.smaaEnabled !== undefined ? config.smaaEnabled : true;
+        this.smaaIntensity = config.smaaIntensity !== undefined ? config.smaaIntensity : 0.75;
+        this.smaaThreshold = config.smaaThreshold !== undefined ? config.smaaThreshold : 0.1;
+
+        // Bilateral filter settings (edge-preserving noise reduction)
+        this.bilateralEnabled = config.bilateralEnabled !== undefined ? config.bilateralEnabled : false;
+        this.bilateralSpatialSigma = config.bilateralSpatialSigma !== undefined ? config.bilateralSpatialSigma : 4.0;
+        this.bilateralIntensitySigma = config.bilateralIntensitySigma !== undefined ? config.bilateralIntensitySigma : 0.2;
+
+        // Supersampling (render at higher resolution, downsample to canvas)
+        // Validate and clamp supersample factor
+        let supersampleFactor = config.supersampleFactor !== undefined ? config.supersampleFactor : 1.0;
+        if (typeof supersampleFactor !== 'number' || isNaN(supersampleFactor) || supersampleFactor <= 0) {
+            logger.warn(`Invalid supersampleFactor: ${supersampleFactor}, using default 1.0`);
+            supersampleFactor = 1.0;
+        }
+        this.supersampleFactor = Math.max(0.5, Math.min(3.0, supersampleFactor));
+        logger.info(`Initial supersample factor set to: ${this.supersampleFactor}`);
+
         this.timestep = 0.01;
         this.fadeOpacity = 0.99;
         this.dropProbability = 0.003;
@@ -160,16 +182,31 @@ export class Renderer {
         // Create framebuffer for particle position updates (not HDR, separate from screen rendering)
         this.updateFramebuffer = gl.createFramebuffer();
 
+        // Calculate render resolution based on supersample factor
+        // Ensure we always have valid dimensions (minimum 1x1)
+        const canvasWidth = Math.max(1, canvas.width || 800);
+        const canvasHeight = Math.max(1, canvas.height || 600);
+        this.renderWidth = Math.max(1, Math.floor(canvasWidth * this.supersampleFactor));
+        this.renderHeight = Math.max(1, Math.floor(canvasHeight * this.supersampleFactor));
+
+        logger.verbose('Render dimensions calculated', {
+            canvasSize: `${canvasWidth}x${canvasHeight}`,
+            renderSize: `${this.renderWidth}x${this.renderHeight}`,
+            supersampleFactor: this.supersampleFactor
+        });
+
         // Create framebuffer manager for HDR rendering
         logger.info('Initializing HDR rendering system...', {
             requested: this.useHDR,
-            canvasSize: `${canvas.width}x${canvas.height}`
+            canvasSize: `${canvas.width}x${canvas.height}`,
+            renderSize: `${this.renderWidth}x${this.renderHeight}`,
+            supersampleFactor: this.supersampleFactor
         });
 
         this.framebufferManager = new FramebufferManager(
             gl,
-            canvas.width,
-            canvas.height,
+            this.renderWidth,
+            this.renderHeight,
             {
                 useHDR: this.useHDR,
                 usePingPong: true
@@ -208,8 +245,8 @@ export class Renderer {
 
         this.bloomManager = new BloomManager(
             gl,
-            canvas.width,
-            canvas.height,
+            this.renderWidth,
+            this.renderHeight,
             {
                 enabled: this.bloomEnabled && hdrSupport.enabled,
                 intensity: this.bloomIntensity,
@@ -223,6 +260,86 @@ export class Renderer {
             bloomSize: this.bloomManager.isEnabled() ?
                 `${this.bloomManager.getBloomSize().width}x${this.bloomManager.getBloomSize().height}` : 'N/A'
         });
+
+        // Create SMAA manager
+        this.smaaManager = new SMAAManager(
+            gl,
+            this.renderWidth,
+            this.renderHeight,
+            {
+                enabled: this.smaaEnabled,
+                intensity: this.smaaIntensity,
+                threshold: this.smaaThreshold
+            }
+        );
+
+        logger.info('SMAA system initialized', {
+            enabled: this.smaaManager.isEnabled(),
+            intensity: this.smaaIntensity,
+            threshold: this.smaaThreshold
+        });
+
+        // Create bilateral filter manager
+        this.bilateralManager = new BilateralFilterManager(
+            gl,
+            this.renderWidth,
+            this.renderHeight,
+            {
+                enabled: this.bilateralEnabled,
+                spatialSigma: this.bilateralSpatialSigma,
+                intensitySigma: this.bilateralIntensitySigma
+            }
+        );
+
+        logger.info('Bilateral filter initialized', {
+            enabled: this.bilateralManager.isEnabled(),
+            spatialSigma: this.bilateralSpatialSigma,
+            intensitySigma: this.bilateralIntensitySigma
+        });
+
+        // Create dedicated LDR framebuffer for tone mapping output
+        // (prevents conflicts with SMAA's edges framebuffer)
+        this.ldrFramebuffer = gl.createFramebuffer();
+        this.ldrTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, this.ldrTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.renderWidth, this.renderHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.ldrFramebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.ldrTexture, 0);
+
+        const ldrFBStatus = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        if (ldrFBStatus !== gl.FRAMEBUFFER_COMPLETE) {
+            logger.error('LDR framebuffer incomplete', { status: ldrFBStatus });
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        logger.info('LDR framebuffer created for tone mapping output');
+
+        // Create final output framebuffer for supersampled rendering
+        // SMAA will render to this at high resolution, then we downsample to canvas
+        this.finalFramebuffer = gl.createFramebuffer();
+        this.finalTexture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, this.finalTexture);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.renderWidth, this.renderHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.finalFramebuffer);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.finalTexture, 0);
+
+        const finalFBStatus = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
+        if (finalFBStatus !== gl.FRAMEBUFFER_COMPLETE) {
+            logger.error('Final framebuffer incomplete', { status: finalFBStatus });
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        logger.info('Final framebuffer created for supersampling output');
 
         // Create buffer statistics manager
         this.bufferStatsManager = new BufferStatsManager(gl);
@@ -239,6 +356,10 @@ export class Renderer {
             1, 0,
             1, 1
         ]));
+
+        // Share quad buffer with postprocessing managers to avoid duplication
+        this.smaaManager.setQuadBuffer(this.quadBuffer);
+        this.bilateralManager.setQuadBuffer(this.quadBuffer);
 
         // Compile shaders
         logger.info('Compiling shaders...', { dimensions: this.dimensions, integrator: this.integratorType });
@@ -648,9 +769,9 @@ export class Renderer {
         // Bind next buffer for rendering
         this.framebufferManager.bind();
 
-        // CRITICAL: Set viewport to canvas size for HDR framebuffer rendering
-        // This was previously stuck at particle texture resolution, causing bright center bug
-        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+        // CRITICAL: Set viewport to render size for HDR framebuffer rendering
+        // Use supersample resolution for higher quality
+        gl.viewport(0, 0, this.renderWidth, this.renderHeight);
 
         // Disable blending for fade pass (we're doing a direct texture copy with multiplication)
         gl.disable(gl.BLEND);
@@ -747,6 +868,52 @@ export class Renderer {
     }
 
     /**
+     * Downsample supersampled image to canvas
+     * Simple copy with linear filtering for smooth result
+     */
+    downsampleToCanvas() {
+        const gl = this.gl;
+
+        // Bind canvas
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+
+        // Use a simple copy shader (reuse tone map program's vertex shader)
+        gl.useProgram(this.tonemapProgram);
+
+        const aPosLoc = gl.getAttribLocation(this.tonemapProgram, 'a_pos');
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
+        gl.enableVertexAttribArray(aPosLoc);
+        gl.vertexAttribPointer(aPosLoc, 2, gl.FLOAT, false, 0, 0);
+
+        // Bind final texture (supersampled SMAA output)
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.finalTexture);
+        gl.uniform1i(gl.getUniformLocation(this.tonemapProgram, 'u_screen'), 0);
+
+        // Disable bloom for downsample (already applied)
+        gl.uniform1i(gl.getUniformLocation(this.tonemapProgram, 'u_bloom_enabled'), 0);
+
+        // Set uniforms to passthrough (exposure=1, gamma=1)
+        // Actually, tone mapping is already done, so we just need to copy
+        // But tonemapProgram applies tone mapping, so we need a simpler shader
+        // Let's reuse the screen copy shader instead
+        gl.useProgram(this.screenFadeProgram);
+
+        const aPosLoc2 = gl.getAttribLocation(this.screenFadeProgram, 'a_pos');
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
+        gl.enableVertexAttribArray(aPosLoc2);
+        gl.vertexAttribPointer(aPosLoc2, 2, gl.FLOAT, false, 0, 0);
+
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, this.finalTexture);
+        gl.uniform1i(gl.getUniformLocation(this.screenFadeProgram, 'u_screen'), 0);
+        gl.uniform1f(gl.getUniformLocation(this.screenFadeProgram, 'u_fade'), 1.0); // No fade, just copy
+
+        gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    /**
      * Render one frame
      */
     render() {
@@ -792,11 +959,11 @@ export class Renderer {
         // Apply bloom effect (extract bright regions, blur, combine)
         this.applyBloom();
 
-        // Apply tone mapping and copy to canvas
-        this.framebufferManager.bindCanvas();
-        gl.viewport(0, 0, this.canvas.width, this.canvas.height);
+        // Render tone mapping to dedicated LDR framebuffer
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.ldrFramebuffer);
+        gl.viewport(0, 0, this.renderWidth, this.renderHeight);
 
-        // Disable blending for final tone mapping pass
+        // Disable blending for tone mapping pass
         gl.disable(gl.BLEND);
 
         // Use tone mapping shader
@@ -836,6 +1003,17 @@ export class Renderer {
         gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_hdr_avg_brightness'), stats.avgBrightness);
 
         gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+        // Apply bilateral filter for edge-preserving noise reduction
+        // Reads from LDR tone-mapped texture, writes to bilateral framebuffer
+        const filteredTexture = this.bilateralManager.apply(this.ldrTexture);
+
+        // Apply SMAA to filtered LDR image (3-pass morphological AA)
+        // SMAA reads from filtered texture and outputs to final framebuffer
+        this.smaaManager.applyToFramebuffer(filteredTexture, this.finalFramebuffer, this.quadBuffer);
+
+        // Downsample to canvas (with linear filtering for smooth result)
+        this.downsampleToCanvas();
 
         // Update buffer statistics periodically
         if (!this.frame) this.frame = 0;
@@ -1202,10 +1380,43 @@ export class Renderer {
      * Resize canvas
      */
     resize(width, height) {
+        const gl = this.gl;
+
+        // Validate dimensions
+        if (!width || !height || width <= 0 || height <= 0) {
+            logger.warn(`Invalid resize dimensions: ${width}x${height}, skipping resize`);
+            return;
+        }
+
         this.canvas.width = width;
         this.canvas.height = height;
-        this.framebufferManager.resize(width, height);
-        this.bloomManager.resize(width, height);
+
+        // Recalculate render resolution
+        // Ensure we always have valid dimensions (minimum 1x1)
+        this.renderWidth = Math.max(1, Math.floor(width * this.supersampleFactor));
+        this.renderHeight = Math.max(1, Math.floor(height * this.supersampleFactor));
+
+        logger.info('Resizing renderer', {
+            canvasSize: `${width}x${height}`,
+            renderSize: `${this.renderWidth}x${this.renderHeight}`,
+            supersampleFactor: this.supersampleFactor
+        });
+
+        this.framebufferManager.resize(this.renderWidth, this.renderHeight);
+        this.bloomManager.resize(this.renderWidth, this.renderHeight);
+        this.bilateralManager.resize(this.renderWidth, this.renderHeight);
+        this.smaaManager.resize(this.renderWidth, this.renderHeight);
+
+        // Resize LDR framebuffer
+        gl.bindTexture(gl.TEXTURE_2D, this.ldrTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.renderWidth, this.renderHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+
+        // Resize final framebuffer
+        gl.bindTexture(gl.TEXTURE_2D, this.finalTexture);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, this.renderWidth, this.renderHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.bindTexture(gl.TEXTURE_2D, null);
+
         this.gl.viewport(0, 0, width, height);
         this.clearScreen(); // Clear on resize
     }
@@ -1432,6 +1643,50 @@ export class Renderer {
         if (config.bloomAlpha !== undefined) {
             logger.verbose(`Bloom alpha: ${this.bloomAlpha} → ${config.bloomAlpha}`);
             this.bloomAlpha = config.bloomAlpha;
+        }
+        if (config.smaaEnabled !== undefined) {
+            logger.verbose(`SMAA enabled: ${this.smaaEnabled} → ${config.smaaEnabled}`);
+            this.smaaEnabled = config.smaaEnabled;
+            this.smaaManager.updateConfig({ enabled: config.smaaEnabled });
+        }
+        if (config.smaaIntensity !== undefined) {
+            logger.verbose(`SMAA intensity: ${this.smaaIntensity} → ${config.smaaIntensity}`);
+            this.smaaIntensity = config.smaaIntensity;
+            this.smaaManager.updateConfig({ intensity: config.smaaIntensity });
+        }
+        if (config.smaaThreshold !== undefined) {
+            logger.verbose(`SMAA threshold: ${this.smaaThreshold} → ${config.smaaThreshold}`);
+            this.smaaThreshold = config.smaaThreshold;
+            this.smaaManager.updateConfig({ threshold: config.smaaThreshold });
+        }
+        if (config.bilateralEnabled !== undefined) {
+            logger.verbose(`Bilateral filter enabled: ${this.bilateralEnabled} → ${config.bilateralEnabled}`);
+            this.bilateralEnabled = config.bilateralEnabled;
+            this.bilateralManager.updateConfig({ enabled: config.bilateralEnabled });
+        }
+        if (config.bilateralSpatialSigma !== undefined) {
+            logger.verbose(`Bilateral spatial sigma: ${this.bilateralSpatialSigma} → ${config.bilateralSpatialSigma}`);
+            this.bilateralSpatialSigma = config.bilateralSpatialSigma;
+            this.bilateralManager.updateConfig({ spatialSigma: config.bilateralSpatialSigma });
+        }
+        if (config.bilateralIntensitySigma !== undefined) {
+            logger.verbose(`Bilateral intensity sigma: ${this.bilateralIntensitySigma} → ${config.bilateralIntensitySigma}`);
+            this.bilateralIntensitySigma = config.bilateralIntensitySigma;
+            this.bilateralManager.updateConfig({ intensitySigma: config.bilateralIntensitySigma });
+        }
+        if (config.supersampleFactor !== undefined && config.supersampleFactor !== this.supersampleFactor) {
+            logger.info(`Supersampling factor: ${this.supersampleFactor} → ${config.supersampleFactor}`);
+
+            // Validate supersample factor
+            const validFactor = Math.max(0.5, Math.min(3.0, config.supersampleFactor));
+            if (validFactor !== config.supersampleFactor) {
+                logger.warn(`Invalid supersample factor ${config.supersampleFactor}, clamping to ${validFactor}`);
+            }
+
+            this.supersampleFactor = validFactor;
+            logger.info(`Applying supersample factor: ${this.supersampleFactor}`);
+            // Trigger resize to update all framebuffers
+            this.resize(this.canvas.width, this.canvas.height);
         }
 
         if (config.particleCount !== undefined && config.particleCount !== this.particleSystem.particleCount) {

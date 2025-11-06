@@ -994,6 +994,80 @@
                 <div class="info">Use Z-buffer to occlude particles by depth. Creates layered density effect in 3D systems.</div>
             </div>
 
+            <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Supersampling (SSAA)</h4>
+            <div class="control-group">
+                <label>Supersample Factor: <span class="range-value" id="supersample-factor-value">1.0x</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="supersample-factor" data-action="decrease">-</button>
+                    <input type="range" id="supersample-factor" min="0.5" max="3.0" value="1.0" step="0.1">
+                    <button class="slider-btn" data-slider="supersample-factor" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="supersample-factor" data-action="reset" title="Reset to default (1.0x)">↺</button>
+                </div>
+                <div class="info">Render at higher resolution and downsample (0.5x - 3.0x). Higher = better quality but slower. 2.0x = 4x samples.</div>
+            </div>
+
+            <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">SMAA Antialiasing</h4>
+            <div class="control-group">
+                <label>
+                    <input type="checkbox" id="smaa-enabled" checked>
+                    Enable SMAA (morphological AA)
+                </label>
+                <div class="info">Pattern-based antialiasing. Better edge preservation than FXAA - uses edge detection and pattern recognition.</div>
+            </div>
+
+            <div class="control-group">
+                <label>SMAA Intensity: <span class="range-value" id="smaa-intensity-value">0.75</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="smaa-intensity" data-action="decrease">-</button>
+                    <input type="range" id="smaa-intensity" min="0" max="100" value="75" step="0.1">
+                    <button class="slider-btn" data-slider="smaa-intensity" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="smaa-intensity" data-action="reset" title="Reset to default (0.75)">↺</button>
+                </div>
+                <div class="info">Blend strength (0.0 - 1.0). Controls how much smoothing is applied to detected edges.</div>
+            </div>
+
+            <div class="control-group">
+                <label>SMAA Threshold: <span class="range-value" id="smaa-threshold-value">0.10</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="smaa-threshold" data-action="decrease">-</button>
+                    <input type="range" id="smaa-threshold" min="0" max="50" value="10" step="0.1">
+                    <button class="slider-btn" data-slider="smaa-threshold" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="smaa-threshold" data-action="reset" title="Reset to default (0.10)">↺</button>
+                </div>
+                <div class="info">Edge detection sensitivity (0.0 - 0.5). Lower = more edges detected, higher = only strong edges.</div>
+            </div>
+
+            <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Bilateral Filter (Noise Reduction)</h4>
+            <div class="control-group">
+                <label>
+                    <input type="checkbox" id="bilateral-enabled">
+                    Enable Bilateral Filter
+                </label>
+                <div class="info">Edge-preserving blur. Smooths flat/sparse areas while preserving sharp edges and particle trails.</div>
+            </div>
+
+            <div class="control-group">
+                <label>Spatial Sigma: <span class="range-value" id="bilateral-spatial-value">4.0</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="bilateral-spatial" data-action="decrease">-</button>
+                    <input type="range" id="bilateral-spatial" min="10" max="100" value="80" step="1">
+                    <button class="slider-btn" data-slider="bilateral-spatial" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="bilateral-spatial" data-action="reset" title="Reset to default (4.0)">↺</button>
+                </div>
+                <div class="info">Blur radius (0.5 - 5.0). Higher = stronger smoothing effect.</div>
+            </div>
+
+            <div class="control-group">
+                <label>Intensity Sigma: <span class="range-value" id="bilateral-intensity-value">0.20</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="bilateral-intensity" data-action="decrease">-</button>
+                    <input type="range" id="bilateral-intensity" min="1" max="50" value="20" step="0.1">
+                    <button class="slider-btn" data-slider="bilateral-intensity" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="bilateral-intensity" data-action="reset" title="Reset to default (0.20)">↺</button>
+                </div>
+                <div class="info">Edge preservation threshold (0.01 - 0.5). Lower = preserve more edges, higher = blur across edges.</div>
+            </div>
+
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Tone Mapping</h4>
             <div class="control-group">
                 <label>Operator:</label>

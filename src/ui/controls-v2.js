@@ -223,6 +223,82 @@ export function initControls(renderer, callback) {
         settingsKey: 'useDepthTest'
     }));
 
+    // === Supersampling ===
+
+    const supersampleFactorControl = manager.register(new SliderControl('supersample-factor', 1.0, {
+        displayId: 'supersample-factor-value',
+        displayFormat: v => v.toFixed(1) + 'x',
+        settingsKey: 'supersampleFactor'
+    }));
+
+    // === SMAA antialiasing controls ===
+
+    const smaaEnabledControl = manager.register(new CheckboxControl('smaa-enabled', true, {
+        settingsKey: 'smaaEnabled'
+    }));
+
+    const smaaIntensityControl = manager.register(new PercentSliderControl('smaa-intensity', 0.75, {
+        displayId: 'smaa-intensity-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    const smaaThresholdControl = manager.register(new PercentSliderControl('smaa-threshold', 0.10, {
+        displayId: 'smaa-threshold-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    // === Bilateral filter controls ===
+
+    const bilateralEnabledControl = manager.register(new CheckboxControl('bilateral-enabled', false, {
+        settingsKey: 'bilateralEnabled'
+    }));
+
+    // Spatial sigma: slider 10-100 → value 0.5-5.0 (divide by 20)
+    class BilateralSpatialControl extends SliderControl {
+        getValue() {
+            const element = $(`#${this.id}`);
+            return parseFloat(element.val()) / 20.0;
+        }
+        setValue(value) {
+            const element = $(`#${this.id}`);
+            element.val(value * 20.0);
+            this.updateDisplay(value);
+        }
+    }
+
+    const bilateralSpatialControl = manager.register(new BilateralSpatialControl('bilateral-spatial', 4.0, {
+        min: 10,
+        max: 100,
+        step: 1,
+        displayId: 'bilateral-spatial-value',
+        displayFormat: v => v.toFixed(1),
+        settingsKey: 'bilateralSpatialSigma'
+    }));
+
+    // Intensity sigma: slider 1-50 → value 0.01-0.5 (divide by 100)
+    class BilateralIntensityControl extends SliderControl {
+        getValue() {
+            const element = $(`#${this.id}`);
+            return parseFloat(element.val()) / 100.0;
+        }
+        setValue(value) {
+            const element = $(`#${this.id}`);
+            element.val(value * 100.0);
+            this.updateDisplay(value);
+        }
+    }
+
+    const bilateralIntensityControl = manager.register(new BilateralIntensityControl('bilateral-intensity', 0.20, {
+        min: 1,
+        max: 50,
+        step: 0.1,
+        displayId: 'bilateral-intensity-value',
+        displayFormat: v => v.toFixed(2),
+        settingsKey: 'bilateralIntensitySigma'
+    }));
+
+    // === Tone mapping controls ===
+
     const tonemapOperatorControl = manager.register(new SelectControl('tonemap-operator', 'aces', {
         settingsKey: 'tonemapOperator',
         onChange: (value) => {

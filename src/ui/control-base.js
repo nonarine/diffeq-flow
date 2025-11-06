@@ -74,21 +74,29 @@ export class SliderControl extends Control {
         this.step = options.step || 1;
         this.displayId = options.displayId || null; // Optional display element ID
         this.displayFormat = options.displayFormat || (v => v.toFixed(2)); // Format function
+        // Transform functions for value conversion (e.g., slider value → actual value)
+        this.transform = options.transform || (v => v); // slider → setting
+        this.inverseTransform = options.inverseTransform || (v => v); // setting → slider
     }
 
     getValue() {
         const element = $(`#${this.id}`);
-        return parseFloat(element.val());
+        const sliderValue = parseFloat(element.val());
+        // Apply transform to get actual setting value
+        return this.transform(sliderValue);
     }
 
     setValue(value) {
         const element = $(`#${this.id}`);
-        element.val(value);
+        // Apply inverse transform to get slider value
+        const sliderValue = this.inverseTransform(value);
+        element.val(sliderValue);
         this.updateDisplay(value);
     }
 
     updateDisplay(value) {
         if (this.displayId) {
+            // Display shows the actual value, not the slider value
             $(`#${this.displayId}`).text(this.displayFormat(value));
         }
     }
@@ -98,7 +106,7 @@ export class SliderControl extends Control {
         this.element = element;
 
         element.on('input', () => {
-            const value = this.getValue();
+            const value = this.getValue(); // Gets transformed value
             this.updateDisplay(value);
             if (this.onChange) this.onChange(value);
             if (callback) callback();
