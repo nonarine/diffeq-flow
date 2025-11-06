@@ -724,8 +724,9 @@
                 <select id="integrator">
                     <optgroup label="Explicit Methods">
                         <option value="euler">Euler (1st order)</option>
-                        <option value="rk2" selected>Runge-Kutta 2 (2nd order)</option>
-                        <option value="rk4">Runge-Kutta 4 (4th order)</option>
+                        <option value="explicit-midpoint">Explicit Midpoint (2nd order)</option>
+                        <option value="heun">Heun (Explicit Trapezoidal, 2nd order)</option>
+                        <option value="rk4" selected>RK4 (4th order)</option>
                     </optgroup>
                     <optgroup label="Implicit Methods (A-stable)">
                         <option value="implicit-euler">Implicit Euler (1st order)</option>
@@ -734,27 +735,28 @@
                         <option value="implicit-rk4">Implicit RK4 (4th order)</option>
                     </optgroup>
                     <optgroup label="Special Methods">
-                        <option value="symplectic">Symplectic Euler (Energy-preserving)</option>
                         <option value="custom">Custom (Advanced)</option>
                     </optgroup>
                 </select>
-                <div class="info">Implicit methods are more stable for stiff systems and allow larger timesteps. Symplectic methods preserve energy in Hamiltonian systems.</div>
+                <div class="info">Explicit methods: Euler ↔ Implicit Euler, Midpoint ↔ Implicit Midpoint, Heun ↔ Trapezoidal, RK4 ↔ Implicit RK4. Implicit methods are A-stable and allow larger timesteps for stiff systems.</div>
             </div>
 
             <div class="control-group" id="solution-method-group" style="display: none;">
                 <label>Solution Method</label>
                 <select id="solution-method">
                     <option value="fixed-point">Fixed-Point Iteration</option>
+                    <option value="midpoint">Midpoint Solver</option>
                     <option value="newton">Newton's Method</option>
+                    <option value="newton-fd">Newton (Finite Diff)</option>
                 </select>
-                <div class="info">Fixed-point creates interesting chaotic artifacts. Newton's method converges faster and is more accurate.</div>
+                <div class="info">Fixed-point creates interesting chaotic artifacts. Midpoint solver (predictor-corrector) offers a balance between speed and accuracy. Newton's method uses symbolic differentiation (most accurate). Newton (Finite Diff) approximates the Jacobian numerically and may create unique visual artifacts.</div>
             </div>
 
             <div class="control-group">
                 <label>Time Step: <span class="range-value" id="timestep-value">0.01</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="timestep" data-action="decrease">-</button>
-                    <input type="range" id="timestep" min="0.001" max="2.5" value="0.01" step="0.001">
+                    <input type="range" id="timestep" min="0.001" max="2.5" value="0.01" step="0.01">
                     <button class="slider-btn" data-slider="timestep" data-action="increase">+</button>
                 </div>
             </div>

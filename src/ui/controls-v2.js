@@ -91,6 +91,12 @@ export function initControls(renderer, callback) {
             const isImplicit = value.startsWith('implicit-') || value === 'trapezoidal';
             $('#implicit-iterations-group').toggle(isImplicit);
             $('#solution-method-group').toggle(isImplicit);
+
+            // Update accordion height to accommodate shown/hidden controls
+            const $accordionSection = $('#integrator').closest('.accordion-section');
+            if ($accordionSection.length && !$accordionSection.hasClass('collapsed')) {
+                $accordionSection.css('max-height', $accordionSection[0].scrollHeight + 'px');
+            }
         }
     }));
 
@@ -101,7 +107,7 @@ export function initControls(renderer, callback) {
     const timestepControl = manager.register(new SliderControl('timestep', 0.01, {
         min: 0.001,
         max: 2.5,
-        step: 0.001,
+        step: 0.01,
         displayId: 'timestep-value',
         displayFormat: v => v.toFixed(4)
     }));

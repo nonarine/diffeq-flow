@@ -90,6 +90,7 @@ export class Renderer {
 
         this.integratorType = 'rk4';
         this.integratorParams = { iterations: 3 }; // For implicit methods
+        this.integratorCostFactor = 1; // Cost factor for fair integrator comparison (set during shader compilation)
         this.solutionMethod = 'fixed-point'; // For implicit methods: 'fixed-point' or 'newton'
         this.mapperType = 'select';
         this.mapperParams = { dim1: 0, dim2: 1 };
@@ -295,6 +296,9 @@ export class Renderer {
             };
             const integrator = getIntegrator(this.integratorType, this.dimensions, integratorParams);
 
+            // Store integrator costFactor for timestep scaling
+            this.integratorCostFactor = integrator.costFactor || 1;
+
             // Get mapper code
             const mapper = getMapper(this.mapperType, this.dimensions, this.mapperParams);
 
@@ -439,7 +443,9 @@ export class Renderer {
             logger.verbose(`Frame ${this.frame}: Shader uniforms`, {
                 u_min: [this.bbox.min[0], this.bbox.min[1]],
                 u_max: [this.bbox.max[0], this.bbox.max[1]],
-                u_h: this.timestep,
+                u_h: this.timestep * (this.integratorCostFactor || 1),
+                timestep_base: this.timestep,
+                costFactor: this.integratorCostFactor || 1,
                 u_drop_rate: this.dropProbability
             });
         }
@@ -460,7 +466,8 @@ export class Renderer {
         const randSeed = Math.random(); // Generate once per frame for consistency
         gl.uniform2f(gl.getUniformLocation(program, 'u_min'), this.bbox.min[0], this.bbox.min[1]);
         gl.uniform2f(gl.getUniformLocation(program, 'u_max'), this.bbox.max[0], this.bbox.max[1]);
-        gl.uniform1f(gl.getUniformLocation(program, 'u_h'), this.timestep);
+        // Scale timestep by integrator cost factor for fair comparison
+        gl.uniform1f(gl.getUniformLocation(program, 'u_h'), this.timestep * (this.integratorCostFactor || 1));
         gl.uniform1f(gl.getUniformLocation(program, 'u_rand_seed'), randSeed);
         gl.uniform1f(gl.getUniformLocation(program, 'u_drop_rate'), this.dropProbability);
         gl.uniform1f(gl.getUniformLocation(program, 'u_particles_res'), resolution);

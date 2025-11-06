@@ -156,12 +156,149 @@ ${varDecls}
 }
 
 /**
+ * Solver generator functions for implicit equations
+ * These generate GLSL code for different iterative solver methods
+ */
+
+/**
+ * Generate fixed-point iteration solver body (single iteration step)
+ *
+ * @param {string} varName - Variable name to solve for (e.g., 'x_new', 'k1')
+ * @param {function(string): string} updateExprFn - Function that takes variable name and returns GLSL update expression
+ * @param {number} dimensions - Number of dimensions
+ * @returns {string} - GLSL code for single solver iteration (just the loop body)
+ */
+function generateFixedPointSolverBody(varName, updateExprFn, dimensions) {
+    const updateExpr = updateExprFn(varName);
+    return `        ${varName} = ${updateExpr};`;
+}
+
+/**
+ * Generate midpoint solver body (predictor-corrector single iteration step)
+ *
+ * @param {string} varName - Variable name to solve for
+ * @param {function(string): string} updateExprFn - Function that takes variable name and returns GLSL update expression
+ * @param {number} dimensions - Number of dimensions
+ * @returns {string} - GLSL code for single solver iteration (just the loop body)
+ */
+function generateMidpointSolverBody(varName, updateExprFn, dimensions) {
+    const vecType = `vec${dimensions}`;
+    const predName = `${varName}_pred`;
+    const midName = `${varName}_mid`;
+
+    const updateExprPred = updateExprFn(varName);
+    const updateExprMid = updateExprFn(midName);
+
+    return `        // Predictor: standard fixed-point step
+        ${vecType} ${predName} = ${updateExprPred};
+
+        // Corrector: evaluate at midpoint between current and predictor
+        ${vecType} ${midName} = (${varName} + ${predName}) * 0.5;
+        ${varName} = ${updateExprMid};`;
+}
+
+/**
+ * Generate Newton's method solver body (single iteration step)
+ *
+ * @param {string} varName - Variable name to solve for
+ * @param {function(string): string} residualExprFn - Function that takes variable name and returns GLSL residual F(x)
+ * @param {function(string): string} jacobianExprFn - Function that takes variable name and returns GLSL Jacobian matrix
+ * @param {number} dimensions - Number of dimensions
+ * @returns {string} - GLSL code for single solver iteration (just the loop body)
+ */
+function generateNewtonSolverBody(varName, residualExprFn, jacobianExprFn, dimensions) {
+    const vecType = `vec${dimensions}`;
+    const matType = dimensions === 2 ? 'mat2' : dimensions === 3 ? 'mat3' : 'mat4';
+    const inverseFuncName = `inverse${dimensions}`;
+
+    const residualExpr = residualExprFn(varName);
+    const jacobianExpr = jacobianExprFn(varName);
+
+    // Use varName prefix for local variables to avoid redeclaration when used multiple times in same scope
+    return `        ${vecType} F_${varName} = ${residualExpr};
+        ${matType} J_${varName} = ${jacobianExpr};
+
+        // Newton step: x -= J^(-1) * F
+        ${vecType} delta_${varName} = ${inverseFuncName}(J_${varName}) * F_${varName};
+        ${varName} -= delta_${varName};`;
+}
+
+/**
+ * Generate Newton's method solver body with finite difference Jacobian (single iteration step)
+ *
+ * Uses finite differences to approximate the Jacobian matrix instead of symbolic differentiation.
+ * This avoids dependency on symbolic math but may create interesting numerical artifacts.
+ *
+ * @param {string} varName - Variable name to solve for
+ * @param {function(string): string} velocityExprFn - Function that takes position and returns GLSL velocity expression
+ * @param {number} dimensions - Number of dimensions
+ * @param {string} hScale - Scaling factor for velocity Jacobian (e.g., 'h', 'h*0.5', '1.0')
+ * @param {string} residualRHS - Right-hand side of residual (e.g., 'pos + h * vel', 'pos + h * 0.5 * (f0 + vel)')
+ * @returns {string} - GLSL code for single solver iteration (just the loop body)
+ */
+function generateNewtonFDSolverBody(varName, velocityExprFn, dimensions, hScale = 'h', residualRHS = null) {
+    const vecType = `vec${dimensions}`;
+    const matType = dimensions === 2 ? 'mat2' : dimensions === 3 ? 'mat3' : 'mat4';
+    const inverseFuncName = `inverse${dimensions}`;
+    const coords = ['x', 'y', 'z', 'w'];
+
+    // Epsilon for finite differences - balanced to avoid both truncation and cancellation errors
+    const epsilon = '1e-4';
+
+    // Generate code to compute each column of the velocity Jacobian (Df)
+    let jacobianCode = '';
+    const dfColumns = [];
+
+    for (let col = 0; col < dimensions; col++) {
+        const colName = `Df_col${col}_${varName}`;
+
+        // Create perturbation vector (unit vector in dimension col)
+        const perturbation = Array.from({length: dimensions}, (_, i) =>
+            i === col ? epsilon : '0.0'
+        ).join(', ');
+
+        // Compute f(x + eps*e_col) and f(x) - this is the derivative of the velocity field
+        const velocityAtPerturbed = velocityExprFn(`${varName} + ${vecType}(${perturbation})`);
+        const velocityAtCurrent = velocityExprFn(varName);
+
+        jacobianCode += `
+        // Velocity Jacobian column ${col}: d(velocity)/d${coords[col]}
+        ${vecType} ${colName} = (${velocityAtPerturbed} - ${velocityAtCurrent}) / ${epsilon};`;
+
+        dfColumns.push(colName);
+    }
+
+    // Build the Jacobian of the velocity field
+    jacobianCode += `
+
+        // Velocity Jacobian matrix Df
+        ${matType} Df_${varName} = ${matType}(${dfColumns.join(', ')});
+
+        // Residual Jacobian: J_F = I - ${hScale} * Df
+        ${matType} J_${varName} = ${matType}(1.0) - ${hScale} * Df_${varName};`;
+
+    // Compute residual
+    const currentVel = velocityExprFn(varName);
+    const residual = residualRHS || `pos + ${hScale} * ${currentVel}`;
+
+    return `        // Finite difference Jacobian approximation (epsilon = ${epsilon})${jacobianCode}
+
+        // Compute residual: F(x) = x - RHS
+        ${vecType} F_${varName} = ${varName} - (${residual});
+
+        // Newton step: x -= J^(-1) * F
+        ${vecType} delta_${varName} = ${inverseFuncName}(J_${varName}) * F_${varName};
+        ${varName} -= delta_${varName};`;
+}
+
+/**
  * Euler integrator (1st order)
  * Simple forward step: x(t+h) = x(t) + h*f(x)
  */
 export function eulerIntegrator(dimensions) {
     return {
         name: 'Euler',
+        costFactor: 1, // 1 function evaluation per step
         code: `
 // Euler integration
 vec${dimensions} integrate(vec${dimensions} pos, float h) {
@@ -173,18 +310,39 @@ vec${dimensions} integrate(vec${dimensions} pos, float h) {
 }
 
 /**
- * Runge-Kutta 2 (Midpoint method)
+ * Explicit Midpoint (RK2)
  * 2nd order accurate
  */
-export function rk2Integrator(dimensions) {
+export function explicitMidpointIntegrator(dimensions) {
     return {
-        name: 'RK2 (Midpoint)',
+        name: 'Explicit Midpoint',
+        costFactor: 2, // 2 function evaluations per step
         code: `
-// Runge-Kutta 2 (Midpoint) integration
+// Explicit Midpoint (RK2) integration
 vec${dimensions} integrate(vec${dimensions} pos, float h) {
     vec${dimensions} k1 = get_velocity(pos);
     vec${dimensions} k2 = get_velocity(pos + h * 0.5 * k1);
     return pos + h * k2;
+}
+`
+    };
+}
+
+/**
+ * Heun's Method (Explicit Trapezoidal, RK2 variant)
+ * 2nd order accurate
+ * Explicit counterpart to implicit trapezoidal rule
+ */
+export function heunIntegrator(dimensions) {
+    return {
+        name: 'Heun (Explicit Trapezoidal)',
+        costFactor: 2, // 2 function evaluations per step
+        code: `
+// Heun's Method (Explicit Trapezoidal) integration
+vec${dimensions} integrate(vec${dimensions} pos, float h) {
+    vec${dimensions} k1 = get_velocity(pos);
+    vec${dimensions} k2 = get_velocity(pos + h * k1);
+    return pos + h * 0.5 * (k1 + k2);
 }
 `
     };
@@ -197,6 +355,7 @@ vec${dimensions} integrate(vec${dimensions} pos, float h) {
 export function rk4Integrator(dimensions) {
     return {
         name: 'RK4',
+        costFactor: 4, // 4 function evaluations per step
         code: `
 // Runge-Kutta 4 integration
 vec${dimensions} integrate(vec${dimensions} pos, float h) {
@@ -214,86 +373,78 @@ vec${dimensions} integrate(vec${dimensions} pos, float h) {
 /**
  * Implicit Euler (Backward Euler)
  * Solves: x(t+h) = x(t) + h*f(x(t+h))
- * Can use either fixed-point iteration or Newton's method
+ * Can use fixed-point iteration, midpoint solver, or Newton's method
  * More stable than explicit Euler, especially for stiff systems
  */
 export function implicitEulerIntegrator(dimensions, iterations = 3, solutionMethod = 'fixed-point', expressions = null) {
     logger.info(`*** Implicit Euler integrator requested: solutionMethod=${solutionMethod}, hasExpressions=${!!expressions}`);
 
+    const vecType = `vec${dimensions}`;
+    const matType = dimensions === 2 ? 'mat2' : dimensions === 3 ? 'mat3' : 'mat4';
+
+    // Problem definition for Implicit Euler: x_new = pos + h * f(x_new)
+    const initialGuess = 'pos + h * get_velocity(pos)';
+    const updateExprFn = (v) => `pos + h * get_velocity(${v})`;
+    const velocityExprFn = (v) => `get_velocity(${v})`;
+
+    let solverBody;
+    let solverName;
+    let jacobianGLSL = '';
+
+    // Choose solver method
     if (solutionMethod === 'newton' && expressions) {
         // BUG: There's a known issue where Newton's method sometimes fails to compile
         // correctly on initial page load (Jacobian computation may return inconsistent
         // results or fail silently). Workaround is to always start in fixed-point mode
         // and switch to Newton after a 3-second delay (see controls-v2.js).
-        //
-        // Try to compute Jacobian symbolically
         logger.info('Computing Jacobian for Newton\'s method');
-        logger.info('Timestamp:', new Date().toISOString());
-        logger.info('Expressions:', expressions);
-        logger.info('Dimensions:', dimensions);
 
         const jacobian = computeSymbolicJacobian(expressions, dimensions);
 
         if (isValidJacobian(jacobian)) {
-            // Newton's method with symbolic Jacobian
-            const jacobianGLSL = generateJacobianGLSL(jacobian, dimensions);
-            const matType = dimensions === 2 ? 'mat2' : dimensions === 3 ? 'mat3' : 'mat4';
-            const vecType = `vec${dimensions}`;
-
             logger.info('✓ Successfully using Newton\'s method for Implicit Euler');
-            logger.info('Jacobian GLSL code length:', jacobianGLSL.length);
 
-            const inverseFuncName = `inverse${dimensions}`;
+            jacobianGLSL = generateJacobianGLSL(jacobian, dimensions);
+            const residualExprFn = (v) => `${v} - pos - h * get_velocity(${v})`;
+            const jacobianExprFn = (v) => `${matType}(1.0) - h * computeJacobian(${v})`;
 
-            return {
-                name: 'Implicit Euler (Newton)',
-                code: `
-${jacobianGLSL}
-
-// Implicit Euler integration (Newton's method)
-${vecType} integrate(${vecType} pos, float h) {
-    // Start with explicit Euler as initial guess
-    ${vecType} x_new = pos + h * get_velocity(pos);
-
-    // Newton's method: solve F(x_new) = x_new - pos - h*f(x_new) = 0
-    for (int i = 0; i < ${iterations}; i++) {
-        ${vecType} f_new = get_velocity(x_new);
-        ${vecType} F = x_new - pos - h * f_new;
-
-        // J = I - h * df/dx
-        ${matType} J = ${matType}(1.0) - h * computeJacobian(x_new);
-
-        // Newton step: x_new -= J^(-1) * F
-        ${vecType} delta = ${inverseFuncName}(J) * F;
-        x_new -= delta;
-    }
-
-    return x_new;
-}
-`
-            };
+            solverBody = generateNewtonSolverBody('x_new', residualExprFn, jacobianExprFn, dimensions);
+            solverName = 'Newton';
         } else {
             logger.warn('✗ Failed to compute Jacobian for Newton\'s method');
-            logger.warn('Jacobian validity:', isValidJacobian(jacobian));
             logger.warn('Falling back to fixed-point iteration');
+            solverBody = generateFixedPointSolverBody('x_new', updateExprFn, dimensions);
+            solverName = 'Fixed-Point';
         }
-    } else if (solutionMethod === 'newton' && !expressions) {
-        logger.warn('✗ Newton\'s method requested but no expressions provided');
-        logger.warn('Falling back to fixed-point iteration');
+    } else if (solutionMethod === 'newton-fd') {
+        // Finite difference Newton's method - no symbolic expressions needed
+        logger.info('✓ Using finite difference Newton\'s method for Implicit Euler');
+
+        jacobianGLSL = generateMatrixInverseGLSL(dimensions);
+        solverBody = generateNewtonFDSolverBody('x_new', velocityExprFn, dimensions);
+        solverName = 'Newton (FD)';
+    } else if (solutionMethod === 'midpoint') {
+        solverBody = generateMidpointSolverBody('x_new', updateExprFn, dimensions);
+        solverName = 'Midpoint';
+    } else {
+        // Default: fixed-point iteration
+        solverBody = generateFixedPointSolverBody('x_new', updateExprFn, dimensions);
+        solverName = 'Fixed-Point';
     }
 
-    // Default: Fixed-point iteration
     return {
-        name: 'Implicit Euler',
+        name: `Implicit Euler (${solverName})`,
+        costFactor: 1, // Base cost (iterations are tunable convergence parameter)
         code: `
-// Implicit Euler integration (fixed-point iteration)
-vec${dimensions} integrate(vec${dimensions} pos, float h) {
-    // Start with explicit Euler as initial guess
-    vec${dimensions} x_new = pos + h * get_velocity(pos);
+${jacobianGLSL}
+// Implicit Euler integration (${solverName.toLowerCase()} solver)
+${vecType} integrate(${vecType} pos, float h) {
+    // Start with initial guess
+    ${vecType} x_new = ${initialGuess};
 
-    // Fixed-point iteration: x_new = x + h * f(x_new)
+    // Iterative solver
     for (int i = 0; i < ${iterations}; i++) {
-        x_new = pos + h * get_velocity(x_new);
+${solverBody}
     }
 
     return x_new;
@@ -305,79 +456,76 @@ vec${dimensions} integrate(vec${dimensions} pos, float h) {
 /**
  * Implicit Midpoint (Implicit RK2)
  * Solves: x(t+h) = x(t) + h*f((x(t) + x(t+h))/2)
- * Can use either fixed-point iteration or Newton's method
+ * Can use fixed-point iteration, midpoint solver, or Newton's method
  * 2nd order accurate, A-stable (excellent for stiff systems)
  */
 export function implicitMidpointIntegrator(dimensions, iterations = 4, solutionMethod = 'fixed-point', expressions = null) {
     logger.info(`*** Implicit Midpoint integrator requested: solutionMethod=${solutionMethod}, hasExpressions=${!!expressions}`);
 
+    const vecType = `vec${dimensions}`;
+    const matType = dimensions === 2 ? 'mat2' : dimensions === 3 ? 'mat3' : 'mat4';
+
+    // Initial guess: explicit RK2
+    const k1Init = 'get_velocity(pos)';
+    const initialGuess = `pos + h * get_velocity(pos + h * 0.5 * ${k1Init})`;
+
+    // Problem definition for Implicit Midpoint: x_new = pos + h * f((pos + x_new)/2)
+    const updateExprFn = (v) => `pos + h * get_velocity((pos + ${v}) * 0.5)`;
+    const velocityExprFn = (v) => `get_velocity((pos + ${v}) * 0.5)`;
+
+    let solverBody;
+    let solverName;
+    let jacobianGLSL = '';
+
+    // Choose solver method
     if (solutionMethod === 'newton' && expressions) {
-        // Try to compute Jacobian symbolically
         logger.info('Computing Jacobian for Newton\'s method (Implicit Midpoint)');
 
         const jacobian = computeSymbolicJacobian(expressions, dimensions);
 
         if (isValidJacobian(jacobian)) {
-            // Newton's method with symbolic Jacobian
-            const jacobianGLSL = generateJacobianGLSL(jacobian, dimensions);
-            const matType = dimensions === 2 ? 'mat2' : dimensions === 3 ? 'mat3' : 'mat4';
-            const vecType = `vec${dimensions}`;
-            const inverseFuncName = `inverse${dimensions}`;
-
             logger.info('✓ Successfully using Newton\'s method for Implicit Midpoint');
 
-            return {
-                name: 'Implicit Midpoint (Newton)',
-                code: `
-${jacobianGLSL}
+            jacobianGLSL = generateJacobianGLSL(jacobian, dimensions);
+            const residualExprFn = (v) => `${v} - pos - h * get_velocity((pos + ${v}) * 0.5)`;
+            const jacobianExprFn = (v) => `${matType}(1.0) - (h * 0.5) * computeJacobian((pos + ${v}) * 0.5)`;
 
-// Implicit Midpoint integration (Newton's method)
-${vecType} integrate(${vecType} pos, float h) {
-    // Start with explicit RK2 as initial guess
-    ${vecType} k1 = get_velocity(pos);
-    ${vecType} x_new = pos + h * get_velocity(pos + h * 0.5 * k1);
-
-    // Newton's method: solve F(x_new) = x_new - pos - h*f((pos + x_new)/2) = 0
-    for (int i = 0; i < ${iterations}; i++) {
-        ${vecType} x_mid = (pos + x_new) * 0.5;
-        ${vecType} f_mid = get_velocity(x_mid);
-        ${vecType} F = x_new - pos - h * f_mid;
-
-        // J = I - h/2 * df/dx (chain rule at midpoint)
-        ${matType} J = ${matType}(1.0) - (h * 0.5) * computeJacobian(x_mid);
-
-        // Newton step: x_new -= J^(-1) * F
-        ${vecType} delta = ${inverseFuncName}(J) * F;
-        x_new -= delta;
-    }
-
-    return x_new;
-}
-`
-            };
+            solverBody = generateNewtonSolverBody('x_new', residualExprFn, jacobianExprFn, dimensions);
+            solverName = 'Newton';
         } else {
             logger.warn('✗ Failed to compute Jacobian for Newton\'s method (Implicit Midpoint)');
             logger.warn('Falling back to fixed-point iteration');
+            solverBody = generateFixedPointSolverBody('x_new', updateExprFn, dimensions);
+            solverName = 'Fixed-Point';
         }
-    } else if (solutionMethod === 'newton' && !expressions) {
-        logger.warn('✗ Newton\'s method requested but no expressions provided (Implicit Midpoint)');
-        logger.warn('Falling back to fixed-point iteration');
+    } else if (solutionMethod === 'newton-fd') {
+        logger.info('✓ Using finite difference Newton\'s method for Implicit Midpoint');
+
+        jacobianGLSL = generateMatrixInverseGLSL(dimensions);
+        solverBody = generateNewtonFDSolverBody('x_new', velocityExprFn, dimensions, 'h * 0.5');
+        solverName = 'Newton (FD)';
+    } else if (solutionMethod === 'midpoint') {
+        solverBody = generateMidpointSolverBody('x_new', updateExprFn, dimensions);
+        solverName = 'Midpoint';
+    } else {
+        // Default: fixed-point iteration
+        solverBody = generateFixedPointSolverBody('x_new', updateExprFn, dimensions);
+        solverName = 'Fixed-Point';
     }
 
-    // Default: Fixed-point iteration
     return {
-        name: 'Implicit Midpoint',
+        name: `Implicit Midpoint (${solverName})`,
+        costFactor: 2, // 2nd order method (like explicit midpoint)
         code: `
-// Implicit Midpoint integration (fixed-point iteration)
-vec${dimensions} integrate(vec${dimensions} pos, float h) {
-    // Start with explicit RK2 as initial guess
-    vec${dimensions} k1 = get_velocity(pos);
-    vec${dimensions} x_new = pos + h * get_velocity(pos + h * 0.5 * k1);
+${jacobianGLSL}
+// Implicit Midpoint integration (${solverName.toLowerCase()} solver)
+${vecType} integrate(${vecType} pos, float h) {
+    // Start with initial guess
+    ${vecType} x_new = ${initialGuess};
 
-    // Fixed-point iteration: x_new = x + h * f((x + x_new)/2)
+    // Iterative solver
     for (int i = 0; i < ${iterations}; i++) {
-        vec${dimensions} x_mid = (pos + x_new) * 0.5;
-        x_new = pos + h * get_velocity(x_mid);
+${solverBody}
     }
 
     return x_new;
@@ -389,80 +537,76 @@ vec${dimensions} integrate(vec${dimensions} pos, float h) {
 /**
  * Trapezoidal Rule (Implicit RK2)
  * Solves: x(t+h) = x(t) + h/2 * (f(x(t)) + f(x(t+h)))
- * Can use either fixed-point iteration or Newton's method
+ * Can use fixed-point iteration, midpoint solver, or Newton's method
  * 2nd order accurate, A-stable
  */
 export function trapezoidalIntegrator(dimensions, iterations = 4, solutionMethod = 'fixed-point', expressions = null) {
     logger.info(`*** Trapezoidal integrator requested: solutionMethod=${solutionMethod}, hasExpressions=${!!expressions}`);
 
+    const vecType = `vec${dimensions}`;
+    const matType = dimensions === 2 ? 'mat2' : dimensions === 3 ? 'mat3' : 'mat4';
+
+    const initialGuess = 'pos + h * f0';
+
+    // Problem definition for Trapezoidal: x_new = pos + h/2 * (f0 + f(x_new))
+    const updateExprFn = (v) => `pos + h * 0.5 * (f0 + get_velocity(${v}))`;
+    const velocityExprFn = (v) => `get_velocity(${v})`;
+
+    let solverBody;
+    let solverName;
+    let jacobianGLSL = '';
+
+    // Choose solver method
     if (solutionMethod === 'newton' && expressions) {
-        // Try to compute Jacobian symbolically
         logger.info('Computing Jacobian for Newton\'s method (Trapezoidal)');
 
         const jacobian = computeSymbolicJacobian(expressions, dimensions);
 
         if (isValidJacobian(jacobian)) {
-            // Newton's method with symbolic Jacobian
-            const jacobianGLSL = generateJacobianGLSL(jacobian, dimensions);
-            const matType = dimensions === 2 ? 'mat2' : dimensions === 3 ? 'mat3' : 'mat4';
-            const vecType = `vec${dimensions}`;
-            const inverseFuncName = `inverse${dimensions}`;
-
             logger.info('✓ Successfully using Newton\'s method for Trapezoidal');
 
-            return {
-                name: 'Trapezoidal (Newton)',
-                code: `
-${jacobianGLSL}
+            jacobianGLSL = generateJacobianGLSL(jacobian, dimensions);
+            const residualExprFn = (v) => `${v} - pos - h * 0.5 * (f0 + get_velocity(${v}))`;
+            const jacobianExprFn = (v) => `${matType}(1.0) - (h * 0.5) * computeJacobian(${v})`;
 
-// Trapezoidal Rule integration (Newton's method)
-${vecType} integrate(${vecType} pos, float h) {
-    ${vecType} f0 = get_velocity(pos);
-
-    // Start with explicit Euler as initial guess
-    ${vecType} x_new = pos + h * f0;
-
-    // Newton's method: solve F(x_new) = x_new - pos - h/2*(f(pos) + f(x_new)) = 0
-    for (int i = 0; i < ${iterations}; i++) {
-        ${vecType} f_new = get_velocity(x_new);
-        ${vecType} F = x_new - pos - h * 0.5 * (f0 + f_new);
-
-        // J = I - h/2 * df/dx
-        ${matType} J = ${matType}(1.0) - (h * 0.5) * computeJacobian(x_new);
-
-        // Newton step: x_new -= J^(-1) * F
-        ${vecType} delta = ${inverseFuncName}(J) * F;
-        x_new -= delta;
-    }
-
-    return x_new;
-}
-`
-            };
+            solverBody = generateNewtonSolverBody('x_new', residualExprFn, jacobianExprFn, dimensions);
+            solverName = 'Newton';
         } else {
             logger.warn('✗ Failed to compute Jacobian for Newton\'s method (Trapezoidal)');
             logger.warn('Falling back to fixed-point iteration');
+            solverBody = generateFixedPointSolverBody('x_new', updateExprFn, dimensions);
+            solverName = 'Fixed-Point';
         }
-    } else if (solutionMethod === 'newton' && !expressions) {
-        logger.warn('✗ Newton\'s method requested but no expressions provided (Trapezoidal)');
-        logger.warn('Falling back to fixed-point iteration');
+    } else if (solutionMethod === 'newton-fd') {
+        logger.info('✓ Using finite difference Newton\'s method for Trapezoidal');
+
+        jacobianGLSL = generateMatrixInverseGLSL(dimensions);
+        solverBody = generateNewtonFDSolverBody('x_new', velocityExprFn, dimensions, 'h * 0.5', 'pos + h * 0.5 * (f0 + ' + velocityExprFn('x_new') + ')');
+        solverName = 'Newton (FD)';
+    } else if (solutionMethod === 'midpoint') {
+        solverBody = generateMidpointSolverBody('x_new', updateExprFn, dimensions);
+        solverName = 'Midpoint';
+    } else {
+        // Default: fixed-point iteration
+        solverBody = generateFixedPointSolverBody('x_new', updateExprFn, dimensions);
+        solverName = 'Fixed-Point';
     }
 
-    // Default: Fixed-point iteration
     return {
-        name: 'Trapezoidal',
+        name: `Trapezoidal (${solverName})`,
+        costFactor: 2, // 2nd order method (like Heun)
         code: `
-// Trapezoidal Rule integration (fixed-point iteration)
-vec${dimensions} integrate(vec${dimensions} pos, float h) {
-    vec${dimensions} f0 = get_velocity(pos);
+${jacobianGLSL}
+// Trapezoidal Rule integration (${solverName.toLowerCase()} solver)
+${vecType} integrate(${vecType} pos, float h) {
+    ${vecType} f0 = get_velocity(pos);
 
-    // Start with explicit Euler as initial guess
-    vec${dimensions} x_new = pos + h * f0;
+    // Start with initial guess
+    ${vecType} x_new = ${initialGuess};
 
-    // Fixed-point iteration: x_new = x + h/2 * (f(x) + f(x_new))
+    // Iterative solver
     for (int i = 0; i < ${iterations}; i++) {
-        vec${dimensions} f_new = get_velocity(x_new);
-        x_new = pos + h * 0.5 * (f0 + f_new);
+${solverBody}
     }
 
     return x_new;
@@ -475,7 +619,7 @@ vec${dimensions} integrate(vec${dimensions} pos, float h) {
  * Implicit RK4 (Gauss-Legendre)
  * Fully implicit 4th order method, excellent stability
  * Uses simplified 2-stage Gauss-Legendre
- * Can use either fixed-point iteration or Newton's method
+ * Can use fixed-point iteration, midpoint solver, or Newton's method
  *
  * Note: This uses a simplified Newton's method that treats each stage separately
  * (Gauss-Seidel style). A full Newton's method would solve the coupled 2N×2N system
@@ -485,28 +629,11 @@ vec${dimensions} integrate(vec${dimensions} pos, float h) {
 export function implicitRK4Integrator(dimensions, iterations = 5, solutionMethod = 'fixed-point', expressions = null) {
     logger.info(`*** Implicit RK4 integrator requested: solutionMethod=${solutionMethod}, hasExpressions=${!!expressions}`);
 
-    if (solutionMethod === 'newton' && expressions) {
-        // Try to compute Jacobian symbolically
-        logger.info('Computing Jacobian for Newton\'s method (Implicit RK4 - simplified)');
+    const vecType = `vec${dimensions}`;
+    const matType = dimensions === 2 ? 'mat2' : dimensions === 3 ? 'mat3' : 'mat4';
 
-        const jacobian = computeSymbolicJacobian(expressions, dimensions);
-
-        if (isValidJacobian(jacobian)) {
-            // Simplified Newton's method with symbolic Jacobian
-            const jacobianGLSL = generateJacobianGLSL(jacobian, dimensions);
-            const matType = dimensions === 2 ? 'mat2' : dimensions === 3 ? 'mat3' : 'mat4';
-            const vecType = `vec${dimensions}`;
-            const inverseFuncName = `inverse${dimensions}`;
-
-            logger.info('✓ Successfully using simplified Newton\'s method for Implicit RK4');
-
-            return {
-                name: 'Implicit RK4 (Newton)',
-                code: `
-${jacobianGLSL}
-
-// Implicit RK4 (Gauss-Legendre 2-stage) integration (simplified Newton's method)
-${vecType} integrate(${vecType} pos, float h) {
+    // Gauss-Legendre coefficients (will be inlined in GLSL)
+    const coeffsGLSL = `
     // Gauss-Legendre coefficients for 2-stage method
     const float a11 = 0.25;
     const float a12 = 0.25 - sqrt(3.0) / 6.0;
@@ -515,152 +642,106 @@ ${vecType} integrate(${vecType} pos, float h) {
     const float b1 = 0.5;
     const float b2 = 0.5;
     const float c1 = 0.5 - sqrt(3.0) / 6.0;
-    const float c2 = 0.5 + sqrt(3.0) / 6.0;
+    const float c2 = 0.5 + sqrt(3.0) / 6.0;`;
 
+    const initialGuessGLSL = `
     // Start with explicit RK4 as initial guess
     ${vecType} k1_guess = get_velocity(pos);
     ${vecType} k2_guess = get_velocity(pos + h * 0.5 * k1_guess);
 
     ${vecType} k1 = k1_guess;
-    ${vecType} k2 = k2_guess;
+    ${vecType} k2 = k2_guess;`;
 
-    // Simplified Newton's method: solve each stage separately (Gauss-Seidel style)
-    // Full coupled Newton would solve a 2N×2N system for both k1 and k2 simultaneously
-    for (int i = 0; i < ${iterations}; i++) {
-        // Solve for k1: F1(k1) = k1 - f(pos + h*(a11*k1 + a12*k2)) = 0
-        ${vecType} X1 = pos + h * (a11 * k1 + a12 * k2);
-        ${vecType} f1 = get_velocity(X1);
-        ${vecType} F1 = k1 - f1;
+    // Problem: k1 = f(pos + h*(a11*k1 + a12*k2)), k2 = f(pos + h*(a21*k1 + a22*k2))
+    // Update functions for each stage
+    const k1_updateFn = (v) => `get_velocity(pos + h * (a11 * ${v} + a12 * k2))`;
+    const k2_updateFn = (v) => `get_velocity(pos + h * (a21 * k1 + a22 * ${v}))`;
 
-        // J1 = I - h*a11*df/dx (partial derivative, treating k2 as constant)
-        ${matType} J1 = ${matType}(1.0) - (h * a11) * computeJacobian(X1);
+    // Velocity functions for finite difference
+    const k1_velocityFn = (v) => `get_velocity(pos + h * (a11 * ${v} + a12 * k2))`;
+    const k2_velocityFn = (v) => `get_velocity(pos + h * (a21 * k1 + a22 * ${v}))`;
 
-        // Newton step for k1
-        ${vecType} delta1 = ${inverseFuncName}(J1) * F1;
-        k1 -= delta1;
+    let k1_solverBody, k2_solverBody;
+    let solverName;
+    let jacobianGLSL = '';
 
-        // Solve for k2: F2(k2) = k2 - f(pos + h*(a21*k1 + a22*k2)) = 0
-        ${vecType} X2 = pos + h * (a21 * k1 + a22 * k2);
-        ${vecType} f2 = get_velocity(X2);
-        ${vecType} F2 = k2 - f2;
+    // Choose solver method
+    if (solutionMethod === 'newton' && expressions) {
+        logger.info('Computing Jacobian for Newton\'s method (Implicit RK4 - simplified)');
 
-        // J2 = I - h*a22*df/dx (partial derivative, treating k1 as constant)
-        ${matType} J2 = ${matType}(1.0) - (h * a22) * computeJacobian(X2);
+        const jacobian = computeSymbolicJacobian(expressions, dimensions);
 
-        // Newton step for k2
-        ${vecType} delta2 = ${inverseFuncName}(J2) * F2;
-        k2 -= delta2;
-    }
+        if (isValidJacobian(jacobian)) {
+            logger.info('✓ Successfully using simplified Newton\'s method for Implicit RK4');
 
-    return pos + h * (b1 * k1 + b2 * k2);
-}
-`
-            };
+            jacobianGLSL = generateJacobianGLSL(jacobian, dimensions);
+
+            // Define residual and Jacobian functions for each stage
+            // Stage 1: F1(k1) = k1 - f(pos + h*(a11*k1 + a12*k2))
+            const k1_residualFn = (v) => `${v} - get_velocity(pos + h * (a11 * ${v} + a12 * k2))`;
+            const k1_jacobianFn = (v) => `${matType}(1.0) - (h * a11) * computeJacobian(pos + h * (a11 * ${v} + a12 * k2))`;
+
+            // Stage 2: F2(k2) = k2 - f(pos + h*(a21*k1 + a22*k2))
+            const k2_residualFn = (v) => `${v} - get_velocity(pos + h * (a21 * k1 + a22 * ${v}))`;
+            const k2_jacobianFn = (v) => `${matType}(1.0) - (h * a22) * computeJacobian(pos + h * (a21 * k1 + a22 * ${v}))`;
+
+            k1_solverBody = generateNewtonSolverBody('k1', k1_residualFn, k1_jacobianFn, dimensions);
+            k2_solverBody = generateNewtonSolverBody('k2', k2_residualFn, k2_jacobianFn, dimensions);
+
+            solverName = 'Newton';
         } else {
             logger.warn('✗ Failed to compute Jacobian for Newton\'s method (Implicit RK4)');
             logger.warn('Falling back to fixed-point iteration');
+            k1_solverBody = generateFixedPointSolverBody('k1', k1_updateFn, dimensions);
+            k2_solverBody = generateFixedPointSolverBody('k2', k2_updateFn, dimensions);
+            solverName = 'Fixed-Point';
         }
-    } else if (solutionMethod === 'newton' && !expressions) {
-        logger.warn('✗ Newton\'s method requested but no expressions provided (Implicit RK4)');
-        logger.warn('Falling back to fixed-point iteration');
+    } else if (solutionMethod === 'newton-fd') {
+        logger.info('✓ Using finite difference Newton\'s method for Implicit RK4 (simplified)');
+
+        jacobianGLSL = generateMatrixInverseGLSL(dimensions);
+
+        // For each stage k_i: k_i = f(pos + h*(a_i1*k1 + a_i2*k2))
+        // Residual: F(k_i) = k_i - f(...)
+        // Jacobian: J = I - h*a_ii*Df
+        k1_solverBody = generateNewtonFDSolverBody('k1', k1_velocityFn, dimensions, 'h * a11');
+        k2_solverBody = generateNewtonFDSolverBody('k2', k2_velocityFn, dimensions, 'h * a22');
+
+        solverName = 'Newton (FD)';
+    } else if (solutionMethod === 'midpoint') {
+        k1_solverBody = generateMidpointSolverBody('k1', k1_updateFn, dimensions);
+        k2_solverBody = generateMidpointSolverBody('k2', k2_updateFn, dimensions);
+        solverName = 'Midpoint';
+    } else {
+        // Default: fixed-point iteration
+        k1_solverBody = generateFixedPointSolverBody('k1', k1_updateFn, dimensions);
+        k2_solverBody = generateFixedPointSolverBody('k2', k2_updateFn, dimensions);
+        solverName = 'Fixed-Point';
     }
 
-    // Default: Fixed-point iteration
-    return {
-        name: 'Implicit RK4',
-        code: `
-// Implicit RK4 (Gauss-Legendre 2-stage) integration (fixed-point iteration)
-vec${dimensions} integrate(vec${dimensions} pos, float h) {
-    // Gauss-Legendre coefficients for 2-stage method
-    const float a11 = 0.25;
-    const float a12 = 0.25 - sqrt(3.0) / 6.0;
-    const float a21 = 0.25 + sqrt(3.0) / 6.0;
-    const float a22 = 0.25;
-    const float b1 = 0.5;
-    const float b2 = 0.5;
-    const float c1 = 0.5 - sqrt(3.0) / 6.0;
-    const float c2 = 0.5 + sqrt(3.0) / 6.0;
-
-    // Start with explicit RK4 as initial guess
-    vec${dimensions} k1_guess = get_velocity(pos);
-    vec${dimensions} k2_guess = get_velocity(pos + h * 0.5 * k1_guess);
-
-    vec${dimensions} k1 = k1_guess;
-    vec${dimensions} k2 = k2_guess;
-
-    // Fixed-point iteration to solve implicit stages
+    // Build the solver loop (both stages in one loop, Gauss-Seidel style)
+    const solverCode = `
+    // Iterative solver for coupled stages (Gauss-Seidel style)
     for (int i = 0; i < ${iterations}; i++) {
-        k1 = get_velocity(pos + h * (a11 * k1 + a12 * k2));
-        k2 = get_velocity(pos + h * (a21 * k1 + a22 * k2));
-    }
+        // Stage 1
+${k1_solverBody}
+
+        // Stage 2
+${k2_solverBody}
+    }`;
+
+    return {
+        name: `Implicit RK4 (${solverName})`,
+        costFactor: 4, // 4th order method (like explicit RK4)
+        code: `
+${jacobianGLSL}
+// Implicit RK4 (Gauss-Legendre 2-stage) integration (${solverName.toLowerCase()} solver)
+${vecType} integrate(${vecType} pos, float h) {
+${coeffsGLSL}
+${initialGuessGLSL}
+${solverCode}
 
     return pos + h * (b1 * k1 + b2 * k2);
-}
-`
-    };
-}
-
-/**
- * Symplectic Euler (Semi-implicit Euler) for Hamiltonian systems
- * Assumes even dimensions are positions, odd dimensions are velocities
- * Updates velocities first, then positions using new velocities
- * Preserves energy better than standard Euler
- */
-export function symplecticEulerIntegrator(dimensions) {
-    const coords = ['x', 'y', 'z', 'w'];
-
-    // Generate unrolled update code for each position/velocity pair
-    let updateCode = '';
-
-    if (dimensions % 2 === 0) {
-        // For even dimensions, treat pairs as (position, velocity)
-        const numPairs = dimensions / 2;
-        for (let i = 0; i < numPairs; i++) {
-            const posIdx = i * 2;
-            const velIdx = i * 2 + 1;
-            const posCoord = coords[posIdx];
-            const velCoord = coords[velIdx];
-
-            updateCode += `
-    // Pair ${i}: position[${posIdx}], velocity[${velIdx}]
-    // Update velocity first (using current position)
-    result.${velCoord} = pos.${velCoord} + h * vel.${velCoord};
-    // Update position using new velocity
-    result.${posCoord} = pos.${posCoord} + h * result.${velCoord};`;
-        }
-    } else {
-        // For odd dimensions, update all but last dimension in pairs
-        const numPairs = Math.floor(dimensions / 2);
-        for (let i = 0; i < numPairs; i++) {
-            const posIdx = i * 2;
-            const velIdx = i * 2 + 1;
-            const posCoord = coords[posIdx];
-            const velCoord = coords[velIdx];
-
-            updateCode += `
-    // Pair ${i}: position[${posIdx}], velocity[${velIdx}]
-    result.${velCoord} = pos.${velCoord} + h * vel.${velCoord};
-    result.${posCoord} = pos.${posCoord} + h * result.${velCoord};`;
-        }
-
-        // Handle last dimension with standard Euler
-        const lastCoord = coords[dimensions - 1];
-        updateCode += `
-    // Last dimension (odd): standard Euler
-    result.${lastCoord} = pos.${lastCoord} + h * vel.${lastCoord};`;
-    }
-
-    return {
-        name: 'Symplectic Euler',
-        code: `
-// Symplectic Euler integration
-// Assumes alternating position/velocity pairs: (x0, v0, x1, v1, ...)
-vec${dimensions} integrate(vec${dimensions} pos, float h) {
-    vec${dimensions} vel = get_velocity(pos);
-    vec${dimensions} result = pos;
-${updateCode}
-
-    return result;
 }
 `
     };
@@ -677,8 +758,10 @@ export function getIntegrator(name, dimensions, params = {}) {
     switch (name) {
         case 'euler':
             return eulerIntegrator(dimensions);
-        case 'rk2':
-            return rk2Integrator(dimensions);
+        case 'explicit-midpoint':
+            return explicitMidpointIntegrator(dimensions);
+        case 'heun':
+            return heunIntegrator(dimensions);
         case 'rk4':
             return rk4Integrator(dimensions);
         case 'implicit-euler':
@@ -689,9 +772,9 @@ export function getIntegrator(name, dimensions, params = {}) {
             return trapezoidalIntegrator(dimensions, params.iterations || 4, solutionMethod, expressions);
         case 'implicit-rk4':
             return implicitRK4Integrator(dimensions, params.iterations || 5, solutionMethod, expressions);
-        case 'symplectic':
-            return symplecticEulerIntegrator(dimensions);
-        // Legacy alias
+        // Legacy aliases
+        case 'rk2':
+            return explicitMidpointIntegrator(dimensions);
         case 'implicit':
             return implicitEulerIntegrator(dimensions, iterations, solutionMethod, expressions);
         default:
