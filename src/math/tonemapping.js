@@ -76,7 +76,7 @@ export function getToneMapper(name) {
 /**
  * Generate GLSL code for tone mapping operator
  * @param {string} operatorName - Name of the operator
- * @param {Object} params - Parameters (exposure, gamma, whitePoint, etc.)
+ * @param {Object} params - Parameters (exposure, gamma, whitePoint, luminanceGamma, etc.)
  * @returns {string} GLSL shader code
  */
 export function generateTonemapGLSL(operatorName, params = {}) {
@@ -86,6 +86,7 @@ export function generateTonemapGLSL(operatorName, params = {}) {
     const exposure = params.exposure !== undefined ? params.exposure : operator.defaultExposure;
     const gamma = params.gamma !== undefined ? params.gamma : 2.2;
     const whitePoint = params.whitePoint !== undefined ? params.whitePoint : (operator.defaultWhitePoint || 1.0);
+    const luminanceGamma = params.luminanceGamma !== undefined ? params.luminanceGamma : 1.0;
 
     let code = `
 // Tone mapping operator: ${operator.name}
@@ -235,6 +236,21 @@ vec3 tonemap(vec3 color) {
     code += `
 vec3 applyGamma(vec3 color) {
     return pow(color, vec3(1.0 / ${gamma.toFixed(6)}));
+}
+
+vec3 applyLuminanceGamma(vec3 color) {
+    // Luminance-preserving gamma: adjusts brightness only, preserves hue
+    float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+
+    // Avoid division by zero
+    if (luma < 0.0001) return vec3(0.0);
+
+    // Apply gamma to luminance only
+    float gammaCorrectedLuma = pow(luma, 1.0 / ${luminanceGamma.toFixed(6)});
+
+    // Scale color to match gamma-corrected luminance
+    // This preserves hue and saturation perfectly
+    return color * (gammaCorrectedLuma / luma);
 }
 `;
 

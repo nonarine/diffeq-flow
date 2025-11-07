@@ -320,6 +320,14 @@ export function initControls(renderer, callback) {
         displayFormat: v => v.toFixed(2)
     }));
 
+    const luminanceGammaControl = manager.register(new LogSliderControl('luminance-gamma', 1.0, {
+        settingsKey: 'luminanceGamma',
+        minValue: 0.2,
+        maxValue: 10.0,
+        displayId: 'luminance-gamma-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
     const whitePointControl = manager.register(new SliderControl('white-point', 2.0, {
         settingsKey: 'whitePoint',
         min: 1.0,

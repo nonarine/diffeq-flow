@@ -108,6 +108,7 @@ export class Renderer {
         this.tonemapOperator = config.tonemapOperator || 'aces';
         this.exposure = config.exposure !== undefined ? config.exposure : 1.0;
         this.gamma = config.gamma !== undefined ? config.gamma : 2.2;
+        this.luminanceGamma = config.luminanceGamma !== undefined ? config.luminanceGamma : 1.0;
         this.whitePoint = config.whitePoint !== undefined ? config.whitePoint : 2.0;
         this.particleIntensity = config.particleIntensity !== undefined ? config.particleIntensity : 1.0;
 
@@ -504,6 +505,7 @@ export class Renderer {
             const tonemapCode = generateTonemapGLSL(this.tonemapOperator, {
                 exposure: this.exposure,
                 gamma: this.gamma,
+                luminanceGamma: this.luminanceGamma,
                 whitePoint: this.whitePoint
             });
             const tonemapFragmentShader = generateTonemapFragmentShader(tonemapCode);
@@ -1587,14 +1589,22 @@ export class Renderer {
         if (config.exposure !== undefined) {
             logger.verbose(`Exposure: ${this.exposure} → ${config.exposure}`);
             this.exposure = config.exposure;
+            needsRecompile = true; // Exposure is baked into shader
         }
         if (config.gamma !== undefined) {
             logger.verbose(`Gamma: ${this.gamma} → ${config.gamma}`);
             this.gamma = config.gamma;
+            needsRecompile = true; // Gamma is baked into shader
+        }
+        if (config.luminanceGamma !== undefined) {
+            logger.verbose(`Luminance Gamma: ${this.luminanceGamma} → ${config.luminanceGamma}`);
+            this.luminanceGamma = config.luminanceGamma;
+            needsRecompile = true; // Luminance gamma is baked into shader
         }
         if (config.whitePoint !== undefined) {
             logger.verbose(`White point: ${this.whitePoint} → ${config.whitePoint}`);
             this.whitePoint = config.whitePoint;
+            needsRecompile = true; // White point is baked into shader
             // White point is used as bloom threshold
             this.bloomManager.updateConfig({ threshold: config.whitePoint });
         }

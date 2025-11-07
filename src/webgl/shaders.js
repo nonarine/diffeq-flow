@@ -561,7 +561,10 @@ void main() {
     vec3 tonemapped = tonemap(hdrColor);
 
     // Apply gamma correction
-    vec3 ldrColor = applyGamma(tonemapped);
+    vec3 gammaCorrected = applyGamma(tonemapped);
+
+    // Apply luminance gamma (hue-preserving brightness adjustment)
+    vec3 ldrColor = applyLuminanceGamma(gammaCorrected);
 
     gl_FragColor = vec4(ldrColor, 1.0);
 }

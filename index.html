@@ -1107,6 +1107,17 @@
                 <div class="info">Logarithmic scale (0.2 - 10.0). Use high values (3.0-10.0) for aggressive shadow lifting in attractors.</div>
             </div>
 
+            <div class="control-group">
+                <label>Luminance Gamma: <span class="range-value" id="luminance-gamma-value">1.0</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="luminance-gamma" data-action="decrease">-</button>
+                    <input type="range" id="luminance-gamma" min="0" max="100" value="50" step="0.1">
+                    <button class="slider-btn" data-slider="luminance-gamma" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="luminance-gamma" data-action="reset" title="Reset to default (1.0)">↺</button>
+                </div>
+                <div class="info">Logarithmic scale (0.2 - 10.0). Adjusts brightness only, preserving hue. Applied after regular gamma.</div>
+            </div>
+
             <div class="control-group" id="white-point-control">
                 <label>White Point: <span class="range-value" id="white-point-value">2.0</span></label>
                 <div class="slider-control">
