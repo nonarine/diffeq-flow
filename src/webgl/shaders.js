@@ -557,14 +557,15 @@ void main() {
         hdrColor *= (1.0 - desatAmount * 0.5); // Reduce brightness by up to 50%
     }
 
-    // Apply tone mapping operator
-    vec3 tonemapped = tonemap(hdrColor);
+    // Apply gamma correction in HDR space (before tone mapping)
+    // This prevents clipping and gives the tone mapper more headroom
+    vec3 gammaCorrected = applyGamma(hdrColor);
 
-    // Apply gamma correction
-    vec3 gammaCorrected = applyGamma(tonemapped);
+    // Apply luminance gamma in HDR space (hue-preserving brightness adjustment)
+    vec3 hdrGammaCorrected = applyLuminanceGamma(gammaCorrected);
 
-    // Apply luminance gamma (hue-preserving brightness adjustment)
-    vec3 ldrColor = applyLuminanceGamma(gammaCorrected);
+    // Apply tone mapping operator to compress HDR values into LDR range
+    vec3 ldrColor = tonemap(hdrGammaCorrected);
 
     gl_FragColor = vec4(ldrColor, 1.0);
 }
