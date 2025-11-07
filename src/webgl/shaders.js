@@ -80,8 +80,9 @@ void main() {
  * @param {string[]} velocityExpressions - GLSL expressions for velocity (one per dimension)
  * @param {string} integratorCode - Integration method code
  * @param {CoordinateStrategy} strategy - Coordinate storage strategy
+ * @param {object} transformCode - Transform GLSL code {forward, inverse, jacobian}
  */
-export function generateUpdateFragmentShader(dimensions, velocityExpressions, integratorCode, strategy) {
+export function generateUpdateFragmentShader(dimensions, velocityExpressions, integratorCode, strategy, transformCode = null) {
     // Generate uniforms for position textures
     const positionUniforms = Array.from({ length: dimensions }, (_, i) =>
         `uniform sampler2D u_pos_${i};`
@@ -100,6 +101,59 @@ export function generateUpdateFragmentShader(dimensions, velocityExpressions, in
     const velocityComponents = velocityExpressions.map((expr, i) =>
         `    result.${swizzles[i]} = ${expr};`
     ).join('\n');
+
+    // Add transform functions if provided
+    const hasTransform = transformCode && transformCode.forward;
+    const transformFunctions = hasTransform ? `
+// Domain transformation functions
+${transformCode.helpers || ''}
+${transformCode.forward}
+${transformCode.inverse}
+${transformCode.jacobian}
+` : '';
+
+    // Modify velocity function to include Jacobian if transform is active
+    const velocityFunction = hasTransform ? `
+// Original velocity field in world coordinates
+${vecType} get_velocity_original(${vecType} pos) {
+    ${vecType} result;
+    float x = pos.x;
+    ${dimensions > 1 ? 'float y = pos.y;' : ''}
+    ${dimensions > 2 ? 'float z = pos.z;' : ''}
+    ${dimensions > 3 ? 'float w = pos.w;' : ''}
+
+${velocityComponents}
+
+    return result;
+}
+
+// Transformed velocity field: dy/dt = J_T(x) * f(x)
+// where y = T(x)
+${vecType} get_velocity(${vecType} pos_transformed) {
+    // Transform back to world coordinates
+    ${vecType} pos = transform_inverse(pos_transformed);
+
+    // Evaluate original velocity field
+    ${vecType} vel_original = get_velocity_original(pos);
+
+    // Apply Jacobian: component-wise multiplication
+    ${vecType} jacobian = transform_jacobian(pos);
+    return vel_original * jacobian;
+}
+` : `
+// User-defined velocity field (no transform)
+${vecType} get_velocity(${vecType} pos) {
+    ${vecType} result;
+    float x = pos.x;
+    ${dimensions > 1 ? 'float y = pos.y;' : ''}
+    ${dimensions > 2 ? 'float z = pos.z;' : ''}
+    ${dimensions > 3 ? 'float w = pos.w;' : ''}
+
+${velocityComponents}
+
+    return result;
+}
+`;
 
     return `
 precision highp float;
@@ -122,19 +176,11 @@ uniform float u_particles_res;
 uniform float u_max_velocity;
 uniform float u_drop_low_velocity;
 uniform float u_velocity_threshold;
+${hasTransform ? 'uniform vec4 u_transform_params;' : ''}
 
-// User-defined velocity field
-${vecType} get_velocity(${vecType} pos) {
-    ${vecType} result;
-    float x = pos.x;
-    ${dimensions > 1 ? 'float y = pos.y;' : ''}
-    ${dimensions > 2 ? 'float z = pos.z;' : ''}
-    ${dimensions > 3 ? 'float w = pos.w;' : ''}
+${transformFunctions}
 
-${velocityComponents}
-
-    return result;
-}
+${velocityFunction}
 
 ${integratorCode}
 
@@ -178,11 +224,20 @@ void main() {
         }
     }).join('\n    ')}
 
-    // Integrate to get new position (in world coordinates)
-    ${vecType} new_pos = integrate(pos, u_h);
+    // Integrate to get new position
+    ${vecType} new_pos;
+    ${hasTransform ? `
+    // Transform to y-space, integrate, then transform back to x-space
+    ${vecType} pos_transformed = transform_forward(pos);
+    ${vecType} new_pos_transformed = integrate(pos_transformed, u_h);
+    new_pos = transform_inverse(new_pos_transformed);
+    ` : `
+    // Direct integration (no transform)
+    new_pos = integrate(pos, u_h);
+    `}
 
     // Calculate velocity at new position for low-velocity dropping
-    ${vecType} velocity = get_velocity(new_pos);
+    ${vecType} velocity = ${hasTransform ? 'get_velocity_original(new_pos)' : 'get_velocity(new_pos)'};
     float speed = length(velocity);
 
     // Check if particle is outside viewport bounds with small margin

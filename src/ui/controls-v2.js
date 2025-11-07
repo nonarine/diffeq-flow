@@ -12,7 +12,7 @@ import {
     SelectControl,
     CheckboxControl
 } from './control-base.js';
-import { DimensionInputsControl, MapperParamsControl, GradientControl } from './custom-controls.js';
+import { DimensionInputsControl, MapperParamsControl, GradientControl, TransformParamsControl } from './custom-controls.js';
 import { initGradientEditor } from './gradient-editor.js';
 import { getDefaultGradient } from '../math/gradients.js';
 import { logger } from '../utils/debug-logger.js';
@@ -152,6 +152,26 @@ export function initControls(renderer, callback) {
     const dropLowVelocityControl = manager.register(new CheckboxControl('drop-low-velocity', false, {
         settingsKey: 'dropLowVelocity'
     }));
+
+    // === Transform controls ===
+
+    const transformControl = manager.register(new SelectControl('transform', 'identity', {
+        settingsKey: 'transformType',
+        onChange: (value) => {
+            // Update transform params UI when transform type changes
+            const transformParamsControl = manager.get('transformParams');
+            if (transformParamsControl) {
+                transformParamsControl.updateControls();
+            }
+        }
+    }));
+
+    const transformParamsControl = manager.register(new TransformParamsControl({}, {
+        settingsKey: 'transformParams'
+    }));
+
+    // Set up transform params cross-reference
+    transformParamsControl.setTransformControl(transformControl);
 
     // === Mapper controls ===
 
@@ -485,11 +505,25 @@ export function initControls(renderer, callback) {
         const min = parseFloat(slider.attr('min'));
         const max = parseFloat(slider.attr('max'));
 
+        // Custom step sizes for different sliders and actions
+        let increment = step;
+        if (sliderId === 'timestep') {
+            // Timestep has custom increments for fine control
+            if (action === 'increase' || action === 'decrease') {
+                increment = 0.001;  // Fine adjustment
+            } else if (action === 'increase-large' || action === 'decrease-large') {
+                increment = 0.01;   // Coarse adjustment
+            }
+        } else if (action === 'increase-large' || action === 'decrease-large') {
+            // For other sliders, large steps are 10x normal step
+            increment = step * 10;
+        }
+
         let newValue = currentValue;
-        if (action === 'increase') {
-            newValue = Math.min(max, currentValue + step);
-        } else if (action === 'decrease') {
-            newValue = Math.max(min, currentValue - step);
+        if (action === 'increase' || action === 'increase-large') {
+            newValue = Math.min(max, currentValue + increment);
+        } else if (action === 'decrease' || action === 'decrease-large') {
+            newValue = Math.max(min, currentValue - increment);
         } else if (action === 'reset') {
             // Reset to control's default value
             const control = manager.get(sliderId);

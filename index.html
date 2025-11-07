@@ -376,14 +376,15 @@
             background: #333;
             color: #ccc;
             border: 1px solid #555;
-            padding: 1px 6px;
+            padding: 1px 5px;
             border-radius: 3px;
             cursor: pointer;
-            font-size: 12px;
+            font-size: 11px;
             font-weight: bold;
-            min-width: 22px;
+            min-width: 24px;
             text-align: center;
             user-select: none;
+            flex-shrink: 0;
         }
 
         .slider-btn:hover {
@@ -755,10 +756,13 @@
             <div class="control-group">
                 <label>Time Step: <span class="range-value" id="timestep-value">0.01</span></label>
                 <div class="slider-control">
-                    <button class="slider-btn" data-slider="timestep" data-action="decrease">-</button>
-                    <input type="range" id="timestep" min="0.001" max="2.5" value="0.01" step="0.01">
-                    <button class="slider-btn" data-slider="timestep" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="timestep" data-action="decrease-large" title="Decrease by 0.01">--</button>
+                    <button class="slider-btn" data-slider="timestep" data-action="decrease" title="Decrease by 0.001">-</button>
+                    <input type="range" id="timestep" min="0.001" max="2.5" value="0.01" step="0.001">
+                    <button class="slider-btn" data-slider="timestep" data-action="increase" title="Increase by 0.001">+</button>
+                    <button class="slider-btn" data-slider="timestep" data-action="increase-large" title="Increase by 0.01">++</button>
                 </div>
+                <div class="info">Fine control: +/- = 0.001, ++/-- = 0.01. Scaled by integrator cost factor.</div>
             </div>
 
             <div class="control-group" id="implicit-iterations-group" style="display: none;">
@@ -769,6 +773,38 @@
                     <button class="slider-btn" data-slider="implicit-iterations" data-action="increase">+</button>
                 </div>
                 <div class="info">Number of iterations for implicit solver. Higher = more accurate but slower. Newton converges faster than fixed-point.</div>
+            </div>
+        </div>
+
+        <h2>Domain Transform</h2>
+        <div class="accordion-section">
+            <div class="control-group">
+                <select id="transform">
+                    <option value="identity" selected>No Transform (Identity)</option>
+                    <optgroup label="Stretch/Compress Near Zero">
+                        <option value="log">Logarithmic (Stretch Near Zero)</option>
+                        <option value="exp">Exponential (Compress Near Zero)</option>
+                        <option value="power">Power Transform (Configurable)</option>
+                    </optgroup>
+                    <optgroup label="Bounded Compression">
+                        <option value="softsign">Soft-sign (To [-1,1], Simple)</option>
+                        <option value="tanh">Hyperbolic Tangent (To [-1,1], Smooth)</option>
+                        <option value="sigmoid">Logistic Sigmoid (To [-1,1], S-curve)</option>
+                        <option value="rational">Rational (To [-1,1], Bell Jacobian)</option>
+                    </optgroup>
+                    <optgroup label="Special Effects">
+                        <option value="sine">Sine Wave (Periodic Speed Bumps)</option>
+                        <option value="radial_power">Radial Power (Distance-based)</option>
+                    </optgroup>
+                    <optgroup label="Advanced">
+                        <option value="custom">Custom (User GLSL)</option>
+                    </optgroup>
+                </select>
+                <div class="info">Transform phase space before integration. Creates spatially-varying effective timestep while preserving convergence.</div>
+            </div>
+
+            <div id="transform-controls">
+                <!-- Dynamically generated based on transform type -->
             </div>
         </div>
 

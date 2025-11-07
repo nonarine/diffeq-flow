@@ -27,6 +27,7 @@ import {
 import { parseVectorField, createVelocityEvaluators, parseExpression } from '../math/parser.js';
 import { getIntegrator } from '../math/integrators.js';
 import { getMapper } from '../math/mappers.js';
+import { getTransform } from '../math/transforms.js';
 import { getColorMode, generateExpressionColorMode, generateGradientColorMode } from '../math/colors.js';
 import { generateGradientGLSL, getDefaultGradient } from '../math/gradients.js';
 import { generateTonemapGLSL, getToneMapper } from '../math/tonemapping.js';
@@ -94,6 +95,8 @@ export class Renderer {
         this.integratorParams = { iterations: 3 }; // For implicit methods
         this.integratorCostFactor = 1; // Cost factor for fair integrator comparison (set during shader compilation)
         this.solutionMethod = 'fixed-point'; // For implicit methods: 'fixed-point' or 'newton'
+        this.transformType = 'identity'; // Domain transformation type
+        this.transformParams = {}; // Transform parameters
         this.mapperType = 'select';
         this.mapperParams = { dim1: 0, dim2: 1 };
         this.colorMode = 'white';
@@ -424,6 +427,18 @@ export class Renderer {
             // Get mapper code
             const mapper = getMapper(this.mapperType, this.dimensions, this.mapperParams);
 
+            // Get transform code (domain transformation)
+            let transformCode = null;
+            if (this.transformType !== 'identity') {
+                const transform = getTransform(this.transformType);
+                transformCode = {
+                    helpers: transform.generateHelpers(this.dimensions),
+                    forward: transform.generateForward(this.dimensions),
+                    inverse: transform.generateInverse(this.dimensions),
+                    jacobian: transform.generateJacobian(this.dimensions)
+                };
+            }
+
             // Get color mode code
             const colorMode = getColorMode(this.colorMode, this.dimensions);
             let colorCode = colorMode.code;
@@ -461,7 +476,8 @@ export class Renderer {
                 this.dimensions,
                 velocityGLSL,
                 integrator.code,
-                this.strategy
+                this.strategy,
+                transformCode
             );
 
             this.updateProgram = createProgram(gl, updateVertexShader, updateFragmentShader);
@@ -598,6 +614,26 @@ export class Renderer {
         gl.uniform1f(gl.getUniformLocation(program, 'u_max_velocity'), velocityScale);
         gl.uniform1f(gl.getUniformLocation(program, 'u_drop_low_velocity'), this.dropLowVelocity ? 1.0 : 0.0);
         gl.uniform1f(gl.getUniformLocation(program, 'u_velocity_threshold'), this.lowVelocityThreshold);
+
+        // Set transform parameters (if transform is active)
+        if (this.transformType !== 'identity') {
+            const params = this.transformParams || {};
+            // Map transform-specific parameters to vec4
+            // power: alpha, 0, 0, 0
+            // tanh: beta, 0, 0, 0
+            // sigmoid: k, 0, 0, 0
+            // exp: alpha, 0, 0, 0
+            // sine: amplitude, frequency, 0, 0
+            // radial_power: alpha, 0, 0, 0
+            const paramValues = [
+                params.alpha || params.beta || params.k || params.amplitude || 0.5,  // First param
+                params.frequency || 0.0,  // Second param (sine wave)
+                0.0,  // Reserved
+                0.0   // Reserved
+            ];
+            gl.uniform4f(gl.getUniformLocation(program, 'u_transform_params'),
+                paramValues[0], paramValues[1], paramValues[2], paramValues[3]);
+        }
 
         // Render to each dimension texture
         for (let dim = 0; dim < this.dimensions; dim++) {
@@ -1485,6 +1521,18 @@ export class Renderer {
             logger.info(`  needsRecompile flag set to true (solutionMethod change)`);
         }
         logger.info('Solution method update complete, continuing...');
+
+        if (config.transformType !== undefined && config.transformType !== this.transformType) {
+            logger.info(`Changing transform: ${this.transformType} → ${config.transformType}`);
+            this.transformType = config.transformType;
+            needsRecompile = true;
+        }
+
+        if (config.transformParams !== undefined) {
+            logger.verbose('Updating transform parameters', config.transformParams);
+            this.transformParams = config.transformParams;
+            needsRecompile = true;
+        }
 
         if (config.mapperType !== undefined && config.mapperType !== this.mapperType) {
             logger.info(`Changing mapper: ${this.mapperType} → ${config.mapperType}`);
