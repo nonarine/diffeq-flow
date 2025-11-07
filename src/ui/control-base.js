@@ -47,6 +47,17 @@ export class Control {
     }
 
     /**
+     * Handle button action (increment/decrement)
+     * Can be overridden by subclasses for custom behavior
+     * @param {string} action - 'increase', 'decrease', 'increase-large', 'decrease-large', 'reset'
+     * @returns {boolean} True if action was handled
+     */
+    handleButtonAction(action) {
+        // Default implementation: no button support
+        return false;
+    }
+
+    /**
      * Save current value to settings object
      */
     saveToSettings(settings) {
@@ -101,9 +112,46 @@ export class SliderControl extends Control {
         }
     }
 
+    handleButtonAction(action) {
+        const element = $(`#${this.id}`);
+        if (!element.length) return false;
+
+        const currentValue = parseFloat(element.val());
+        const min = parseFloat(element.attr('min'));
+        const max = parseFloat(element.attr('max'));
+        const step = parseFloat(element.attr('step')) || this.step;
+
+        let increment = step;
+        if (action === 'increase-large' || action === 'decrease-large') {
+            increment = step * 10;
+        }
+
+        let newValue = currentValue;
+        if (action === 'increase' || action === 'increase-large') {
+            newValue = Math.min(max, currentValue + increment);
+        } else if (action === 'decrease' || action === 'decrease-large') {
+            newValue = Math.max(min, currentValue - increment);
+        } else if (action === 'reset') {
+            newValue = this.inverseTransform(this.defaultValue);
+        } else {
+            return false; // Unknown action
+        }
+
+        if (newValue !== currentValue) {
+            element.val(newValue).trigger('input');
+            return true;
+        }
+        return false;
+    }
+
     attachListeners(callback) {
         const element = $(`#${this.id}`);
         this.element = element;
+
+        // Set slider attributes from JavaScript (single source of truth)
+        element.attr('min', this.min);
+        element.attr('max', this.max);
+        element.attr('step', this.step);
 
         element.on('input', () => {
             const value = this.getValue(); // Gets transformed value
@@ -166,9 +214,47 @@ export class LogSliderControl extends Control {
         }
     }
 
+    handleButtonAction(action) {
+        const element = $(`#${this.id}`);
+        if (!element.length) return false;
+
+        const currentSliderValue = parseFloat(element.val());
+        const min = 0;
+        const max = 100;
+
+        // Increment in slider space (0-100)
+        // Use smaller increments for logarithmic sliders since they're already non-linear
+        let increment = 1.0;  // Small step
+        if (action === 'increase-large' || action === 'decrease-large') {
+            increment = 10.0;  // Large step
+        }
+
+        let newSliderValue = currentSliderValue;
+        if (action === 'increase' || action === 'increase-large') {
+            newSliderValue = Math.min(max, currentSliderValue + increment);
+        } else if (action === 'decrease' || action === 'decrease-large') {
+            newSliderValue = Math.max(min, currentSliderValue - increment);
+        } else if (action === 'reset') {
+            newSliderValue = this.logToLinear(this.defaultValue);
+        } else {
+            return false;
+        }
+
+        if (newSliderValue !== currentSliderValue) {
+            element.val(newSliderValue).trigger('input');
+            return true;
+        }
+        return false;
+    }
+
     attachListeners(callback) {
         const element = $(`#${this.id}`);
         this.element = element;
+
+        // LogSlider uses internal 0-100 range for linear slider position
+        element.attr('min', 0);
+        element.attr('max', 100);
+        element.attr('step', 0.1);
 
         element.on('input', () => {
             const value = this.getValue();
@@ -305,9 +391,237 @@ export class PercentSliderControl extends Control {
         }
     }
 
+    handleButtonAction(action) {
+        const element = $(`#${this.id}`);
+        if (!element.length) return false;
+
+        const currentSliderValue = parseFloat(element.val());
+        const min = parseFloat(element.attr('min'));
+        const max = parseFloat(element.attr('max'));
+        const step = parseFloat(element.attr('step')) || this.step;
+
+        let increment = step;
+        if (action === 'increase-large' || action === 'decrease-large') {
+            increment = step * 10;
+        }
+
+        let newSliderValue = currentSliderValue;
+        if (action === 'increase' || action === 'increase-large') {
+            newSliderValue = Math.min(max, currentSliderValue + increment);
+        } else if (action === 'decrease' || action === 'decrease-large') {
+            newSliderValue = Math.max(min, currentSliderValue - increment);
+        } else if (action === 'reset') {
+            newSliderValue = this.defaultValue * 100.0; // Convert to slider space
+        } else {
+            return false;
+        }
+
+        if (newSliderValue !== currentSliderValue) {
+            element.val(newSliderValue).trigger('input');
+            return true;
+        }
+        return false;
+    }
+
     attachListeners(callback) {
         const element = $(`#${this.id}`);
         this.element = element;
+
+        // Set slider attributes from JavaScript (single source of truth)
+        element.attr('min', this.min);
+        element.attr('max', this.max);
+        element.attr('step', this.step);
+
+        element.on('input', () => {
+            const value = this.getValue();
+            this.updateDisplay(value);
+            if (this.onChange) this.onChange(value);
+            if (callback) callback();
+        });
+    }
+}
+
+/**
+ * Adaptive slider control
+ * Increment is always one order of magnitude less than current value
+ * E.g., value=10-99 → increment=1; value=1-9.9 → increment=0.1; etc.
+ */
+export class AdaptiveSliderControl extends Control {
+    constructor(id, defaultValue, options = {}) {
+        super(id, defaultValue, options);
+        this.min = options.min || 0.001;
+        this.max = options.max || 100;
+        this.minIncrement = options.minIncrement || 0.0001; // Minimum allowed increment
+        this.displayId = options.displayId || null;
+        this.displayFormat = options.displayFormat || (v => v.toFixed(4));
+    }
+
+    /**
+     * Calculate increment based on current value
+     * Returns 10^(floor(log10(|value|)) - 1)
+     */
+    calculateIncrement(value) {
+        const absValue = Math.abs(value);
+
+        // Handle edge cases
+        if (absValue < this.minIncrement) {
+            return this.minIncrement;
+        }
+
+        // Calculate order of magnitude
+        const orderOfMagnitude = Math.floor(Math.log10(absValue));
+        const increment = Math.pow(10, orderOfMagnitude - 1);
+
+        // Ensure we don't go below minimum
+        return Math.max(this.minIncrement, increment);
+    }
+
+    handleButtonAction(action) {
+        const element = $(`#${this.id}`);
+        if (!element.length) return false;
+
+        const currentValue = parseFloat(element.val());
+        const min = parseFloat(element.attr('min'));
+        const max = parseFloat(element.attr('max'));
+
+        let increment = this.calculateIncrement(currentValue);
+        if (action === 'increase-large' || action === 'decrease-large') {
+            increment *= 10;
+        }
+
+        let newValue = currentValue;
+        if (action === 'increase' || action === 'increase-large') {
+            newValue = Math.min(max, currentValue + increment);
+        } else if (action === 'decrease' || action === 'decrease-large') {
+            newValue = Math.max(min, currentValue - increment);
+        } else if (action === 'reset') {
+            newValue = this.defaultValue;
+        } else {
+            return false;
+        }
+
+        if (newValue !== currentValue) {
+            element.val(newValue).trigger('input');
+            return true;
+        }
+        return false;
+    }
+
+    getValue() {
+        const element = $(`#${this.id}`);
+        return parseFloat(element.val());
+    }
+
+    setValue(value) {
+        const element = $(`#${this.id}`);
+        element.val(value);
+        this.updateDisplay(value);
+    }
+
+    updateDisplay(value) {
+        if (this.displayId) {
+            $(`#${this.displayId}`).text(this.displayFormat(value));
+        }
+    }
+
+    attachListeners(callback) {
+        const element = $(`#${this.id}`);
+        this.element = element;
+
+        // Set slider attributes from JavaScript (single source of truth)
+        // Adaptive sliders use a very small step for smooth adjustment
+        element.attr('min', this.min);
+        element.attr('max', this.max);
+        element.attr('step', this.minIncrement);
+
+        element.on('input', () => {
+            const value = this.getValue();
+            this.updateDisplay(value);
+            if (this.onChange) this.onChange(value);
+            if (callback) callback();
+        });
+    }
+}
+
+/**
+ * Timestep slider control with custom increment buttons
+ * Has --, -, +, ++ buttons with different increment sizes
+ */
+export class TimestepControl extends Control {
+    constructor(id, defaultValue, options = {}) {
+        super(id, defaultValue, options);
+        this.min = options.min || 0.001;
+        this.max = options.max || 2.5;
+        this.step = options.step || 0.001;
+        this.smallIncrement = options.smallIncrement || 0.001;  // - and + buttons
+        this.largeIncrement = options.largeIncrement || 0.01;   // -- and ++ buttons
+        this.displayId = options.displayId || null;
+        this.displayFormat = options.displayFormat || (v => v.toFixed(3));
+    }
+
+    getValue() {
+        const element = $(`#${this.id}`);
+        return parseFloat(element.val());
+    }
+
+    setValue(value) {
+        const element = $(`#${this.id}`);
+        element.val(value);
+        this.updateDisplay(value);
+    }
+
+    updateDisplay(value) {
+        if (this.displayId) {
+            $(`#${this.displayId}`).text(this.displayFormat(value));
+        }
+    }
+
+    handleButtonAction(action) {
+        const element = $(`#${this.id}`);
+        if (!element.length) return false;
+
+        const currentValue = parseFloat(element.val());
+        const min = parseFloat(element.attr('min'));
+        const max = parseFloat(element.attr('max'));
+
+        let increment;
+        if (action === 'increase' || action === 'decrease') {
+            increment = this.smallIncrement;
+        } else if (action === 'increase-large' || action === 'decrease-large') {
+            increment = this.largeIncrement;
+        } else if (action === 'reset') {
+            const newValue = this.defaultValue;
+            if (newValue !== currentValue) {
+                element.val(newValue).trigger('input');
+                return true;
+            }
+            return false;
+        } else {
+            return false;
+        }
+
+        let newValue = currentValue;
+        if (action === 'increase' || action === 'increase-large') {
+            newValue = Math.min(max, currentValue + increment);
+        } else if (action === 'decrease' || action === 'decrease-large') {
+            newValue = Math.max(min, currentValue - increment);
+        }
+
+        if (newValue !== currentValue) {
+            element.val(newValue).trigger('input');
+            return true;
+        }
+        return false;
+    }
+
+    attachListeners(callback) {
+        const element = $(`#${this.id}`);
+        this.element = element;
+
+        // Set slider attributes from JavaScript (single source of truth)
+        element.attr('min', this.min);
+        element.attr('max', this.max);
+        element.attr('step', this.step);
 
         element.on('input', () => {
             const value = this.getValue();

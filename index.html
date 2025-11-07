@@ -705,7 +705,7 @@
             <label>Dimensions: <span class="range-value" id="dim-value">2</span></label>
             <div class="slider-control">
                 <button class="slider-btn" data-slider="dimensions" data-action="decrease">-</button>
-                <input type="range" id="dimensions" min="2" max="6" value="2" step="1">
+                <input type="range" id="dimensions">
                 <button class="slider-btn" data-slider="dimensions" data-action="increase">+</button>
             </div>
             <div class="info">Number of dimensions in the system</div>
@@ -758,7 +758,7 @@
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="timestep" data-action="decrease-large" title="Decrease by 0.01">--</button>
                     <button class="slider-btn" data-slider="timestep" data-action="decrease" title="Decrease by 0.001">-</button>
-                    <input type="range" id="timestep" min="0.001" max="2.5" value="0.01" step="0.001">
+                    <input type="range" id="timestep">
                     <button class="slider-btn" data-slider="timestep" data-action="increase" title="Increase by 0.001">+</button>
                     <button class="slider-btn" data-slider="timestep" data-action="increase-large" title="Increase by 0.01">++</button>
                 </div>
@@ -769,7 +769,7 @@
                 <label>Solver Iterations: <span class="range-value" id="implicit-iterations-value">4</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="implicit-iterations" data-action="decrease">-</button>
-                    <input type="range" id="implicit-iterations" min="1" max="10" value="4" step="1">
+                    <input type="range" id="implicit-iterations">
                     <button class="slider-btn" data-slider="implicit-iterations" data-action="increase">+</button>
                 </div>
                 <div class="info">Number of iterations for implicit solver. Higher = more accurate but slower. Newton converges faster than fixed-point.</div>
@@ -873,7 +873,7 @@
                 <label>Particle Count: <span class="range-value" id="particles-value">1000</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="particles" data-action="decrease">-</button>
-                    <input type="range" id="particles" min="100" max="5000000" value="1000" step="10000">
+                    <input type="range" id="particles">
                     <button class="slider-btn" data-slider="particles" data-action="increase">+</button>
                 </div>
             </div>
@@ -882,7 +882,7 @@
                 <label>Fade Speed: <span class="range-value" id="fade-value">0.999</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="fade" data-action="decrease">-</button>
-                    <input type="range" id="fade" min="0" max="100" value="50" step="0.1">
+                    <input type="range" id="fade">
                     <button class="slider-btn" data-slider="fade" data-action="increase">+</button>
                 </div>
                 <div class="info">Logarithmic scale: slower fade preserves trails longer</div>
@@ -892,7 +892,7 @@
                 <label>Drop Probability: <span class="range-value" id="drop-value">0.000</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="drop" data-action="decrease">-</button>
-                    <input type="range" id="drop" min="0" max="0.02" value="0" step="0.001">
+                    <input type="range" id="drop">
                     <button class="slider-btn" data-slider="drop" data-action="increase">+</button>
                 </div>
             </div>
@@ -1035,7 +1035,7 @@
                 <label>Supersample Factor: <span class="range-value" id="supersample-factor-value">1.0x</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="supersample-factor" data-action="decrease">-</button>
-                    <input type="range" id="supersample-factor" min="0.5" max="3.0" value="1.0" step="0.1">
+                    <input type="range" id="supersample-factor">
                     <button class="slider-btn" data-slider="supersample-factor" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="supersample-factor" data-action="reset" title="Reset to default (1.0x)">↺</button>
                 </div>
@@ -1055,7 +1055,7 @@
                 <label>SMAA Intensity: <span class="range-value" id="smaa-intensity-value">0.75</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="smaa-intensity" data-action="decrease">-</button>
-                    <input type="range" id="smaa-intensity" min="0" max="100" value="75" step="0.1">
+                    <input type="range" id="smaa-intensity">
                     <button class="slider-btn" data-slider="smaa-intensity" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="smaa-intensity" data-action="reset" title="Reset to default (0.75)">↺</button>
                 </div>
@@ -1066,7 +1066,7 @@
                 <label>SMAA Threshold: <span class="range-value" id="smaa-threshold-value">0.10</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="smaa-threshold" data-action="decrease">-</button>
-                    <input type="range" id="smaa-threshold" min="0" max="50" value="10" step="0.1">
+                    <input type="range" id="smaa-threshold">
                     <button class="slider-btn" data-slider="smaa-threshold" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="smaa-threshold" data-action="reset" title="Reset to default (0.10)">↺</button>
                 </div>
@@ -1086,7 +1086,7 @@
                 <label>Spatial Sigma: <span class="range-value" id="bilateral-spatial-value">4.0</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="bilateral-spatial" data-action="decrease">-</button>
-                    <input type="range" id="bilateral-spatial" min="10" max="100" value="80" step="1">
+                    <input type="range" id="bilateral-spatial">
                     <button class="slider-btn" data-slider="bilateral-spatial" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="bilateral-spatial" data-action="reset" title="Reset to default (4.0)">↺</button>
                 </div>
@@ -1097,7 +1097,7 @@
                 <label>Intensity Sigma: <span class="range-value" id="bilateral-intensity-value">0.20</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="bilateral-intensity" data-action="decrease">-</button>
-                    <input type="range" id="bilateral-intensity" min="1" max="50" value="20" step="0.1">
+                    <input type="range" id="bilateral-intensity">
                     <button class="slider-btn" data-slider="bilateral-intensity" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="bilateral-intensity" data-action="reset" title="Reset to default (0.20)">↺</button>
                 </div>
@@ -1125,7 +1125,7 @@
                 <label>Exposure: <span class="range-value" id="exposure-value">1.00</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="exposure" data-action="decrease">-</button>
-                    <input type="range" id="exposure" min="0" max="100" value="50" step="0.1">
+                    <input type="range" id="exposure">
                     <button class="slider-btn" data-slider="exposure" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="exposure" data-action="reset" title="Reset to default (1.0)">↺</button>
                 </div>
@@ -1136,7 +1136,7 @@
                 <label>Gamma: <span class="range-value" id="gamma-value">2.2</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="gamma" data-action="decrease">-</button>
-                    <input type="range" id="gamma" min="0" max="100" value="50" step="0.1">
+                    <input type="range" id="gamma">
                     <button class="slider-btn" data-slider="gamma" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="gamma" data-action="reset" title="Reset to default (2.2)">↺</button>
                 </div>
@@ -1147,7 +1147,7 @@
                 <label>Luminance Gamma: <span class="range-value" id="luminance-gamma-value">1.0</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="luminance-gamma" data-action="decrease">-</button>
-                    <input type="range" id="luminance-gamma" min="0" max="100" value="50" step="0.1">
+                    <input type="range" id="luminance-gamma">
                     <button class="slider-btn" data-slider="luminance-gamma" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="luminance-gamma" data-action="reset" title="Reset to default (1.0)">↺</button>
                 </div>
@@ -1158,7 +1158,7 @@
                 <label>White Point: <span class="range-value" id="white-point-value">2.0</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="white-point" data-action="decrease">-</button>
-                    <input type="range" id="white-point" min="1.0" max="10.0" value="2.0" step="0.1">
+                    <input type="range" id="white-point">
                     <button class="slider-btn" data-slider="white-point" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="white-point" data-action="reset" title="Reset to default (2.0)">↺</button>
                 </div>
@@ -1180,7 +1180,7 @@
                     <label>Bloom Intensity: <span class="range-value" id="bloom-intensity-value">0.30</span></label>
                     <div class="slider-control">
                         <button class="slider-btn" data-slider="bloom-intensity" data-action="decrease">-</button>
-                        <input type="range" id="bloom-intensity" min="0" max="200" value="30" step="0.1">
+                        <input type="range" id="bloom-intensity">
                         <button class="slider-btn" data-slider="bloom-intensity" data-action="increase">+</button>
                         <button class="slider-btn" data-slider="bloom-intensity" data-action="reset" title="Reset to default (0.3)">↺</button>
                     </div>
@@ -1191,7 +1191,7 @@
                     <label>Bloom Radius: <span class="range-value" id="bloom-radius-value">1.0</span></label>
                     <div class="slider-control">
                         <button class="slider-btn" data-slider="bloom-radius" data-action="decrease">-</button>
-                        <input type="range" id="bloom-radius" min="0.5" max="3.0" value="1.0" step="0.1">
+                        <input type="range" id="bloom-radius">
                         <button class="slider-btn" data-slider="bloom-radius" data-action="increase">+</button>
                         <button class="slider-btn" data-slider="bloom-radius" data-action="reset" title="Reset to default (1.0)">↺</button>
                     </div>
@@ -1202,7 +1202,7 @@
                     <label>Bloom Alpha: <span class="range-value" id="bloom-alpha-value">1.00</span></label>
                     <div class="slider-control">
                         <button class="slider-btn" data-slider="bloom-alpha" data-action="decrease">-</button>
-                        <input type="range" id="bloom-alpha" min="0" max="100" value="100" step="0.1">
+                        <input type="range" id="bloom-alpha">
                         <button class="slider-btn" data-slider="bloom-alpha" data-action="increase">+</button>
                         <button class="slider-btn" data-slider="bloom-alpha" data-action="reset" title="Reset to default (1.0)">↺</button>
                     </div>
@@ -1215,7 +1215,7 @@
                 <label>Intensity: <span class="range-value" id="particle-intensity-value">1.0</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="particle-intensity" data-action="decrease">-</button>
-                    <input type="range" id="particle-intensity" min="0" max="100" value="50" step="0.1">
+                    <input type="range" id="particle-intensity">
                     <button class="slider-btn" data-slider="particle-intensity" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="particle-intensity" data-action="reset" title="Reset to default (1.0)">↺</button>
                 </div>
@@ -1227,7 +1227,7 @@
                 <label>Saturation: <span class="range-value" id="color-saturation-value">1.00</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="color-saturation" data-action="decrease">-</button>
-                    <input type="range" id="color-saturation" min="0" max="100" value="100" step="0.1">
+                    <input type="range" id="color-saturation">
                     <button class="slider-btn" data-slider="color-saturation" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="color-saturation" data-action="reset" title="Reset to default (1.0)">↺</button>
                 </div>
@@ -1239,7 +1239,7 @@
                 <label>Bright Desat: <span class="range-value" id="brightness-desat-value">0.00</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="brightness-desat" data-action="decrease">-</button>
-                    <input type="range" id="brightness-desat" min="0" max="100" value="0" step="0.1">
+                    <input type="range" id="brightness-desat">
                     <button class="slider-btn" data-slider="brightness-desat" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="brightness-desat" data-action="reset" title="Reset to default (0.0)">↺</button>
                 </div>
@@ -1250,7 +1250,7 @@
                 <label>Saturation Buildup: <span class="range-value" id="saturation-buildup-value">0.00</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="saturation-buildup" data-action="decrease">-</button>
-                    <input type="range" id="saturation-buildup" min="0" max="100" value="0" step="0.1">
+                    <input type="range" id="saturation-buildup">
                     <button class="slider-btn" data-slider="saturation-buildup" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="saturation-buildup" data-action="reset" title="Reset to default (0.0)">↺</button>
                 </div>
@@ -1268,8 +1268,13 @@
             // Use timestamp as version
             const version = Date.now();
 
-            // Register and activate service worker first (if available)
-            if ('serviceWorker' in navigator) {
+            // Check if we're on HTTPS or localhost (service workers require secure context)
+            const isSecureContext = location.protocol === 'https:' ||
+                                   location.hostname === 'localhost' ||
+                                   location.hostname === '127.0.0.1';
+
+            // Register and activate service worker first (if available and in secure context)
+            if (isSecureContext && 'serviceWorker' in navigator) {
                 try {
                     // Unregister all existing service workers first (clean slate)
                     const registrations = await navigator.serviceWorker.getRegistrations();
@@ -1311,6 +1316,8 @@
                 } catch (error) {
                     console.warn('Service Worker registration failed:', error);
                 }
+            } else if (!isSecureContext) {
+                console.log('Service Worker disabled: not running on HTTPS or localhost (this is OK for static hosting)');
             } else {
                 console.warn('Service Workers not supported in this browser');
             }

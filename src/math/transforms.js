@@ -13,6 +13,11 @@
  *   x(t+h) = T^(-1)(y(t+h))
  */
 
+// Transform parameter slider constants
+const TRANSFORM_PARAM_MIN = 0.0001;
+const TRANSFORM_PARAM_MAX = 100.0;
+const TRANSFORM_PARAM_STEP = 0.0001;
+
 /**
  * Base class for coordinate transformations
  */
@@ -160,9 +165,9 @@ ${vecType} transform_jacobian(${vecType} x) {
             name: 'alpha',
             label: 'Exponent (α)',
             type: 'slider',
-            min: 0.1,
-            max: 3.0,
-            step: 0.1,
+            min: TRANSFORM_PARAM_MIN,
+            max: TRANSFORM_PARAM_MAX,
+            step: TRANSFORM_PARAM_STEP,
             default: 0.5,
             info: 'α < 1.0: zoom into origin; α > 1.0: compress origin'
         }];
@@ -243,9 +248,9 @@ ${vecType} transform_jacobian(${vecType} x) {
             name: 'beta',
             label: 'Compression (β)',
             type: 'slider',
-            min: 0.1,
-            max: 5.0,
-            step: 0.1,
+            min: TRANSFORM_PARAM_MIN,
+            max: TRANSFORM_PARAM_MAX,
+            step: TRANSFORM_PARAM_STEP,
             default: 1.0,
             info: 'Higher = more compression. Maps infinite space to [-1,1]'
         }];
@@ -328,9 +333,9 @@ ${vecType} transform_jacobian(${vecType} x) {
             name: 'k',
             label: 'Steepness (k)',
             type: 'slider',
-            min: 0.1,
-            max: 5.0,
-            step: 0.1,
+            min: TRANSFORM_PARAM_MIN,
+            max: TRANSFORM_PARAM_MAX,
+            step: TRANSFORM_PARAM_STEP,
             default: 1.0,
             info: 'Higher = steeper transition. Maps infinite space to [-1,1] with logistic curve.'
         }];
@@ -339,11 +344,11 @@ ${vecType} transform_jacobian(${vecType} x) {
 
 /**
  * Rational transform (component-wise)
- * T(x) = x / sqrt(x^2 + 1)
- * Jacobian: 1/(x^2+1)^(3/2) - bell-shaped!
+ * T(x) = x / sqrt(x^2 + a)
+ * Jacobian: a/(x^2+a)^(3/2) - bell-shaped!
  *
- * Compresses to (-1, 1), with bell-shaped derivative
- * Fast integration near zero, slow at extremes
+ * Compresses to (-√a, √a), with bell-shaped derivative
+ * Parameter 'a' controls bell width: higher = wider/shallower, lower = narrower/sharper
  */
 class RationalTransform extends Transform {
     constructor() {
@@ -354,10 +359,11 @@ class RationalTransform extends Transform {
         const vecType = `vec${dimensions}`;
         return `
 ${vecType} transform_forward(${vecType} x) {
+    float a = u_transform_params.x;
     ${vecType} result;
     ${Array.from({length: dimensions}, (_, i) => {
         const comp = ['x', 'y', 'z', 'w'][i] || `[${i}]`;
-        return `result.${comp} = x.${comp} / sqrt(x.${comp} * x.${comp} + 1.0);`;
+        return `result.${comp} = x.${comp} / sqrt(x.${comp} * x.${comp} + a);`;
     }).join('\n    ')}
     return result;
 }`;
@@ -367,14 +373,16 @@ ${vecType} transform_forward(${vecType} x) {
         const vecType = `vec${dimensions}`;
         return `
 ${vecType} transform_inverse(${vecType} y) {
-    // Inverse: x = y / sqrt(1 - y^2)
+    float a = u_transform_params.x;
+    // Inverse: x = y * sqrt(a / (1 - y^2))
+    // Note: y is bounded to [-1, 1] regardless of a
     ${vecType} result;
     ${Array.from({length: dimensions}, (_, i) => {
         const comp = ['x', 'y', 'z', 'w'][i] || `[${i}]`;
         return `{
         float y_clamped = clamp(y.${comp}, -0.99999, 0.99999);
         float y_sq = y_clamped * y_clamped;
-        result.${comp} = y_clamped / sqrt(1.0 - y_sq);
+        result.${comp} = y_clamped * sqrt(a / (1.0 - y_sq));
     }`;
     }).join('\n    ')}
     return result;
@@ -385,15 +393,16 @@ ${vecType} transform_inverse(${vecType} y) {
         const vecType = `vec${dimensions}`;
         return `
 ${vecType} transform_jacobian(${vecType} x) {
-    // Jacobian: d/dx [x/sqrt(x^2+1)] = 1/(x^2+1)^(3/2)
+    float a = u_transform_params.x;
+    // Jacobian: d/dx [x/sqrt(x^2+a)] = a/(x^2+a)^(3/2)
     // This is bell-shaped! Peaks at x=0, decays at infinity
     ${vecType} result;
     ${Array.from({length: dimensions}, (_, i) => {
         const comp = ['x', 'y', 'z', 'w'][i] || `[${i}]`;
         return `{
         float x_sq = x.${comp} * x.${comp};
-        float denom = x_sq + 1.0;
-        result.${comp} = 1.0 / (denom * sqrt(denom));
+        float denom = x_sq + a;
+        result.${comp} = a / (denom * sqrt(denom));
     }`;
     }).join('\n    ')}
     return result;
@@ -401,7 +410,16 @@ ${vecType} transform_jacobian(${vecType} x) {
     }
 
     getParameters() {
-        return [];
+        return [{
+            name: 'a',
+            label: 'Width (a)',
+            type: 'slider',
+            min: TRANSFORM_PARAM_MIN,
+            max: TRANSFORM_PARAM_MAX,
+            step: TRANSFORM_PARAM_STEP,
+            default: 1.0,
+            info: 'Controls bell curve width. Higher = wider/shallower, lower = narrower/sharper.'
+        }];
     }
 }
 
@@ -463,9 +481,9 @@ ${vecType} transform_jacobian(${vecType} x) {
                 name: 'amplitude',
                 label: 'Amplitude',
                 type: 'slider',
-                min: 0.0,
-                max: 2.0,
-                step: 0.1,
+                min: TRANSFORM_PARAM_MIN,
+                max: TRANSFORM_PARAM_MAX,
+                step: TRANSFORM_PARAM_STEP,
                 default: 0.5,
                 info: 'Strength of distortion'
             },
@@ -473,9 +491,9 @@ ${vecType} transform_jacobian(${vecType} x) {
                 name: 'frequency',
                 label: 'Frequency',
                 type: 'slider',
-                min: 0.1,
-                max: 10.0,
-                step: 0.1,
+                min: TRANSFORM_PARAM_MIN,
+                max: TRANSFORM_PARAM_MAX,
+                step: TRANSFORM_PARAM_STEP,
                 default: 1.0,
                 info: 'Number of waves per unit length'
             }

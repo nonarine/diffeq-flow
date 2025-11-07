@@ -5,6 +5,11 @@
 
 import { Control, CheckboxControl } from './control-base.js';
 
+// Transform parameter slider constants (must match transforms.js)
+const TRANSFORM_PARAM_MIN = 0.0001;
+const TRANSFORM_PARAM_MAX = 100.0;
+const TRANSFORM_PARAM_STEP = 0.0001;
+
 /**
  * FloatCheckboxControl - checkbox that outputs 0.0 or 1.0 instead of boolean
  * Useful for shader uniforms that expect floats
@@ -402,32 +407,35 @@ export class TransformParamsControl extends Control {
         this.transformParams = {
             identity: [],
             power: [
-                { name: 'alpha', label: 'Exponent (α)', min: 0.1, max: 3.0, step: 0.1, default: 0.5,
+                { name: 'alpha', label: 'Exponent (α)', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 0.5,
                   info: 'α < 1.0: zoom into origin; α > 1.0: compress origin' }
             ],
             log: [],  // No parameters - stretches near zero automatically
             exp: [
-                { name: 'alpha', label: 'Growth Rate (α)', min: 0.1, max: 2.0, step: 0.1, default: 0.5,
+                { name: 'alpha', label: 'Growth Rate (α)', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 0.5,
                   info: 'Higher α = stronger exponential growth. Use small values (0.1-0.5) to avoid overflow.' }
             ],
             softsign: [],  // No parameters - simple compression to [-1,1]
             tanh: [
-                { name: 'beta', label: 'Compression (β)', min: 0.1, max: 5.0, step: 0.1, default: 1.0,
+                { name: 'beta', label: 'Compression (β)', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 1.0,
                   info: 'Higher = more compression. Maps infinite space to [-1,1]' }
             ],
             sigmoid: [
-                { name: 'k', label: 'Steepness (k)', min: 0.1, max: 5.0, step: 0.1, default: 1.0,
+                { name: 'k', label: 'Steepness (k)', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 1.0,
                   info: 'Higher = steeper transition. Maps infinite space to [-1,1] with logistic curve.' }
             ],
-            rational: [],  // No parameters - bell-shaped Jacobian, fast near zero
+            rational: [
+                { name: 'a', label: 'Width (a)', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 1.0,
+                  info: 'Controls bell curve width. Higher = wider/shallower, lower = narrower/sharper. T(x) = x/√(x²+a), J = a/(x²+a)^(3/2)' }
+            ],
             sine: [
-                { name: 'amplitude', label: 'Amplitude', min: 0.0, max: 2.0, step: 0.1, default: 0.5,
+                { name: 'amplitude', label: 'Amplitude', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 0.5,
                   info: 'Strength of distortion' },
-                { name: 'frequency', label: 'Frequency', min: 0.1, max: 10.0, step: 0.1, default: 1.0,
+                { name: 'frequency', label: 'Frequency', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 1.0,
                   info: 'Number of waves per unit length' }
             ],
             radial_power: [
-                { name: 'alpha', label: 'Radial Exponent (α)', min: 0.1, max: 3.0, step: 0.1, default: 0.5,
+                { name: 'alpha', label: 'Radial Exponent (α)', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 0.5,
                   info: 'α < 1.0: zoom into origin; α > 1.0: compress origin' }
             ],
             custom: []
@@ -491,6 +499,8 @@ export class TransformParamsControl extends Control {
 
         if (params.length === 0) {
             // No parameters for this transform
+            // Update accordion height even when removing controls
+            this.updateAccordionHeight();
             return;
         }
 
@@ -501,21 +511,28 @@ export class TransformParamsControl extends Control {
 
             const group = $('<div class="control-group"></div>');
 
+            // Format value in scientific notation
+            const formatScientific = (v) => {
+                if (Math.abs(v) >= 10 || Math.abs(v) < 0.1) {
+                    return v.toExponential(2);
+                } else {
+                    return v.toFixed(3);
+                }
+            };
+
             // Label with value display
             group.append(`
-                <label>${param.label}: <span class="range-value" id="transform-param-${index}-value">${currentValue.toFixed(2)}</span></label>
+                <label>${param.label}: <span class="range-value" id="transform-param-${index}-value">${formatScientific(currentValue)}</span></label>
             `);
 
-            // Slider with +/- buttons
+            // Slider with +/- buttons (adaptive increment)
             const sliderControl = $('<div class="slider-control"></div>');
             sliderControl.append(`
+                <button class="slider-btn" data-slider="transform-param-${index}" data-action="decrease-large">--</button>
                 <button class="slider-btn" data-slider="transform-param-${index}" data-action="decrease">-</button>
-                <input type="range" id="transform-param-${index}"
-                    min="${param.min}"
-                    max="${param.max}"
-                    value="${currentValue}"
-                    step="${param.step}">
+                <input type="range" id="transform-param-${index}">
                 <button class="slider-btn" data-slider="transform-param-${index}" data-action="increase">+</button>
+                <button class="slider-btn" data-slider="transform-param-${index}" data-action="increase-large">++</button>
             `);
 
             group.append(sliderControl);
@@ -525,7 +542,15 @@ export class TransformParamsControl extends Control {
                 group.append(`<div class="info">${param.info}</div>`);
             }
 
+            // Append to container FIRST so element is in DOM
             container.append(group);
+
+            // THEN set slider attributes (must set min/max BEFORE value)
+            const $slider = $(`#transform-param-${index}`);
+            $slider.attr('min', param.min);
+            $slider.attr('max', param.max);
+            $slider.attr('step', 0.0001); // Very small step for smooth adjustment
+            $slider.val(currentValue); // Set value AFTER min/max to avoid normalization issues
         });
 
         // Update value displays
@@ -533,11 +558,36 @@ export class TransformParamsControl extends Control {
             const value = this.currentParams[param.name] !== undefined
                 ? this.currentParams[param.name]
                 : param.default;
-            $(`#transform-param-${index}-value`).text(value.toFixed(2));
+            const formatScientific = (v) => {
+                if (Math.abs(v) >= 10 || Math.abs(v) < 0.1) {
+                    return v.toExponential(2);
+                } else {
+                    return v.toFixed(3);
+                }
+            };
+            $(`#transform-param-${index}-value`).text(formatScientific(value));
         });
 
         // Attach change listeners
         this.attachParamListeners();
+
+        // Update accordion height to accommodate new controls
+        this.updateAccordionHeight();
+    }
+
+    /**
+     * Update accordion section height to fit content
+     */
+    updateAccordionHeight() {
+        // Use setTimeout to allow DOM to update first
+        setTimeout(() => {
+            // Find the accordion section containing transform controls
+            const $accordionSection = $('#transform-controls').closest('.accordion-section');
+            if ($accordionSection.length && !$accordionSection.hasClass('collapsed')) {
+                // Recalculate and update max-height
+                $accordionSection.css('max-height', $accordionSection[0].scrollHeight + 'px');
+            }
+        }, 0);
     }
 
     /**
@@ -550,41 +600,68 @@ export class TransformParamsControl extends Control {
 
         // Remove old listeners
         $(document).off('input change', '[id^="transform-param-"]');
-        $(document).off('click', '[data-slider^="transform-param-"]');
 
         // Add slider input listeners
         params.forEach((param, index) => {
             $(`#transform-param-${index}`).on('input', (e) => {
                 const value = parseFloat(e.target.value);
-                $(`#transform-param-${index}-value`).text(value.toFixed(2));
+
+                const formatScientific = (v) => {
+                    if (Math.abs(v) >= 10 || Math.abs(v) < 0.1) {
+                        return v.toExponential(2);
+                    } else {
+                        return v.toFixed(3);
+                    }
+                };
+
+                $(`#transform-param-${index}-value`).text(formatScientific(value));
                 this.currentParams[param.name] = value;
                 if (this.onChange) this.onChange(this.currentParams);
                 if (callback) callback();
             });
         });
 
-        // Add +/- button listeners
-        $('[data-slider^="transform-param-"]').on('click', (e) => {
-            const btn = $(e.currentTarget);
-            const sliderId = btn.data('slider');
-            const action = btn.data('action');
-            const slider = $(`#${sliderId}`);
+        // Note: Button handlers are managed by the global .slider-btn handler
+        // which dispatches to handleButtonAction() for adaptive increments
+    }
 
-            if (slider.length) {
-                const step = parseFloat(slider.attr('step'));
-                const min = parseFloat(slider.attr('min'));
-                const max = parseFloat(slider.attr('max'));
-                let value = parseFloat(slider.val());
+    /**
+     * Handle button actions for dynamically created transform parameter sliders
+     * @param {string} sliderId - The slider ID (e.g., 'transform-param-0')
+     * @param {string} action - The button action
+     * @returns {boolean} True if handled
+     */
+    handleTransformParamButton(sliderId, action) {
+        const slider = $(`#${sliderId}`);
+        if (!slider.length) return false;
 
-                if (action === 'increase') {
-                    value = Math.min(max, value + step);
-                } else if (action === 'decrease') {
-                    value = Math.max(min, value - step);
-                }
+        const currentValue = parseFloat(slider.val());
+        const min = parseFloat(slider.attr('min'));
+        const max = parseFloat(slider.attr('max'));
 
-                slider.val(value).trigger('input');
-            }
-        });
+        // Calculate adaptive increment (same logic as AdaptiveSliderControl)
+        const absValue = Math.abs(currentValue);
+        let increment = absValue < 0.0001 ? 0.0001 : Math.pow(10, Math.floor(Math.log10(absValue)) - 1);
+        increment = Math.max(0.0001, increment);
+
+        if (action === 'increase-large' || action === 'decrease-large') {
+            increment *= 10;
+        }
+
+        let newValue = currentValue;
+        if (action === 'increase' || action === 'increase-large') {
+            newValue = Math.min(max, currentValue + increment);
+        } else if (action === 'decrease' || action === 'decrease-large') {
+            newValue = Math.max(min, currentValue - increment);
+        } else {
+            return false;
+        }
+
+        if (newValue !== currentValue) {
+            slider.val(newValue).trigger('input');
+            return true;
+        }
+        return false;
     }
 
     /**

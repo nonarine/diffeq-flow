@@ -8,6 +8,8 @@ import {
     SliderControl,
     LogSliderControl,
     PercentSliderControl,
+    AdaptiveSliderControl,
+    TimestepControl,
     TextControl,
     SelectControl,
     CheckboxControl
@@ -71,13 +73,13 @@ export function initControls(renderer, callback) {
         displayFormat: v => v.toFixed(0),
         onChange: (value) => {
             // Update dimension inputs when dimensions change
-            const expressionsControl = manager.get('expressions');
+            const expressionsControl = manager.get('dimension-inputs');
             if (expressionsControl) {
                 expressionsControl.updateInputs(value);
             }
 
             // Update mapper controls
-            const mapperParamsControl = manager.get('mapperParams');
+            const mapperParamsControl = manager.get('mapper-params');
             if (mapperParamsControl) {
                 mapperParamsControl.updateControls();
             }
@@ -93,10 +95,13 @@ export function initControls(renderer, callback) {
             $('#solution-method-group').toggle(isImplicit);
 
             // Update accordion height to accommodate shown/hidden controls
-            const $accordionSection = $('#integrator').closest('.accordion-section');
-            if ($accordionSection.length && !$accordionSection.hasClass('collapsed')) {
-                $accordionSection.css('max-height', $accordionSection[0].scrollHeight + 'px');
-            }
+            // Use setTimeout to allow DOM to update first
+            setTimeout(() => {
+                const $accordionSection = $('#integrator').closest('.accordion-section');
+                if ($accordionSection.length && !$accordionSection.hasClass('collapsed')) {
+                    $accordionSection.css('max-height', $accordionSection[0].scrollHeight + 'px');
+                }
+            }, 0);
         }
     }));
 
@@ -104,10 +109,12 @@ export function initControls(renderer, callback) {
         settingsKey: 'solutionMethod'
     }));
 
-    const timestepControl = manager.register(new SliderControl('timestep', 0.01, {
+    const timestepControl = manager.register(new TimestepControl('timestep', 0.01, {
         min: 0.001,
         max: 2.5,
-        step: 0.01,
+        step: 0.001,
+        smallIncrement: 0.001,  // - and + buttons
+        largeIncrement: 0.01,   // -- and ++ buttons
         displayId: 'timestep-value',
         displayFormat: v => v.toFixed(4)
     }));
@@ -159,7 +166,7 @@ export function initControls(renderer, callback) {
         settingsKey: 'transformType',
         onChange: (value) => {
             // Update transform params UI when transform type changes
-            const transformParamsControl = manager.get('transformParams');
+            const transformParamsControl = manager.get('transform-params');
             if (transformParamsControl) {
                 transformParamsControl.updateControls();
             }
@@ -179,7 +186,7 @@ export function initControls(renderer, callback) {
         settingsKey: 'mapperType',
         onChange: (value) => {
             // Update mapper params UI when mapper type changes
-            const mapperParamsControl = manager.get('mapperParams');
+            const mapperParamsControl = manager.get('mapper-params');
             if (mapperParamsControl) {
                 mapperParamsControl.updateControls();
             }
@@ -492,49 +499,31 @@ export function initControls(renderer, callback) {
         window.location.href = url.toString();
     });
 
-    // Slider +/- buttons (trigger slider input events)
-    $('.slider-btn').on('click', function() {
+    // Slider +/- buttons - dispatch to control implementations
+    // Use event delegation to handle dynamically created buttons
+    $(document).on('click', '.slider-btn', function() {
         const sliderId = $(this).data('slider');
         const action = $(this).data('action');
-        const slider = $(`#${sliderId}`);
 
-        if (!slider.length) return;
+        // Try to get the registered control
+        const control = manager.get(sliderId);
+        if (control && control.handleButtonAction) {
+            // Dispatch to control's implementation
+            control.handleButtonAction(action);
+            return;
+        }
 
-        const currentValue = parseFloat(slider.val());
-        const step = parseFloat(slider.attr('step')) || 1;
-        const min = parseFloat(slider.attr('min'));
-        const max = parseFloat(slider.attr('max'));
-
-        // Custom step sizes for different sliders and actions
-        let increment = step;
-        if (sliderId === 'timestep') {
-            // Timestep has custom increments for fine control
-            if (action === 'increase' || action === 'decrease') {
-                increment = 0.001;  // Fine adjustment
-            } else if (action === 'increase-large' || action === 'decrease-large') {
-                increment = 0.01;   // Coarse adjustment
+        // Handle dynamically created transform parameter sliders
+        if (sliderId.startsWith('transform-param-')) {
+            const transformParamsControl = manager.get('transform-params');
+            if (transformParamsControl && transformParamsControl.handleTransformParamButton) {
+                transformParamsControl.handleTransformParamButton(sliderId, action);
             }
-        } else if (action === 'increase-large' || action === 'decrease-large') {
-            // For other sliders, large steps are 10x normal step
-            increment = step * 10;
+            return;
         }
 
-        let newValue = currentValue;
-        if (action === 'increase' || action === 'increase-large') {
-            newValue = Math.min(max, currentValue + increment);
-        } else if (action === 'decrease' || action === 'decrease-large') {
-            newValue = Math.max(min, currentValue - increment);
-        } else if (action === 'reset') {
-            // Reset to control's default value
-            const control = manager.get(sliderId);
-            if (control) {
-                newValue = control.defaultValue;
-            }
-        }
-
-        if (newValue !== currentValue) {
-            slider.val(newValue).trigger('input');
-        }
+        // Fallback: no control found, slider doesn't support buttons
+        console.warn(`No button handler found for slider: ${sliderId}`);
     });
 
     // ========================================
@@ -1031,7 +1020,7 @@ function loadPreset(name, manager) {
     }
 
     // Update mapper controls to match new dimensions
-    const mapperParamsControl = manager.get('mapperParams');
+    const mapperParamsControl = manager.get('mapper-params');
     if (mapperParamsControl) {
         logger.verbose('Updating mapper controls');
         mapperParamsControl.updateControls();
