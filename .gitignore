@@ -93,5 +93,7 @@ Thumbs.db
 .claude/
 CLAUDE.md
 
+state.json
+
 # Self-signed SSL certificates (for local HTTPS development)
 *.pem
