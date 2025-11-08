@@ -694,6 +694,7 @@
                     <option value="2d_rotation">Simple Rotation (2D)</option>
                     <option value="2d_vortex">Vortex (2D)</option>
                     <option value="2d_vanderpol">Van der Pol Oscillator (2D)</option>
+                    <option value="2d_fluid_stirring">Fluid Transport with Stirring (2D)</option>
                     <option value="3d_lorenz">Lorenz Attractor (3D)</option>
                     <option value="3d_rossler">Rössler Attractor (3D)</option>
                     <option value="4d_hypersphere">4D Hypersphere Rotation</option>
@@ -936,10 +937,17 @@
         </div>
 
         <div class="control-group">
-            <button id="reset" class="secondary">Reset View</button>
-            <button id="reset-particles" class="secondary">Clear Screen (C)</button>
-            <button id="default-settings" class="secondary">Default Settings</button>
-            <button id="share-url" class="secondary">Share URL</button>
+            <div style="display: flex; gap: 6px; width: 100%; margin-bottom: 6px;">
+                <button id="reset" class="secondary" style="flex: 1;">Reset View</button>
+                <button id="reset-particles" class="secondary" style="flex: 1;">Clear Screen (C)</button>
+            </div>
+            <div style="display: flex; gap: 6px; width: 100%; margin-bottom: 6px;">
+                <button id="default-settings" class="secondary" style="flex: 1;">Default Settings</button>
+                <button id="share-url" class="secondary" style="flex: 1;">Share URL</button>
+            </div>
+            <div style="display: flex; gap: 6px; width: 100%;">
+                <button id="save-image" class="secondary" style="flex: 1;">Save Image</button>
+            </div>
         </div>
     </div>
 

@@ -153,12 +153,18 @@ export class SliderControl extends Control {
         element.attr('max', this.max);
         element.attr('step', this.step);
 
-        element.on('input', () => {
+        // Set initial value (will be overridden by restoreFromSettings if settings exist)
+        this.setValue(this.defaultValue);
+
+        // Handle both input and change events for better browser compatibility
+        const handler = () => {
             const value = this.getValue(); // Gets transformed value
             this.updateDisplay(value);
             if (this.onChange) this.onChange(value);
             if (callback) callback();
-        });
+        };
+
+        element.on('input change', handler);
     }
 }
 
@@ -256,6 +262,9 @@ export class LogSliderControl extends Control {
         element.attr('max', 100);
         element.attr('step', 0.1);
 
+        // Set initial value (will be overridden by restoreFromSettings if settings exist)
+        this.setValue(this.defaultValue);
+
         element.on('input', () => {
             const value = this.getValue();
             this.updateDisplay(value);
@@ -290,6 +299,9 @@ export class TextControl extends Control {
         const element = $(`#${this.id}`);
         this.element = element;
 
+        // Set initial value (will be overridden by restoreFromSettings if settings exist)
+        this.setValue(this.defaultValue);
+
         element.on('input', () => {
             const value = this.getValue();
             if (this.onChange) this.onChange(value);
@@ -320,6 +332,9 @@ export class SelectControl extends Control {
         const element = $(`#${this.id}`);
         this.element = element;
 
+        // Set initial value (will be overridden by restoreFromSettings if settings exist)
+        this.setValue(this.defaultValue);
+
         element.on('change', () => {
             const value = this.getValue();
             if (this.onChange) this.onChange(value);
@@ -349,6 +364,9 @@ export class CheckboxControl extends Control {
     attachListeners(callback) {
         const element = $(`#${this.id}`);
         this.element = element;
+
+        // Set initial value (will be overridden by restoreFromSettings if settings exist)
+        this.setValue(this.defaultValue);
 
         element.on('change', () => {
             const value = this.getValue();
@@ -431,6 +449,9 @@ export class PercentSliderControl extends Control {
         element.attr('min', this.min);
         element.attr('max', this.max);
         element.attr('step', this.step);
+
+        // Set initial value (will be overridden by restoreFromSettings if settings exist)
+        this.setValue(this.defaultValue);
 
         element.on('input', () => {
             const value = this.getValue();
@@ -534,6 +555,9 @@ export class AdaptiveSliderControl extends Control {
         element.attr('max', this.max);
         element.attr('step', this.minIncrement);
 
+        // Set initial value (will be overridden by restoreFromSettings if settings exist)
+        this.setValue(this.defaultValue);
+
         element.on('input', () => {
             const value = this.getValue();
             this.updateDisplay(value);
@@ -623,6 +647,9 @@ export class TimestepControl extends Control {
         element.attr('max', this.max);
         element.attr('step', this.step);
 
+        // Set initial value (will be overridden by restoreFromSettings if settings exist)
+        this.setValue(this.defaultValue);
+
         element.on('input', () => {
             const value = this.getValue();
             this.updateDisplay(value);
@@ -708,8 +735,17 @@ export class ControlManager {
      * Apply settings to all controls
      */
     setSettings(settings) {
+        // First, restore all values
         for (const control of this.controls.values()) {
             control.restoreFromSettings(settings);
+        }
+
+        // Then, trigger onChange callbacks to update dependent controls
+        // This ensures all controls are in their correct state before triggering changes
+        for (const control of this.controls.values()) {
+            if (control.onChange && settings && settings[control.settingsKey] !== undefined) {
+                control.onChange(control.getValue());
+            }
         }
     }
 

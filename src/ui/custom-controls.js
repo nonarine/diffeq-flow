@@ -4,6 +4,7 @@
  */
 
 import { Control, CheckboxControl } from './control-base.js';
+import { logger } from '../utils/debug-logger.js';
 
 // Transform parameter slider constants (must match transforms.js)
 const TRANSFORM_PARAM_MIN = 0.0001;
@@ -92,9 +93,12 @@ export class DimensionInputsControl extends Control {
             dimensions = this.getDimensions();
         }
 
+        logger.verbose('updateInputs called with dimensions:', dimensions);
+
         const container = $('#dimension-inputs');
+        logger.verbose('Container found:', container.length);
         if (container.length === 0) {
-            console.error('Could not find #dimension-inputs element');
+            logger.error('Could not find #dimension-inputs element');
             return;
         }
 
@@ -103,14 +107,30 @@ export class DimensionInputsControl extends Control {
         if (newValues && Array.isArray(newValues)) {
             // Use provided new values
             valuesToUse = newValues;
+            logger.verbose('Using provided newValues');
         } else {
             // Get current values before clearing (check if elements exist first)
             const firstElement = $(`#expr-0`);
-            valuesToUse = firstElement.length > 0 ? this.getValue() : this.defaultValue;
+            logger.verbose('firstElement exists:', firstElement.length > 0);
+            try {
+                if (firstElement.length > 0) {
+                    valuesToUse = this.getValue();
+                    logger.verbose('Got current values from getValue()');
+                } else {
+                    valuesToUse = this.defaultValue;
+                    logger.verbose('Using defaultValue');
+                }
+            } catch (error) {
+                logger.error('Error getting values:', error);
+                valuesToUse = this.defaultValue;
+            }
         }
+
+        logger.verbose('Values to use:', valuesToUse);
 
         // Clear and rebuild
         container.empty();
+        logger.verbose('Container emptied, now creating', dimensions, 'inputs');
 
         for (let i = 0; i < dimensions; i++) {
             const varName = this.varNames[i];
@@ -121,10 +141,30 @@ export class DimensionInputsControl extends Control {
             div.append(`<input type="text" id="expr-${i}" value="${defaultValue}">`);
 
             container.append(div);
+            logger.verbose('Created input', i, 'with value:', defaultValue);
         }
+
+        logger.verbose('All inputs created, container now has', container.children().length, 'children');
 
         // Reattach listeners to new inputs
         this.attachInputListeners();
+
+        // Update accordion height to accommodate new inputs
+        this.updateAccordionHeight();
+    }
+
+    /**
+     * Update accordion section height to fit content
+     */
+    updateAccordionHeight() {
+        // Use setTimeout to allow DOM to update first
+        setTimeout(() => {
+            const $accordionSection = $('#dimension-inputs').closest('.accordion-section');
+            if ($accordionSection.length && !$accordionSection.hasClass('collapsed')) {
+                // Recalculate and update max-height
+                $accordionSection.css('max-height', $accordionSection[0].scrollHeight + 'px');
+            }
+        }, 0);
     }
 
     /**

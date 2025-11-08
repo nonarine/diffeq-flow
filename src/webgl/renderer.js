@@ -46,7 +46,7 @@ export class Renderer {
             depth: false,
             stencil: false,
             antialias: false,
-            preserveDrawingBuffer: false
+            preserveDrawingBuffer: true
         });
 
         if (!this.gl) {

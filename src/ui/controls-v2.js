@@ -72,10 +72,15 @@ export function initControls(renderer, callback) {
         displayId: 'dim-value',
         displayFormat: v => v.toFixed(0),
         onChange: (value) => {
+            logger.verbose('Dimensions changed to:', value);
+
             // Update dimension inputs when dimensions change
             const expressionsControl = manager.get('dimension-inputs');
             if (expressionsControl) {
+                logger.verbose('Calling updateInputs with dimensions:', value);
                 expressionsControl.updateInputs(value);
+            } else {
+                logger.error('expressionsControl not found!');
             }
 
             // Update mapper controls
@@ -480,6 +485,32 @@ export function initControls(renderer, callback) {
     // Reset Particles button (clears screen trails)
     $('#reset-particles').on('click', function() {
         renderer.clearScreen();
+    });
+
+    // Save Image button (saves canvas as PNG)
+    $('#save-image').on('click', function() {
+        const canvas = renderer.gl.canvas;
+
+        // Convert canvas to data URL
+        canvas.toBlob(function(blob) {
+            // Create download link
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+
+            // Generate filename with timestamp
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+            link.download = `vector-field-${timestamp}.png`;
+
+            link.href = url;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            // Clean up
+            URL.revokeObjectURL(url);
+
+            logger.info('Image saved: ' + link.download);
+        }, 'image/png');
     });
 
     // Storage strategy selector (requires page reload)
@@ -975,6 +1006,14 @@ function loadPresets() {
             dimensions: 4,
             expressions: ['-y', 'x', '-w', 'z'],
             name: '4D Hypersphere Rotation'
+        },
+        '2d_fluid_stirring': {
+            dimensions: 2,
+            expressions: [
+                '-y + sin(x)*cos(y)*3.0 - 0.1*x',
+                'x + cos(x)*sin(y)*3.0 - 0.1*y'
+            ],
+            name: 'Fluid Transport with Stirring'
         }
     };
 }
