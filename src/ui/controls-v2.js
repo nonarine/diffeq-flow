@@ -450,8 +450,64 @@ export function initControls(renderer, callback) {
         if (presetName) {
             loadPreset(presetName, manager);
             $(this).val(''); // Reset to placeholder
+
+            // Show delete button if it's a custom preset
+            const customPresets = loadCustomPresets();
+            if (customPresets[presetName]) {
+                $('#preset-name-input').val(presetName);
+                $('#delete-preset-btn').show();
+            } else {
+                $('#preset-name-input').val('');
+                $('#delete-preset-btn').hide();
+            }
         }
     });
+
+    // Save Preset button
+    $('#save-preset-btn').on('click', function() {
+        const presetName = $('#preset-name-input').val().trim();
+        if (!presetName) {
+            alert('Please enter a preset name');
+            return;
+        }
+
+        // Get current settings (using the same method as localStorage saving)
+        const settings = manager.getSettings();
+
+        // Add name to the preset
+        const preset = {
+            ...settings,
+            name: presetName
+        };
+
+        // Save to localStorage
+        saveCustomPreset(presetName, preset);
+
+        // Refresh preset dropdown
+        refreshCustomPresetsDropdown();
+
+        // Show delete button
+        $('#delete-preset-btn').show();
+
+        logger.info('Preset saved: ' + presetName);
+    });
+
+    // Delete Preset button
+    $('#delete-preset-btn').on('click', function() {
+        const presetName = $('#preset-name-input').val().trim();
+        if (!presetName) return;
+
+        if (confirm(`Delete preset "${presetName}"?`)) {
+            deleteCustomPreset(presetName);
+            refreshCustomPresetsDropdown();
+            $('#preset-name-input').val('');
+            $('#delete-preset-btn').hide();
+            logger.info('Preset deleted: ' + presetName);
+        }
+    });
+
+    // Load custom presets on init
+    refreshCustomPresetsDropdown();
 
     // Default Settings button
     $('#default-settings').on('click', function() {
@@ -1022,7 +1078,13 @@ function loadPresets() {
  * Load a specific preset
  */
 function loadPreset(name, manager) {
-    const preset = window.presets[name];
+    // Check built-in presets first, then custom presets
+    let preset = window.presets[name];
+    if (!preset) {
+        const customPresets = loadCustomPresets();
+        preset = customPresets[name];
+    }
+
     if (!preset) {
         console.error('Preset not found:', name);
         logger.error(`Preset not found: ${name}`);
@@ -1031,43 +1093,29 @@ function loadPreset(name, manager) {
 
     logger.info(`Loading preset: ${preset.name || name} (dimensions=${preset.dimensions}, expressions=${preset.expressions.length})`);
 
-    // Update dimensions
-    const dimensionsControl = manager.get('dimensions');
-    if (dimensionsControl) {
-        logger.verbose(`Setting dimensions to ${preset.dimensions}`);
-        dimensionsControl.setValue(preset.dimensions);
-        const actualValue = dimensionsControl.getValue();
-        logger.verbose(`Dimensions value after set: ${actualValue}`);
-    }
+    // Use the same loading logic as for loading settings from localStorage
+    // This ensures consistent behavior and handles all control types properly
+    manager.applySettings(preset);
 
-    // Update expressions (which will also update input count)
+    // Make sure UI controls are updated after restoring settings
     const expressionsControl = manager.get('dimension-inputs');
-    if (expressionsControl) {
-        logger.verbose(`PRESET expressions to set: [${preset.expressions.join(', ')}]`);
-        expressionsControl.setValue(preset.expressions);
-
-        // Check what got set in the DOM
-        for (let i = 0; i < preset.expressions.length; i++) {
-            const domValue = $(`#expr-${i}`).val();
-            logger.verbose(`  expr-${i} DOM value: "${domValue}"`);
-        }
-
-        const actualExpressions = expressionsControl.getValue();
-        logger.verbose(`Expressions after getValue(): [${actualExpressions.join(', ')}]`);
-    } else {
-        logger.error('Could not find dimension-inputs control!');
+    if (expressionsControl && preset.dimensions) {
+        expressionsControl.updateInputs(preset.dimensions);
     }
 
-    // Update mapper controls to match new dimensions
     const mapperParamsControl = manager.get('mapper-params');
     if (mapperParamsControl) {
-        logger.verbose('Updating mapper controls');
         mapperParamsControl.updateControls();
     }
 
-    // Apply changes immediately (no debounce for preset loading)
-    logger.verbose('Applying preset settings to renderer');
+    const transformParamsControl = manager.get('transform-params');
+    if (transformParamsControl) {
+        transformParamsControl.updateControls();
+    }
+
+    // Apply changes immediately to renderer (no debounce for preset loading)
     manager.apply();
+
     logger.info(`Preset ${preset.name || name} loaded successfully`);
 }
 
@@ -1075,3 +1123,60 @@ function loadPreset(name, manager) {
  * Export loadPreset for global access
  */
 export { loadPreset };
+
+/**
+ * Custom preset management
+ */
+const CUSTOM_PRESETS_KEY = 'customPresets';
+
+function loadCustomPresets() {
+    try {
+        const stored = localStorage.getItem(CUSTOM_PRESETS_KEY);
+        return stored ? JSON.parse(stored) : {};
+    } catch (e) {
+        console.error('Failed to load custom presets:', e);
+        return {};
+    }
+}
+
+function saveCustomPreset(name, preset) {
+    const presets = loadCustomPresets();
+    presets[name] = preset;
+    try {
+        localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(presets));
+    } catch (e) {
+        console.error('Failed to save custom preset:', e);
+        alert('Failed to save preset: ' + e.message);
+    }
+}
+
+function deleteCustomPreset(name) {
+    const presets = loadCustomPresets();
+    delete presets[name];
+    try {
+        localStorage.setItem(CUSTOM_PRESETS_KEY, JSON.stringify(presets));
+    } catch (e) {
+        console.error('Failed to delete custom preset:', e);
+    }
+}
+
+function refreshCustomPresetsDropdown() {
+    const customPresets = loadCustomPresets();
+    const $group = $('#custom-presets-group');
+
+    // Clear existing options
+    $group.empty();
+
+    // Add custom presets
+    const presetNames = Object.keys(customPresets).sort();
+    if (presetNames.length > 0) {
+        $group.show();
+        presetNames.forEach(name => {
+            const preset = customPresets[name];
+            const displayName = preset.name || name;
+            $group.append(`<option value="${name}">${displayName}</option>`);
+        });
+    } else {
+        $group.hide();
+    }
+}

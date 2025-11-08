@@ -691,15 +691,29 @@
                 <label>Preset Examples:</label>
                 <select id="preset-selector">
                     <option value="">-- Select Preset --</option>
-                    <option value="2d_rotation">Simple Rotation (2D)</option>
-                    <option value="2d_vortex">Vortex (2D)</option>
-                    <option value="2d_vanderpol">Van der Pol Oscillator (2D)</option>
-                    <option value="2d_fluid_stirring">Fluid Transport with Stirring (2D)</option>
-                    <option value="3d_lorenz">Lorenz Attractor (3D)</option>
-                    <option value="3d_rossler">Rössler Attractor (3D)</option>
-                    <option value="4d_hypersphere">4D Hypersphere Rotation</option>
+                    <optgroup label="Built-in Presets">
+                        <option value="2d_rotation">Simple Rotation (2D)</option>
+                        <option value="2d_vortex">Vortex (2D)</option>
+                        <option value="2d_vanderpol">Van der Pol Oscillator (2D)</option>
+                        <option value="2d_fluid_stirring">Fluid Transport with Stirring (2D)</option>
+                        <option value="3d_lorenz">Lorenz Attractor (3D)</option>
+                        <option value="3d_rossler">Rössler Attractor (3D)</option>
+                        <option value="4d_hypersphere">4D Hypersphere Rotation</option>
+                    </optgroup>
+                    <optgroup label="Custom Presets" id="custom-presets-group" style="display: none;">
+                    </optgroup>
                 </select>
             </div>
+        </div>
+
+        <div class="control-group">
+            <label>Save Current as Preset:</label>
+            <div style="display: flex; gap: 6px;">
+                <input type="text" id="preset-name-input" placeholder="Enter preset name..." style="flex: 1; padding: 6px; border: 1px solid #444; background: #222; color: white; border-radius: 4px; font-size: 11px;">
+                <button id="save-preset-btn" class="secondary">Save</button>
+                <button id="delete-preset-btn" class="secondary" style="display: none;">Delete</button>
+            </div>
+            <div class="info">Save current settings as a custom preset</div>
         </div>
 
         <div class="control-group">
