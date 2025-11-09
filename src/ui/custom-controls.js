@@ -1,15 +1,12 @@
 /**
- * Custom control classes for complex UI controls
- * Extends the base Control class for specialized behaviors
+ * Custom control classes for complex UI controls (Version 2)
+ * Refactored to eliminate duplication with transform parameter definitions
  */
 
 import { Control, CheckboxControl } from './control-base.js';
+import { ParameterControl } from './parameter-control.js';
+import { getTransform } from '../math/transforms.js';
 import { logger } from '../utils/debug-logger.js';
-
-// Transform parameter slider constants (must match transforms.js)
-const TRANSFORM_PARAM_MIN = 0.0001;
-const TRANSFORM_PARAM_MAX = 100.0;
-const TRANSFORM_PARAM_STEP = 0.0001;
 
 /**
  * FloatCheckboxControl - checkbox that outputs 0.0 or 1.0 instead of boolean
@@ -436,50 +433,18 @@ export class GradientControl extends Control {
 /**
  * TransformParamsControl - manages transform parameter sliders
  * Creates dynamic controls based on the selected transform type
+ *
+ * REFACTORED VERSION: No longer duplicates parameter definitions!
+ * - Reads parameters from transform's getParameters() method (single source of truth)
+ * - Uses ParameterControl instances for rendering and value management
+ * - Eliminates ~200 lines of duplicate code
  */
 export class TransformParamsControl extends Control {
     constructor(defaultValue, options = {}) {
         super('transform-params', defaultValue, options);
         this.transformControl = null;
         this.currentParams = defaultValue || {};
-
-        // Transform parameter definitions (matches transforms.js)
-        this.transformParams = {
-            identity: [],
-            power: [
-                { name: 'alpha', label: 'Exponent (α)', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 0.5,
-                  info: 'α < 1.0: zoom into origin; α > 1.0: compress origin' }
-            ],
-            log: [],  // No parameters - stretches near zero automatically
-            exp: [
-                { name: 'alpha', label: 'Growth Rate (α)', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 0.5,
-                  info: 'Higher α = stronger exponential growth. Use small values (0.1-0.5) to avoid overflow.' }
-            ],
-            softsign: [],  // No parameters - simple compression to [-1,1]
-            tanh: [
-                { name: 'beta', label: 'Compression (β)', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 1.0,
-                  info: 'Higher = more compression. Maps infinite space to [-1,1]' }
-            ],
-            sigmoid: [
-                { name: 'k', label: 'Steepness (k)', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 1.0,
-                  info: 'Higher = steeper transition. Maps infinite space to [-1,1] with logistic curve.' }
-            ],
-            rational: [
-                { name: 'a', label: 'Width (a)', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 1.0,
-                  info: 'Controls bell curve width. Higher = wider/shallower, lower = narrower/sharper. T(x) = x/√(x²+a), J = a/(x²+a)^(3/2)' }
-            ],
-            sine: [
-                { name: 'amplitude', label: 'Amplitude', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 0.5,
-                  info: 'Strength of distortion' },
-                { name: 'frequency', label: 'Frequency', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 1.0,
-                  info: 'Number of waves per unit length' }
-            ],
-            radial_power: [
-                { name: 'alpha', label: 'Radial Exponent (α)', min: TRANSFORM_PARAM_MIN, max: TRANSFORM_PARAM_MAX, step: TRANSFORM_PARAM_STEP, default: 0.5,
-                  info: 'α < 1.0: zoom into origin; α > 1.0: compress origin' }
-            ],
-            custom: []
-        };
+        this.parameterControls = new Map(); // Maps control ID -> ParameterControl instance
     }
 
     /**
@@ -500,18 +465,13 @@ export class TransformParamsControl extends Control {
      * Get current parameter values
      */
     getValue() {
-        const transformType = this.getTransformType();
-        const params = this.transformParams[transformType] || [];
         const values = {};
 
-        params.forEach((param, index) => {
-            const element = $(`#transform-param-${index}`);
-            if (element.length) {
-                values[param.name] = parseFloat(element.val());
-            } else {
-                values[param.name] = param.default;
-            }
-        });
+        // Collect values from all parameter controls
+        for (const [controlId, paramControl] of this.parameterControls.entries()) {
+            const paramName = paramControl.settingsKey;
+            values[paramName] = paramControl.getValue();
+        }
 
         return values;
     }
@@ -526,6 +486,7 @@ export class TransformParamsControl extends Control {
 
     /**
      * Update transform parameter controls based on transform type
+     * Reads parameter definitions directly from the transform instance
      */
     updateControls() {
         const transformType = this.getTransformType();
@@ -533,83 +494,55 @@ export class TransformParamsControl extends Control {
 
         if (container.length === 0) return;
 
+        // Clear old controls
         container.empty();
+        this.parameterControls.clear();
 
-        const params = this.transformParams[transformType] || [];
-
-        if (params.length === 0) {
-            // No parameters for this transform
-            // Update accordion height even when removing controls
+        // Get transform instance
+        const transform = getTransform(transformType);
+        if (!transform) {
+            logger.warn(`Transform not found: ${transformType}`);
             this.updateAccordionHeight();
             return;
         }
 
-        params.forEach((param, index) => {
-            const currentValue = this.currentParams[param.name] !== undefined
-                ? this.currentParams[param.name]
-                : param.default;
+        // Get parameter definitions from transform (single source of truth!)
+        const paramDefs = transform.getParameters();
 
-            const group = $('<div class="control-group"></div>');
+        if (paramDefs.length === 0) {
+            // No parameters for this transform
+            this.updateAccordionHeight();
+            return;
+        }
 
-            // Format value in scientific notation
-            const formatScientific = (v) => {
-                if (Math.abs(v) >= 10 || Math.abs(v) < 0.1) {
-                    return v.toExponential(2);
-                } else {
-                    return v.toFixed(3);
+        // Create ParameterControl for each parameter
+        paramDefs.forEach((paramDef, index) => {
+            const controlId = `transform-param-${index}`;
+            const defaultValue = this.currentParams[paramDef.name] ?? paramDef.default;
+
+            // Create parameter control
+            const paramControl = new ParameterControl(
+                controlId,
+                paramDef,
+                defaultValue,
+                {
+                    settingsKey: paramDef.name, // Use parameter name as settings key
+                    onChange: (value) => {
+                        this.currentParams[paramDef.name] = value;
+                        if (this.onChange) this.onChange(this.currentParams);
+                    }
                 }
-            };
+            );
 
-            // Label with value display
-            group.append(`
-                <label>${param.label}: <span class="range-value" id="transform-param-${index}-value">${formatScientific(currentValue)}</span></label>
-            `);
+            // Render and append to container
+            container.append(paramControl.render());
 
-            // Slider with +/- buttons (adaptive increment)
-            const sliderControl = $('<div class="slider-control"></div>');
-            sliderControl.append(`
-                <button class="slider-btn" data-slider="transform-param-${index}" data-action="decrease-large">--</button>
-                <button class="slider-btn" data-slider="transform-param-${index}" data-action="decrease">-</button>
-                <input type="range" id="transform-param-${index}">
-                <button class="slider-btn" data-slider="transform-param-${index}" data-action="increase">+</button>
-                <button class="slider-btn" data-slider="transform-param-${index}" data-action="increase-large">++</button>
-            `);
+            // Attach listeners
+            paramControl.attachListeners(this.onChangeCallback);
 
-            group.append(sliderControl);
-
-            // Info text
-            if (param.info) {
-                group.append(`<div class="info">${param.info}</div>`);
-            }
-
-            // Append to container FIRST so element is in DOM
-            container.append(group);
-
-            // THEN set slider attributes (must set min/max BEFORE value)
-            const $slider = $(`#transform-param-${index}`);
-            $slider.attr('min', param.min);
-            $slider.attr('max', param.max);
-            $slider.attr('step', 0.0001); // Very small step for smooth adjustment
-            $slider.val(currentValue); // Set value AFTER min/max to avoid normalization issues
+            // Store reference for button handling
+            this.parameterControls.set(controlId, paramControl);
         });
-
-        // Update value displays
-        params.forEach((param, index) => {
-            const value = this.currentParams[param.name] !== undefined
-                ? this.currentParams[param.name]
-                : param.default;
-            const formatScientific = (v) => {
-                if (Math.abs(v) >= 10 || Math.abs(v) < 0.1) {
-                    return v.toExponential(2);
-                } else {
-                    return v.toFixed(3);
-                }
-            };
-            $(`#transform-param-${index}-value`).text(formatScientific(value));
-        });
-
-        // Attach change listeners
-        this.attachParamListeners();
 
         // Update accordion height to accommodate new controls
         this.updateAccordionHeight();
@@ -631,75 +564,17 @@ export class TransformParamsControl extends Control {
     }
 
     /**
-     * Attach listeners to parameter sliders
-     */
-    attachParamListeners() {
-        const callback = this.onChangeCallback;
-        const transformType = this.getTransformType();
-        const params = this.transformParams[transformType] || [];
-
-        // Remove old listeners
-        $(document).off('input change', '[id^="transform-param-"]');
-
-        // Add slider input listeners
-        params.forEach((param, index) => {
-            $(`#transform-param-${index}`).on('input', (e) => {
-                const value = parseFloat(e.target.value);
-
-                const formatScientific = (v) => {
-                    if (Math.abs(v) >= 10 || Math.abs(v) < 0.1) {
-                        return v.toExponential(2);
-                    } else {
-                        return v.toFixed(3);
-                    }
-                };
-
-                $(`#transform-param-${index}-value`).text(formatScientific(value));
-                this.currentParams[param.name] = value;
-                if (this.onChange) this.onChange(this.currentParams);
-                if (callback) callback();
-            });
-        });
-
-        // Note: Button handlers are managed by the global .slider-btn handler
-        // which dispatches to handleButtonAction() for adaptive increments
-    }
-
-    /**
      * Handle button actions for dynamically created transform parameter sliders
+     * Delegates to the appropriate ParameterControl instance
+     *
      * @param {string} sliderId - The slider ID (e.g., 'transform-param-0')
      * @param {string} action - The button action
      * @returns {boolean} True if handled
      */
     handleTransformParamButton(sliderId, action) {
-        const slider = $(`#${sliderId}`);
-        if (!slider.length) return false;
-
-        const currentValue = parseFloat(slider.val());
-        const min = parseFloat(slider.attr('min'));
-        const max = parseFloat(slider.attr('max'));
-
-        // Calculate adaptive increment (same logic as AdaptiveSliderControl)
-        const absValue = Math.abs(currentValue);
-        let increment = absValue < 0.0001 ? 0.0001 : Math.pow(10, Math.floor(Math.log10(absValue)) - 1);
-        increment = Math.max(0.0001, increment);
-
-        if (action === 'increase-large' || action === 'decrease-large') {
-            increment *= 10;
-        }
-
-        let newValue = currentValue;
-        if (action === 'increase' || action === 'increase-large') {
-            newValue = Math.min(max, currentValue + increment);
-        } else if (action === 'decrease' || action === 'decrease-large') {
-            newValue = Math.max(min, currentValue - increment);
-        } else {
-            return false;
-        }
-
-        if (newValue !== currentValue) {
-            slider.val(newValue).trigger('input');
-            return true;
+        const control = this.parameterControls.get(sliderId);
+        if (control) {
+            return control.handleButtonAction(action);
         }
         return false;
     }
@@ -715,17 +590,26 @@ export class TransformParamsControl extends Control {
     }
 
     /**
-     * Reset to default values
+     * Reset to default value
      */
     reset() {
-        const transformType = this.getTransformType();
-        const params = this.transformParams[transformType] || [];
-        const defaults = {};
+        this.currentParams = this.defaultValue;
+        this.updateControls();
+    }
 
-        params.forEach(param => {
-            defaults[param.name] = param.default;
-        });
+    /**
+     * Save to settings
+     */
+    saveToSettings(settings) {
+        settings[this.settingsKey] = this.getValue();
+    }
 
-        this.setValue(defaults);
+    /**
+     * Restore from settings
+     */
+    restoreFromSettings(settings) {
+        if (settings && settings[this.settingsKey] !== undefined) {
+            this.setValue(settings[this.settingsKey]);
+        }
     }
 }

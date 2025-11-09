@@ -95,5 +95,8 @@ CLAUDE.md
 
 state.json
 
+# Archived code and documentation
+archive/
+
 # Self-signed SSL certificates (for local HTTPS development)
 *.pem
