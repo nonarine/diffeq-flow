@@ -155,6 +155,10 @@ export class Renderer {
 
         // Animation support
         this.animationAlpha = 0.0; // Alpha parameter for animation (0.0 to 1.0)
+        this.lockShaderRecompilation = false; // Prevent shader recompilation during animation
+
+        // Debug stats (expensive GPU readbacks)
+        this.enableDebugStats = false; // Enable particle sampling and detailed logging (expensive)
 
         // Exponential moving average for max velocity (for color scaling)
         this.maxVelocity = 5.0; // Initial reasonable value
@@ -351,7 +355,8 @@ export class Renderer {
         // Create buffer statistics manager
         this.bufferStatsManager = new BufferStatsManager(gl);
         this.velocityStatsManager = new VelocityStatsManager(gl);
-        this.statsUpdateInterval = 60; // Update stats every 60 frames
+        this.statsUpdateInterval = 60; // Update stats every N frames (adaptive)
+        this.statsUpdateIntervalSlow = 120; // Slower update when not running (less important)
         this.statsCoarseMode = true; // Use coarse sampling by default
 
         // Create full-screen quad buffer
@@ -579,7 +584,8 @@ export class Renderer {
         const program = this.updateProgram;
 
         // Sample actual particle data every 60 frames for detailed inspection
-        if (this.frame % 60 === 0) {
+        // Only if debug stats enabled (expensive GPU readback)
+        if (this.enableDebugStats && this.frame % 60 === 0) {
             this.sampleParticleData();
         }
 
@@ -1079,17 +1085,20 @@ export class Renderer {
         if (!this.frame) this.frame = 0;
         this.frame++;
 
-        if (this.frame % this.statsUpdateInterval === 0) {
+        // Compute buffer stats with adaptive interval (needed for tone mapping)
+        // Use slower update rate when main loop is paused (animation is controlling rendering)
+        const currentInterval = this.isRunning ? this.statsUpdateInterval : this.statsUpdateIntervalSlow;
+        if (this.frame % currentInterval === 0) {
             const hdrTexture = this.framebufferManager.getCurrentTexture();
             const newStats = this.bufferStatsManager.compute(
                 hdrTexture,
-                this.canvas.width,
-                this.canvas.height,
-                this.statsCoarseMode
+                this.renderWidth,  // Use actual render resolution, not canvas size
+                this.renderHeight,
+                true  // Always use coarse sampling for performance
             );
 
-            // Log stats occasionally for debugging
-            if (this.frame % (this.statsUpdateInterval * 10) === 0) {
+            // Log stats occasionally for debugging (only if debug stats enabled)
+            if (this.enableDebugStats && this.frame % (currentInterval * 10) === 0) {
                 logger.info('HDR Buffer Stats (sampled)', {
                     avgBrightness: newStats.avgBrightness.toFixed(2),
                     maxBrightness: newStats.maxBrightness.toFixed(2),
@@ -1675,6 +1684,12 @@ export class Renderer {
             this.dropLowVelocity = config.dropLowVelocity;
         }
 
+        // Animation settings
+        if (config.lockShaderRecompilation !== undefined) {
+            logger.info(`Shader recompilation lock: ${this.lockShaderRecompilation} → ${config.lockShaderRecompilation}`);
+            this.lockShaderRecompilation = config.lockShaderRecompilation;
+        }
+
         // HDR rendering settings (no recompile needed)
         if (config.useHDR !== undefined && config.useHDR !== this.useHDR) {
             logger.info(`Changing HDR rendering: ${this.useHDR} → ${config.useHDR}`);
@@ -1846,21 +1861,25 @@ export class Renderer {
         logger.info(`Checking needsRecompile flag: ${needsRecompile}`);
 
         if (needsRecompile) {
-            logger.info('Recompiling shaders...');
-            try {
-                const error = this.compileShaders();
-                if (error) {
-                    logger.error('Recompilation failed', error);
-                    throw new Error(error);
+            if (this.lockShaderRecompilation) {
+                logger.info('Shader recompilation needed but LOCKED - skipping recompilation');
+            } else {
+                logger.info('Recompiling shaders...');
+                try {
+                    const error = this.compileShaders();
+                    if (error) {
+                        logger.error('Recompilation failed', error);
+                        throw new Error(error);
+                    }
+                    this.frame = 0; // Reset frame counter
+                    logger.info('Clearing screen after recompilation...');
+                    this.clearScreen(); // Clear old particles that were computed with old vector field
+                    logger.info('Configuration updated successfully, shaders recompiled');
+                } catch (e) {
+                    logger.error('EXCEPTION during shader recompilation:', e);
+                    logger.error('Stack trace:', e.stack);
+                    throw e;
                 }
-                this.frame = 0; // Reset frame counter
-                logger.info('Clearing screen after recompilation...');
-                this.clearScreen(); // Clear old particles that were computed with old vector field
-                logger.info('Configuration updated successfully, shaders recompiled');
-            } catch (e) {
-                logger.error('EXCEPTION during shader recompilation:', e);
-                logger.error('Stack trace:', e.stack);
-                throw e;
             }
         } else {
             logger.info('Configuration updated (no recompile needed)');

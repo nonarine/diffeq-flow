@@ -140,7 +140,7 @@ void main() {
         }
 
         const gl = this.gl;
-        const sampleRate = coarse ? 8 : 2; // Downsample by 8x (coarse) or 2x (fine)
+        const sampleRate = coarse ? 16 : 2; // Downsample by 16x (coarse) or 2x (fine) - 16x gives ~4x less pixels
 
         // For now, let's do a simple CPU-based sampling approach
         // (GPU reduction is complex and requires multiple passes)
@@ -149,6 +149,7 @@ void main() {
 
     /**
      * CPU-based sampling (reads back sampled pixels)
+     * Reads multiple small regions distributed across the screen
      */
     computeCPUSampled(sourceTexture, width, height, sampleRate) {
         const gl = this.gl;
@@ -164,41 +165,57 @@ void main() {
             return this.stats;
         }
 
-        // Read entire framebuffer once
-        const pixels = new Float32Array(width * height * 4);
-        gl.readPixels(0, 0, width, height, gl.RGBA, gl.FLOAT, pixels);
+        // Sample multiple regions across the screen in a grid pattern
+        // This ensures we capture bright/dark areas anywhere on screen, not just center
+        const gridSize = 4; // 4x4 grid = 16 regions
+        const regionSize = 16; // Each region is 16x16 pixels
+        const totalPixels = gridSize * gridSize * regionSize * regionSize;
+        const allPixels = new Float32Array(totalPixels * 4);
 
-        // Sample every Nth pixel from the full buffer
-        let minR = Infinity, maxR = -Infinity, sumR = 0;
-        let minG = Infinity, maxG = -Infinity, sumG = 0;
-        let minB = Infinity, maxB = -Infinity, sumB = 0;
-        let count = 0;
+        let pixelIndex = 0;
+        for (let gy = 0; gy < gridSize; gy++) {
+            for (let gx = 0; gx < gridSize; gx++) {
+                // Calculate position for this region (evenly distributed)
+                const x = Math.floor((width / gridSize) * gx + (width / gridSize - regionSize) / 2);
+                const y = Math.floor((height / gridSize) * gy + (height / gridSize - regionSize) / 2);
 
-        for (let y = 0; y < height; y += sampleRate) {
-            for (let x = 0; x < width; x += sampleRate) {
-                const idx = (y * width + x) * 4;
-                const r = pixels[idx];
-                const g = pixels[idx + 1];
-                const b = pixels[idx + 2];
+                // Read this region
+                const regionPixels = new Float32Array(regionSize * regionSize * 4);
+                gl.readPixels(x, y, regionSize, regionSize, gl.RGBA, gl.FLOAT, regionPixels);
 
-                minR = Math.min(minR, r);
-                maxR = Math.max(maxR, r);
-                sumR += r;
-
-                minG = Math.min(minG, g);
-                maxG = Math.max(maxG, g);
-                sumG += g;
-
-                minB = Math.min(minB, b);
-                maxB = Math.max(maxB, b);
-                sumB += b;
-
-                count++;
+                // Copy to combined buffer
+                allPixels.set(regionPixels, pixelIndex * 4);
+                pixelIndex += regionSize * regionSize;
             }
         }
 
         gl.deleteFramebuffer(fbo);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        // Compute statistics from all sampled pixels
+        let minR = Infinity, maxR = -Infinity, sumR = 0;
+        let minG = Infinity, maxG = -Infinity, sumG = 0;
+        let minB = Infinity, maxB = -Infinity, sumB = 0;
+        const count = totalPixels;
+
+        for (let i = 0; i < count; i++) {
+            const idx = i * 4;
+            const r = allPixels[idx];
+            const g = allPixels[idx + 1];
+            const b = allPixels[idx + 2];
+
+            minR = Math.min(minR, r);
+            maxR = Math.max(maxR, r);
+            sumR += r;
+
+            minG = Math.min(minG, g);
+            maxG = Math.max(maxG, g);
+            sumG += g;
+
+            minB = Math.min(minB, b);
+            maxB = Math.max(maxB, b);
+            sumB += b;
+        }
 
         // Compute averages
         const avgR = count > 0 ? sumR / count : 0;
@@ -213,14 +230,12 @@ void main() {
         if (maxBright > 0) {
             const logMax = Math.log2(maxBright + 1);
 
-            for (let y = 0; y < height; y += sampleRate) {
-                for (let x = 0; x < width; x += sampleRate) {
-                    const idx = (y * width + x) * 4;
-                    const brightness = Math.max(pixels[idx], pixels[idx + 1], pixels[idx + 2]);
-                    const logBrightness = Math.log2(brightness + 1);
-                    const binIndex = Math.min(Math.floor((logBrightness / logMax) * numBins), numBins - 1);
-                    histogram[binIndex]++;
-                }
+            for (let i = 0; i < count; i++) {
+                const idx = i * 4;
+                const brightness = Math.max(allPixels[idx], allPixels[idx + 1], allPixels[idx + 2]);
+                const logBrightness = Math.log2(brightness + 1);
+                const binIndex = Math.min(Math.floor((logBrightness / logMax) * numBins), numBins - 1);
+                histogram[binIndex]++;
             }
         }
 

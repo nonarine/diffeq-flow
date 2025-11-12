@@ -6,10 +6,15 @@ class DebugLogger {
     constructor() {
         this.enabled = true;
         this.verbosity = 'info'; // verbose, debug, info, warn, error
-        this.maxLogs = 100;
+        this.maxLogs = 100; // Display buffer size
         this.logs = [];
         this.consoleHooked = false;
         this.originalConsole = {};
+
+        // Silent mode buffering
+        this.silenced = false;
+        this.silencedBuffer = [];
+        this.maxSilencedLogs = 5000; // Buffer more logs during silent mode
     }
 
     /**
@@ -23,11 +28,88 @@ class DebugLogger {
      * Set verbosity level
      */
     setVerbosity(level) {
+        const wasSilent = this.verbosity === 'silent';
         this.verbosity = level;
+        const isSilent = level === 'silent';
+
+        // If transitioning from silent to non-silent, flush buffer
+        if (wasSilent && !isSilent) {
+            this.unsilence();
+        } else if (!wasSilent && isSilent) {
+            this.silence();
+        }
+    }
+
+    /**
+     * Enter silent mode (buffer logs instead of displaying)
+     */
+    silence() {
+        if (this.silenced) return;
+        this.silenced = true;
+        this.info('Entering silent mode - logs will be buffered', null, false); // Not silenceable
+    }
+
+    /**
+     * Exit silent mode and flush buffered logs
+     */
+    unsilence() {
+        if (!this.silenced) return;
+        const bufferSize = this.silencedBuffer.length;
+        this.silenced = false;
+        this.flush();
+        this.info(`Exited silent mode - flushed ${bufferSize} buffered logs`, null, false); // Not silenceable
+    }
+
+    /**
+     * Flush silenced buffer to main logs and UI
+     */
+    flush() {
+        if (this.silencedBuffer.length === 0) return;
+
+        const bufferSize = this.silencedBuffer.length;
+        this.info(`Flushing ${bufferSize} silenced logs...`, null, false); // Not silenceable
+
+        // Output all buffered logs to console
+        const consoleMethod = this.consoleHooked ? this.originalConsole.log : console.log;
+        for (const logEntry of this.silencedBuffer) {
+            const consoleMsg = `[${logEntry.timestamp}] ${logEntry.message}`;
+            if (logEntry.data) {
+                consoleMethod(consoleMsg, logEntry.data);
+            } else {
+                consoleMethod(consoleMsg);
+            }
+            if (logEntry.stack) {
+                consoleMethod('Stack trace:', logEntry.stack);
+            }
+        }
+
+        // Add ALL buffered logs to main logs
+        this.logs.push(...this.silencedBuffer);
+
+        // Then truncate to keep only the last maxLogs entries
+        if (this.logs.length > this.maxLogs) {
+            this.logs = this.logs.slice(-this.maxLogs);
+        }
+
+        // Clear buffer
+        this.silencedBuffer = [];
+
+        // Update UI with all logs
+        this.updateUI();
+    }
+
+    /**
+     * Clear silenced buffer without flushing
+     */
+    clearSilencedBuffer() {
+        const count = this.silencedBuffer.length;
+        this.silencedBuffer = [];
+        this.info(`Cleared ${count} buffered logs`, null, false); // Not silenceable
     }
 
     /**
      * Check if a log level should be displayed
+     * Note: In silent mode, logs still pass this check but are buffered instead of displayed
      */
     shouldLog(level) {
         if (!this.enabled) return false;
@@ -38,7 +120,7 @@ class DebugLogger {
             info: 2,
             warn: 3,
             error: 4,
-            silent: 999  // Silent mode - suppresses all logs
+            silent: 0  // Silent mode - accept all logs but buffer them
         };
 
         return levels[level] >= levels[this.verbosity];
@@ -46,8 +128,12 @@ class DebugLogger {
 
     /**
      * Log a message
+     * @param {string} level - Log level (verbose, debug, info, warn, error)
+     * @param {string} message - Log message
+     * @param {*} data - Optional data to log
+     * @param {boolean} silenceable - If true, log can be silenced (buffered); if false, always outputs immediately
      */
-    log(level, message, data = null) {
+    log(level, message, data = null, silenceable = true) {
         if (!this.shouldLog(level)) return;
 
         const timestamp = new Date().toLocaleTimeString();
@@ -71,6 +157,20 @@ class DebugLogger {
             stack
         };
 
+        // If in silent mode and this log is silenceable, buffer it instead of displaying
+        if (this.silenced && silenceable) {
+            this.silencedBuffer.push(logEntry);
+
+            // Keep only last maxSilencedLogs entries in buffer
+            if (this.silencedBuffer.length > this.maxSilencedLogs) {
+                this.silencedBuffer.shift();
+            }
+
+            // Don't output to console or UI
+            return;
+        }
+
+        // Normal logging (not silenced or not silenceable)
         this.logs.push(logEntry);
 
         // Keep only last maxLogs entries
@@ -96,25 +196,28 @@ class DebugLogger {
 
     /**
      * Convenience methods
+     * @param {string} message - Log message
+     * @param {*} data - Optional data to log
+     * @param {boolean} silenceable - If true (default), log can be buffered in silent mode
      */
-    verbose(message, data) {
-        this.log('verbose', message, data);
+    verbose(message, data = null, silenceable = true) {
+        this.log('verbose', message, data, silenceable);
     }
 
-    debug(message, data) {
-        this.log('debug', message, data);
+    debug(message, data = null, silenceable = true) {
+        this.log('debug', message, data, silenceable);
     }
 
-    info(message, data) {
-        this.log('info', message, data);
+    info(message, data = null, silenceable = true) {
+        this.log('info', message, data, silenceable);
     }
 
-    warn(message, data) {
-        this.log('warn', message, data);
+    warn(message, data = null, silenceable = true) {
+        this.log('warn', message, data, silenceable);
     }
 
-    error(message, data) {
-        this.log('error', message, data);
+    error(message, data = null, silenceable = true) {
+        this.log('error', message, data, silenceable);
     }
 
     /**
@@ -198,6 +301,32 @@ class DebugLogger {
      */
     getLogs() {
         return this.logs;
+    }
+
+    /**
+     * Get silenced buffer
+     */
+    getSilencedBuffer() {
+        return this.silencedBuffer;
+    }
+
+    /**
+     * Get silenced state
+     */
+    isSilenced() {
+        return this.silenced;
+    }
+
+    /**
+     * Get buffer stats
+     */
+    getBufferStats() {
+        return {
+            silenced: this.silenced,
+            bufferSize: this.silencedBuffer.length,
+            maxBufferSize: this.maxSilencedLogs,
+            bufferUsagePercent: Math.round((this.silencedBuffer.length / this.maxSilencedLogs) * 100)
+        };
     }
 
     /**

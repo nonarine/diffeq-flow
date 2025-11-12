@@ -27,8 +27,17 @@ $(document).ready(function() {
         });
 
         $('#debug-verbosity').on('change', function() {
-            logger.setVerbosity($(this).val());
-            logger.info('Verbosity set to: ' + $(this).val());
+            const verbosity = $(this).val();
+            logger.setVerbosity(verbosity);
+            logger.info('Verbosity set to: ' + verbosity);
+
+            // Show/hide buffer status indicator
+            if (verbosity === 'silent') {
+                $('#debug-buffer-status').show();
+                updateBufferStatus();
+            } else {
+                $('#debug-buffer-status').hide();
+            }
         });
 
         $('#debug-copy').on('click', function() {
@@ -61,6 +70,39 @@ $(document).ready(function() {
         $('#debug-clear').on('click', function() {
             logger.clear();
         });
+
+        $('#debug-flush-buffer').on('click', function() {
+            logger.flush();
+            updateBufferStatus();
+        });
+
+        $('#debug-clear-buffer').on('click', function() {
+            logger.clearSilencedBuffer();
+            updateBufferStatus();
+        });
+
+        // Update buffer status display
+        function updateBufferStatus() {
+            const stats = logger.getBufferStats();
+            $('#buffer-size').text(stats.bufferSize);
+            $('#buffer-percent').text(stats.bufferUsagePercent);
+
+            // Update color based on buffer usage
+            if (stats.bufferUsagePercent > 80) {
+                $('#buffer-size').css('color', '#EF5350'); // Red when near full
+            } else if (stats.bufferUsagePercent > 50) {
+                $('#buffer-size').css('color', '#FFA726'); // Orange when half full
+            } else {
+                $('#buffer-size').css('color', '#4CAF50'); // Green when plenty of space
+            }
+        }
+
+        // Update buffer status periodically when in silent mode
+        setInterval(function() {
+            if (logger.isSilenced()) {
+                updateBufferStatus();
+            }
+        }, 1000);
 
         $('#debug-log-update-shader').on('click', function() {
             if (window.renderer && typeof window.renderer.logUpdateShader === 'function') {
@@ -107,9 +149,24 @@ $(document).ready(function() {
             }
         });
 
+        $('#debug-enable-stats').on('change', function() {
+            if (window.renderer) {
+                const enabled = $(this).is(':checked');
+                window.renderer.enableDebugStats = enabled;
+                logger.info(`GPU debug stats ${enabled ? 'ENABLED' : 'DISABLED'}`);
+            }
+        });
+
         // Initialize logger with current DOM values (browser may have cached them)
         logger.setEnabled($('#debug-toggle').is(':checked'));
-        logger.setVerbosity($('#debug-verbosity').val());
+        const initialVerbosity = $('#debug-verbosity').val();
+        logger.setVerbosity(initialVerbosity);
+
+        // Show buffer status if starting in silent mode
+        if (initialVerbosity === 'silent') {
+            $('#debug-buffer-status').show();
+            updateBufferStatus();
+        }
 
         logger.info('Debug console initialized');
 
@@ -367,6 +424,83 @@ $(document).ready(function() {
             isDragging = false;
             lastTouchDistance = 0;
             debouncedSave(); // Save after touch interaction ends
+        });
+
+        // ========================================
+        // Zoom/Pan Button Controls
+        // ========================================
+
+        // Helper function to zoom towards center
+        function zoomToCenter(zoomFactor) {
+            const bbox = renderer.bbox;
+            const width = bbox.max[0] - bbox.min[0];
+            const height = bbox.max[1] - bbox.min[1];
+
+            const centerX = (bbox.min[0] + bbox.max[0]) / 2;
+            const centerY = (bbox.min[1] + bbox.max[1]) / 2;
+
+            const newHeight = height * zoomFactor;
+            const aspectRatio = canvas.width / canvas.height;
+            const newWidth = newHeight * aspectRatio;
+
+            bbox.min[0] = centerX - newWidth / 2;
+            bbox.max[0] = centerX + newWidth / 2;
+            bbox.min[1] = centerY - newHeight / 2;
+            bbox.max[1] = centerY + newHeight / 2;
+
+            renderer.updateConfig({ bbox: bbox });
+            debouncedSave();
+        }
+
+        // Helper function to pan
+        function panView(dx, dy) {
+            const bbox = renderer.bbox;
+            const width = bbox.max[0] - bbox.min[0];
+            const height = bbox.max[1] - bbox.min[1];
+
+            // Pan by 10% of the current view
+            const panX = width * dx * 0.1;
+            const panY = height * dy * 0.1;
+
+            bbox.min[0] += panX;
+            bbox.max[0] += panX;
+            bbox.min[1] += panY;
+            bbox.max[1] += panY;
+
+            renderer.updateConfig({ bbox: bbox });
+            debouncedSave();
+        }
+
+        // Zoom buttons
+        $('#zoom-in').on('click', () => zoomToCenter(0.9)); // Zoom in (0.9 = 10% closer)
+        $('#zoom-out').on('click', () => zoomToCenter(1.11)); // Zoom out (1.11 = 11% farther)
+
+        // Pan buttons
+        $('#pan-up').on('click', () => panView(0, 1));
+        $('#pan-down').on('click', () => panView(0, -1));
+        $('#pan-left').on('click', () => panView(-1, 0));
+        $('#pan-right').on('click', () => panView(1, 0));
+
+        // Diagonal pan buttons
+        $('#pan-up-left').on('click', () => panView(-1, 1));
+        $('#pan-up-right').on('click', () => panView(1, 1));
+        $('#pan-down-left').on('click', () => panView(-1, -1));
+        $('#pan-down-right').on('click', () => panView(1, -1));
+
+        // Reset button - same as the Reset View button
+        $('#pan-reset').on('click', function() {
+            const aspectRatio = canvas.width / canvas.height;
+            const height = 10;
+            const width = height * aspectRatio;
+
+            renderer.updateConfig({
+                bbox: {
+                    min: [-width / 2, -5],
+                    max: [width / 2, 5]
+                },
+                reinitializeParticles: false
+            });
+            debouncedSave();
         });
     }
 

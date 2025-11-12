@@ -450,10 +450,11 @@ export function initControls(renderer, callback) {
     let animationDirection = 1; // 1 for forward, -1 for backward
     let animationStepsPerIncrement = 10; // Number of integration steps before alpha increments
     let animationStepCounter = 0; // Counter for integration steps
+    let shaderLockWasEnabled = false; // Track if we enabled shader lock for this animation
 
     // Timing smoothing state - Asymmetric EMA to track high percentile (slow frames)
     const ALPHA_STEP_TIME_TARGET_PERCENTILE = 95; // Target percentile to track (higher = smoother but slower to adapt)
-    const ALPHA_STEP_TIME_DECAY = 0.005; // Base decay rate when frames are faster than EMA
+    const ALPHA_STEP_TIME_DECAY = 0.002; // Base decay rate when frames are faster than EMA
     // Calculate upward tracking rate using rule of thumb: ratio = P/(100-P)
     const ALPHA_STEP_TIME_UPWARD = (ALPHA_STEP_TIME_TARGET_PERCENTILE / (100 - ALPHA_STEP_TIME_TARGET_PERCENTILE)) * ALPHA_STEP_TIME_DECAY;
     const ALPHA_STEP_TIME_WARMUP_CYCLES = 3; // Number of alpha cycles to skip before initializing EMA (warm-up period)
@@ -566,6 +567,12 @@ export function initControls(renderer, callback) {
 
     manager.register(new CheckboxControl('animation-smooth-timing', false, {
         settingsKey: 'animationSmoothTiming'
+    }));
+
+    manager.register(new CheckboxControl('animation-lock-shaders', false, {
+        settingsKey: 'animationLockShaders'
+        // Note: This is a UI preference only - lock is applied during animation playback
+        // Does NOT map to renderer.lockShaderRecompilation (which is runtime state only)
     }));
 
     logger.info('Animation alpha control registered');
@@ -854,6 +861,345 @@ export function initControls(renderer, callback) {
         }
     });
 
+    // Frame capture state
+    let capturedFrames = [];
+    let frameCaptureMode = null; // null, 'continuous', or 'fixed'
+    let frameCaptureTotal = 0;
+    let frameCaptureCount = 0;
+    let frameCaptureAlphaIncrement = 0.01;
+
+    // Start animation function (used by both play button and create animation)
+    function startAnimation(options = {}) {
+        const {
+            captureFrames = false,
+            totalFrames = 0,
+            loops = 1,
+            onProgress = null,
+            onComplete = null
+        } = options;
+
+        // Stop if already running
+        if (animationRunning) return;
+
+        // Setup frame capture if requested
+        if (captureFrames) {
+            frameCaptureMode = 'fixed';
+            frameCaptureTotal = totalFrames;
+            frameCaptureCount = 0;
+            capturedFrames = [];
+            // Calculate alpha increment: each loop goes 0->1->0 (2 ranges)
+            frameCaptureAlphaIncrement = (loops * 2.0) / totalFrames;
+        } else {
+            frameCaptureMode = 'continuous';
+            frameCaptureAlphaIncrement = 0.01;
+        }
+
+        // Start animation
+        animationRunning = true;
+
+        // Pause main renderer loop so we have full control
+        if (window.renderer) {
+            window.renderer.stop();
+        }
+
+        // Reset step counter and timing state when starting animation
+        animationStepCounter = 0;
+        alphaStepTimeEMA = null;
+        alphaStepStartTime = null;
+        alphaStepWarmupCounter = 0;
+        alphaStepDisplayCounter = 0;
+        lastAppliedSettings = null;
+
+        // Lock shaders if checkbox is enabled
+        const shouldLockShaders = $('#animation-lock-shaders').is(':checked');
+        if (shouldLockShaders && renderer) {
+            renderer.lockShaderRecompilation = true;
+            shaderLockWasEnabled = true;
+            logger.info('Shader recompilation lock ENABLED (animation started)', null, false);
+        } else {
+            shaderLockWasEnabled = false;
+        }
+
+        // Buffer logs during animation (will be flushed when animation stops)
+        savedLoggerVerbosity = logger.verbosity;
+        logger.setVerbosity('silent');
+
+        // Cache animatable controls to avoid repeated DOM queries and instanceof checks
+        cachedAnimatableControls = [];
+        manager.controls.forEach((control) => {
+            if (control instanceof AnimatableSliderControl) {
+                cachedAnimatableControls.push(control);
+            }
+        });
+
+        // Cache animatable parameter controls
+        cachedAnimatableParams = [];
+        const transformParamsControl = manager.controls.get('transform-params');
+        if (transformParamsControl && transformParamsControl.parameterControls) {
+            transformParamsControl.parameterControls.forEach((paramControl) => {
+                if (paramControl instanceof AnimatableParameterControl) {
+                    cachedAnimatableParams.push(paramControl);
+                }
+            });
+        }
+
+        // Animation loop that performs integration steps
+        const animationLoop = () => {
+            if (!animationRunning) {
+                return; // Animation was stopped
+            }
+
+            const freezeScreen = $('#animation-clear-screen').is(':checked');
+            const smoothTiming = $('#animation-smooth-timing').is(':checked');
+
+            // Increment step counter
+            animationStepCounter++;
+
+            // Start timing on first step of alpha cycle
+            if (animationStepCounter === 1) {
+                // Clear shader recompilation flag (don't reset warm-up during animation)
+                if (window.renderer && window.renderer.shadersJustRecompiled) {
+                    window.renderer.shadersJustRecompiled = false;
+                }
+                alphaStepStartTime = performance.now();
+            }
+
+            // Check if we should increment alpha
+            if (animationStepCounter >= animationStepsPerIncrement) {
+                animationStepCounter = 0;
+
+                // If freeze mode: render final accumulated frame to display
+                if (freezeScreen && window.renderer) {
+                    window.renderer.render(true); // Display the accumulated N steps
+                }
+
+                // Calculate elapsed time for this alpha cycle
+                const alphaStepEndTime = performance.now();
+                const alphaStepElapsed = alphaStepEndTime - alphaStepStartTime;
+
+                // Update asymmetric EMA (tracks ~95th percentile) after warm-up
+                if (alphaStepWarmupCounter < ALPHA_STEP_TIME_WARMUP_CYCLES) {
+                    // Still warming up - skip this cycle and don't update EMA
+                    alphaStepWarmupCounter++;
+                } else if (alphaStepTimeEMA === null) {
+                    // Warm-up complete - initialize EMA from this cycle
+                    alphaStepTimeEMA = alphaStepElapsed;
+                } else {
+                    // Use asymmetric smoothing: fast upward tracking, slow downward decay
+                    if (alphaStepElapsed > alphaStepTimeEMA) {
+                        // Slower than EMA - track upward quickly
+                        alphaStepTimeEMA = ALPHA_STEP_TIME_UPWARD * alphaStepElapsed +
+                                          (1 - ALPHA_STEP_TIME_UPWARD) * alphaStepTimeEMA;
+                    } else {
+                        // Faster than EMA - decay slowly
+                        alphaStepTimeEMA = ALPHA_STEP_TIME_DECAY * alphaStepElapsed +
+                                          (1 - ALPHA_STEP_TIME_DECAY) * alphaStepTimeEMA;
+                    }
+                }
+
+                // Update step time display if smoothing is enabled (throttled to reduce UI overhead)
+                if (smoothTiming) {
+                    alphaStepDisplayCounter++;
+                    if (alphaStepDisplayCounter >= ALPHA_STEP_TIME_DISPLAY_INTERVAL) {
+                        alphaStepDisplayCounter = 0;
+                        if (alphaStepTimeEMA === null) {
+                            $('#step-time-counter').text(`Step: ${alphaStepElapsed.toFixed(1)}ms (warming up...)`);
+                        } else {
+                            $('#step-time-counter').text(`Step: ${alphaStepElapsed.toFixed(1)}ms (EMA: ${alphaStepTimeEMA.toFixed(1)}ms)`);
+                        }
+                        $('#step-time-counter').show();
+                    }
+                } else {
+                    $('#step-time-counter').hide();
+                }
+
+                let currentValue = animationAlphaControl.getValue();
+
+                // Update value based on direction and increment
+                currentValue += animationDirection * frameCaptureAlphaIncrement;
+
+                // Bounce at boundaries
+                if (currentValue >= 1.0) {
+                    currentValue = 1.0;
+                    animationDirection = -1;
+                } else if (currentValue <= 0.0) {
+                    currentValue = 0.0;
+                    animationDirection = 1;
+                }
+
+                // Update slider value WITHOUT triggering input event (avoid debounced apply)
+                animationAlphaControl.setValue(currentValue);
+
+                // Update all animatable controls based on alpha (use cached list)
+                for (let i = 0; i < cachedAnimatableControls.length; i++) {
+                    cachedAnimatableControls[i].updateFromAlpha(currentValue);
+                }
+
+                // Update animatable parameter controls (use cached list)
+                for (let i = 0; i < cachedAnimatableParams.length; i++) {
+                    cachedAnimatableParams[i].updateFromAlpha(currentValue);
+                }
+
+                // Manually update renderer with new alpha value and apply interpolated settings
+                if (window.renderer) {
+                    window.renderer.setAnimationAlpha(currentValue);
+
+                    // Build changed settings directly from animatable controls (avoid full getSettings() overhead)
+                    const changedSettings = {};
+
+                    // Collect values from animatable sliders
+                    for (let i = 0; i < cachedAnimatableControls.length; i++) {
+                        const control = cachedAnimatableControls[i];
+                        const newValue = control.getValue();
+                        if (lastAppliedSettings === null || newValue !== lastAppliedSettings[control.settingsKey]) {
+                            changedSettings[control.settingsKey] = newValue;
+                        }
+                    }
+
+                    // Collect values from animatable parameters
+                    for (let i = 0; i < cachedAnimatableParams.length; i++) {
+                        const paramControl = cachedAnimatableParams[i];
+                        const newValue = paramControl.getValue();
+                        const paramKey = paramControl.parameterName;
+
+                        // Build transformParams object
+                        if (!changedSettings.transformParams) {
+                            changedSettings.transformParams = lastAppliedSettings?.transformParams ? {...lastAppliedSettings.transformParams} : {};
+                        }
+
+                        if (lastAppliedSettings === null || newValue !== lastAppliedSettings.transformParams?.[paramKey]) {
+                            changedSettings.transformParams[paramKey] = newValue;
+                        }
+                    }
+
+                    // Apply changed settings to renderer (only if there are changes)
+                    if (Object.keys(changedSettings).length > 0) {
+                        try {
+                            window.renderer.updateConfig(changedSettings);
+
+                            // Update last applied settings
+                            if (lastAppliedSettings === null) {
+                                lastAppliedSettings = {};
+                            }
+                            Object.assign(lastAppliedSettings, changedSettings);
+                        } catch (error) {
+                            logger.error('Failed to apply animation settings:', error);
+                        }
+                    } else if (lastAppliedSettings === null) {
+                        // First cycle with no animatable settings - initialize tracking
+                        lastAppliedSettings = {};
+                    }
+
+                    // Check if we should clear particles
+                    if ($('#animation-clear-particles').is(':checked')) {
+                        window.renderer.resetParticles();
+                    }
+
+                    // Check if we should clear screen (for next accumulation cycle)
+                    if (freezeScreen) {
+                        window.renderer.clearRenderBuffer();
+                    }
+
+                    // If NOT freeze mode: render normally with display
+                    if (!freezeScreen) {
+                        window.renderer.render(true);
+                    }
+
+                    // Capture frame if in frame capture mode
+                    if (frameCaptureMode === 'fixed') {
+                        const canvas = window.renderer.gl.canvas;
+                        canvas.toBlob(function(blob) {
+                            capturedFrames.push(blob);
+                            frameCaptureCount++;
+
+                            // Call progress callback
+                            if (onProgress) {
+                                onProgress(frameCaptureCount, frameCaptureTotal, currentValue);
+                            }
+
+                            // Check if we're done
+                            if (frameCaptureCount >= frameCaptureTotal) {
+                                stopAnimation();
+                                if (onComplete) {
+                                    onComplete(capturedFrames);
+                                }
+                            }
+                        }, 'image/png');
+                    }
+                }
+
+                // Alpha cycle complete - check if we need to delay for timing smoothing
+                if (smoothTiming && alphaStepTimeEMA !== null && alphaStepElapsed < alphaStepTimeEMA) {
+                    const delayNeeded = alphaStepTimeEMA - alphaStepElapsed;
+                    // Wait before starting next cycle
+                    setTimeout(() => {
+                        if (animationRunning) {
+                            animationFrameId = requestAnimationFrame(animationLoop);
+                        }
+                    }, delayNeeded);
+                    return; // Exit early, setTimeout will continue the loop
+                }
+            } else {
+                // Between alpha changes (steps 1 to N-1)
+                if (window.renderer) {
+                    if (freezeScreen) {
+                        // Freeze mode: accumulate in hidden buffer (don't display yet)
+                        window.renderer.render(false);
+                    } else {
+                        // Normal mode: render and display continuously
+                        window.renderer.render(true);
+                    }
+                }
+            }
+
+            // Continue animation loop if still running
+            if (animationRunning) {
+                animationFrameId = requestAnimationFrame(animationLoop);
+            }
+        };
+
+        // Start the animation loop
+        animationFrameId = requestAnimationFrame(animationLoop);
+    }
+
+    // Stop animation function
+    function stopAnimation() {
+        animationRunning = false;
+        if (animationFrameId !== null) {
+            cancelAnimationFrame(animationFrameId);
+            animationFrameId = null;
+        }
+
+        // Resume main renderer loop
+        if (window.renderer && !window.renderer.isRunning) {
+            window.renderer.start();
+        }
+
+        // Hide step time counter
+        $('#step-time-counter').hide();
+
+        // Clear cached controls and settings
+        cachedAnimatableControls = null;
+        cachedAnimatableParams = null;
+        lastAppliedSettings = null;
+
+        // Restore logger verbosity (this will auto-flush buffered logs)
+        if (savedLoggerVerbosity !== null) {
+            logger.setVerbosity(savedLoggerVerbosity);
+            savedLoggerVerbosity = null;
+        }
+
+        // Unlock shaders if we locked them
+        if (shaderLockWasEnabled && renderer) {
+            renderer.lockShaderRecompilation = false;
+            shaderLockWasEnabled = false;
+            logger.info('Shader recompilation lock DISABLED (animation stopped)');
+        }
+
+        // Reset frame capture mode
+        frameCaptureMode = null;
+    }
+
     // Animation alpha animate button
     $('#animation-alpha-animate-btn').on('click', function(e) {
         e.stopPropagation(); // Prevent panel close
@@ -861,268 +1207,120 @@ export function initControls(renderer, callback) {
 
         if (animationRunning) {
             // Stop animation
-            animationRunning = false;
-            if (animationFrameId !== null) {
-                cancelAnimationFrame(animationFrameId);
-                animationFrameId = null;
-            }
-
-            // Resume main renderer loop
-            if (window.renderer && !window.renderer.isRunning) {
-                window.renderer.start();
-            }
-
-            // Hide step time counter
-            $('#step-time-counter').hide();
-
-            // Clear cached controls and settings
-            cachedAnimatableControls = null;
-            cachedAnimatableParams = null;
-            lastAppliedSettings = null;
-
-            // Restore logger verbosity
-            if (savedLoggerVerbosity !== null) {
-                logger.setVerbosity(savedLoggerVerbosity);
-                savedLoggerVerbosity = null;
-            }
+            stopAnimation();
 
             btn.text('▶');
             btn.css('background', '#4CAF50');
             btn.attr('title', 'Auto-animate');
         } else {
             // Start animation
-            animationRunning = true;
-
-            // Pause main renderer loop so we have full control
-            if (window.renderer) {
-                window.renderer.stop();
-            }
+            startAnimation();
 
             btn.text('⏸');
             btn.css('background', '#FFA726');
             btn.attr('title', 'Stop auto-animate');
+        }
+    });
 
-            // Reset step counter and timing state when starting animation
-            animationStepCounter = 0;
-            alphaStepTimeEMA = null;
-            alphaStepStartTime = null;
-            alphaStepWarmupCounter = 0;
-            alphaStepDisplayCounter = 0;
-            lastAppliedSettings = null;
+    // Create Animation button - captures frames during alpha animation
+    $('#animation-create-btn').on('click', function() {
+        if (animationRunning) return;
 
-            // Suppress verbose logging during animation
-            savedLoggerVerbosity = logger.verbosity;
-            logger.setVerbosity('silent');
+        const framesInput = $('#animation-frames');
+        const loopsInput = $('#animation-loops');
+        const downloadBtn = $('#animation-download-btn');
+        const createBtn = $(this);
+        const progressContainer = $('#animation-progress');
+        const progressBar = $('#progress-bar');
+        const progressText = $('#progress-text');
+        const progressAlpha = $('#progress-alpha');
 
-            // Cache animatable controls to avoid repeated DOM queries and instanceof checks
-            cachedAnimatableControls = [];
-            manager.controls.forEach((control) => {
-                if (control instanceof AnimatableSliderControl) {
-                    cachedAnimatableControls.push(control);
-                }
-            });
+        // Get parameters
+        const totalFrames = parseInt(framesInput.val()) || 100;
+        const loops = parseInt(loopsInput.val()) || 1;
 
-            // Cache animatable parameter controls
-            cachedAnimatableParams = [];
-            const transformParamsControl = manager.controls.get('transform-params');
-            if (transformParamsControl && transformParamsControl.parameterControls) {
-                transformParamsControl.parameterControls.forEach((paramControl) => {
-                    if (paramControl instanceof AnimatableParameterControl) {
-                        cachedAnimatableParams.push(paramControl);
-                    }
-                });
+        // Update UI
+        createBtn.prop('disabled', true);
+        createBtn.text('⏳ Creating...');
+        framesInput.prop('disabled', true);
+        loopsInput.prop('disabled', true);
+        downloadBtn.prop('disabled', true);
+        progressContainer.show();
+        progressBar.css('width', '0%');
+        progressText.text(`Frame 0 / ${totalFrames}`);
+        progressAlpha.text('α: 0.00');
+
+        // Start animation with frame capture
+        startAnimation({
+            captureFrames: true,
+            totalFrames: totalFrames,
+            loops: loops,
+            onProgress: (frameCount, totalFrames, alpha) => {
+                const progress = (frameCount / totalFrames) * 100;
+                progressBar.css('width', `${progress}%`);
+                progressText.text(`Frame ${frameCount} / ${totalFrames}`);
+                progressAlpha.text(`α: ${alpha.toFixed(2)}`);
+            },
+            onComplete: (frames) => {
+                // Update UI
+                createBtn.prop('disabled', false);
+                createBtn.text('▶ Create Animation');
+                framesInput.prop('disabled', false);
+                loopsInput.prop('disabled', false);
+                downloadBtn.prop('disabled', false);
+                progressBar.css('width', '100%');
+                progressText.text(`Complete: ${totalFrames} frames`);
+
+                logger.info(`Animation creation complete: ${totalFrames} frames captured`);
+            }
+        });
+    });
+
+    // Download Animation button
+    $('#animation-download-btn').on('click', async function() {
+        if (capturedFrames.length === 0) {
+            alert('No frames to download. Create an animation first.');
+            return;
+        }
+
+        const btn = $(this);
+        btn.prop('disabled', true);
+        btn.text('⏳ Creating ZIP...');
+
+        try {
+            // Create ZIP file using JSZip
+            const zip = new JSZip();
+            const framesFolder = zip.folder('frames');
+
+            // Add frames to ZIP
+            for (let i = 0; i < capturedFrames.length; i++) {
+                const paddedIndex = String(i).padStart(5, '0');
+                framesFolder.file(`frame_${paddedIndex}.png`, capturedFrames[i]);
             }
 
-            // Animation loop that performs integration steps
-            const animationLoop = () => {
-                if (!animationRunning) {
-                    return; // Animation was stopped
-                }
+            // Generate ZIP file
+            const zipBlob = await zip.generateAsync({ type: 'blob' });
 
-                const freezeScreen = $('#animation-clear-screen').is(':checked');
-                const smoothTiming = $('#animation-smooth-timing').is(':checked');
+            // Create download link
+            const url = URL.createObjectURL(zipBlob);
+            const link = document.createElement('a');
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+            link.download = `animation-${timestamp}.zip`;
+            link.href = url;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
 
-                // Increment step counter
-                animationStepCounter++;
+            // Clean up
+            URL.revokeObjectURL(url);
 
-                // Start timing on first step of alpha cycle
-                if (animationStepCounter === 1) {
-                    // Clear shader recompilation flag (don't reset warm-up during animation)
-                    if (window.renderer && window.renderer.shadersJustRecompiled) {
-                        window.renderer.shadersJustRecompiled = false;
-                    }
-                    alphaStepStartTime = performance.now();
-                }
-
-                // Check if we should increment alpha
-                if (animationStepCounter >= animationStepsPerIncrement) {
-                    animationStepCounter = 0;
-
-                    // If freeze mode: render final accumulated frame to display
-                    if (freezeScreen && window.renderer) {
-                        window.renderer.render(true); // Display the accumulated N steps
-                    }
-
-                    // Calculate elapsed time for this alpha cycle
-                    const alphaStepEndTime = performance.now();
-                    const alphaStepElapsed = alphaStepEndTime - alphaStepStartTime;
-
-                    // Update asymmetric EMA (tracks ~95th percentile) after warm-up
-                    if (alphaStepWarmupCounter < ALPHA_STEP_TIME_WARMUP_CYCLES) {
-                        // Still warming up - skip this cycle and don't update EMA
-                        alphaStepWarmupCounter++;
-                    } else if (alphaStepTimeEMA === null) {
-                        // Warm-up complete - initialize EMA from this cycle
-                        alphaStepTimeEMA = alphaStepElapsed;
-                    } else {
-                        // Use asymmetric smoothing: fast upward tracking, slow downward decay
-                        if (alphaStepElapsed > alphaStepTimeEMA) {
-                            // Slower than EMA - track upward quickly
-                            alphaStepTimeEMA = ALPHA_STEP_TIME_UPWARD * alphaStepElapsed +
-                                              (1 - ALPHA_STEP_TIME_UPWARD) * alphaStepTimeEMA;
-                        } else {
-                            // Faster than EMA - decay slowly
-                            alphaStepTimeEMA = ALPHA_STEP_TIME_DECAY * alphaStepElapsed +
-                                              (1 - ALPHA_STEP_TIME_DECAY) * alphaStepTimeEMA;
-                        }
-                    }
-
-                    // Update step time display if smoothing is enabled (throttled to reduce UI overhead)
-                    if (smoothTiming) {
-                        alphaStepDisplayCounter++;
-                        if (alphaStepDisplayCounter >= ALPHA_STEP_TIME_DISPLAY_INTERVAL) {
-                            alphaStepDisplayCounter = 0;
-                            if (alphaStepTimeEMA === null) {
-                                $('#step-time-counter').text(`Step: ${alphaStepElapsed.toFixed(1)}ms (warming up...)`);
-                            } else {
-                                $('#step-time-counter').text(`Step: ${alphaStepElapsed.toFixed(1)}ms (EMA: ${alphaStepTimeEMA.toFixed(1)}ms)`);
-                            }
-                            $('#step-time-counter').show();
-                        }
-                    } else {
-                        $('#step-time-counter').hide();
-                    }
-
-                    let currentValue = animationAlphaControl.getValue();
-
-                    // Update value based on direction
-                    currentValue += animationDirection * 0.01;
-
-                    // Bounce at boundaries
-                    if (currentValue >= 1.0) {
-                        currentValue = 1.0;
-                        animationDirection = -1;
-                    } else if (currentValue <= 0.0) {
-                        currentValue = 0.0;
-                        animationDirection = 1;
-                    }
-
-                    // Update slider value WITHOUT triggering input event (avoid debounced apply)
-                    animationAlphaControl.setValue(currentValue);
-
-                    // Update all animatable controls based on alpha (use cached list)
-                    for (let i = 0; i < cachedAnimatableControls.length; i++) {
-                        cachedAnimatableControls[i].updateFromAlpha(currentValue);
-                    }
-
-                    // Update animatable parameter controls (use cached list)
-                    for (let i = 0; i < cachedAnimatableParams.length; i++) {
-                        cachedAnimatableParams[i].updateFromAlpha(currentValue);
-                    }
-
-                    // Manually update renderer with new alpha value and apply interpolated settings
-                    if (window.renderer) {
-                        window.renderer.setAnimationAlpha(currentValue);
-
-                        // Get current settings from all controls (including interpolated animatable values)
-                        const settings = manager.getSettings();
-
-                        // Filter to only settings that changed (avoid unnecessary shader recompilation)
-                        // Also exclude settings that require shader recompilation
-                        const changedSettings = {};
-                        if (lastAppliedSettings === null) {
-                            // First time - apply all settings except blacklisted ones
-                            for (const key in settings) {
-                                if (!SHADER_RECOMPILE_SETTINGS.has(key)) {
-                                    // Skip empty transformParams
-                                    if (key === 'transformParams' && (!settings[key] || Object.keys(settings[key]).length === 0)) {
-                                        continue;
-                                    }
-                                    changedSettings[key] = settings[key];
-                                }
-                            }
-                        } else {
-                            // Only include settings that changed and aren't blacklisted
-                            for (const key in settings) {
-                                if (!SHADER_RECOMPILE_SETTINGS.has(key) && settings[key] !== lastAppliedSettings[key]) {
-                                    // Skip empty transformParams
-                                    if (key === 'transformParams' && (!settings[key] || Object.keys(settings[key]).length === 0)) {
-                                        continue;
-                                    }
-                                    changedSettings[key] = settings[key];
-                                }
-                            }
-                        }
-
-                        // Apply only changed settings to renderer (no debounce during animation)
-                        if (Object.keys(changedSettings).length > 0) {
-                            try {
-                                window.renderer.updateConfig(changedSettings);
-                                // Update last applied settings with the changes
-                                lastAppliedSettings = Object.assign({}, settings);
-                            } catch (error) {
-                                logger.error('Failed to apply animation settings:', error);
-                            }
-                        }
-
-                        // Check if we should clear particles
-                        if ($('#animation-clear-particles').is(':checked')) {
-                            window.renderer.resetParticles();
-                        }
-
-                        // Check if we should clear screen (for next accumulation cycle)
-                        if (freezeScreen) {
-                            window.renderer.clearRenderBuffer();
-                        }
-
-                        // If NOT freeze mode: render normally with display
-                        if (!freezeScreen) {
-                            window.renderer.render(true);
-                        }
-                    }
-
-                    // Alpha cycle complete - check if we need to delay for timing smoothing
-                    if (smoothTiming && alphaStepTimeEMA !== null && alphaStepElapsed < alphaStepTimeEMA) {
-                        const delayNeeded = alphaStepTimeEMA - alphaStepElapsed;
-                        // Wait before starting next cycle
-                        setTimeout(() => {
-                            if (animationRunning) {
-                                animationFrameId = requestAnimationFrame(animationLoop);
-                            }
-                        }, delayNeeded);
-                        return; // Exit early, setTimeout will continue the loop
-                    }
-                } else {
-                    // Between alpha changes (steps 1 to N-1)
-                    if (window.renderer) {
-                        if (freezeScreen) {
-                            // Freeze mode: accumulate in hidden buffer (don't display yet)
-                            window.renderer.render(false);
-                        } else {
-                            // Normal mode: render and display continuously
-                            window.renderer.render(true);
-                        }
-                    }
-                }
-
-                // Continue animation loop if still running
-                if (animationRunning) {
-                    animationFrameId = requestAnimationFrame(animationLoop);
-                }
-            };
-
-            // Start the animation loop
-            animationFrameId = requestAnimationFrame(animationLoop);
+            logger.info(`Animation downloaded: ${capturedFrames.length} frames in ZIP`);
+        } catch (error) {
+            logger.error('Failed to create ZIP:', error);
+            alert('Failed to create ZIP file: ' + error.message);
+        } finally {
+            btn.prop('disabled', false);
+            btn.text('💾 Download Animation (ZIP)');
         }
     });
 
