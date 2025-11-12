@@ -176,6 +176,7 @@ uniform float u_particles_res;
 uniform float u_max_velocity;
 uniform float u_drop_low_velocity;
 uniform float u_velocity_threshold;
+uniform float u_alpha;
 ${hasTransform ? 'uniform vec4 u_transform_params;' : ''}
 
 ${transformFunctions}
@@ -339,6 +340,7 @@ ${positionUniforms}
 uniform float u_particles_res;
 uniform vec2 u_min;
 uniform vec2 u_max;
+uniform float u_alpha;
 
 varying vec${dimensions} v_pos;
 varying vec${dimensions} v_velocity;
@@ -425,6 +427,7 @@ varying vec${dimensions} v_velocity;
 ${usesMaxVelocity ? 'uniform float u_max_velocity;\nuniform float u_velocity_log_scale;' : ''}
 uniform float u_particle_intensity;
 uniform float u_color_saturation;
+uniform float u_alpha;
 
 ${colorCode}
 

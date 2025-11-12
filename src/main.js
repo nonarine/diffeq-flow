@@ -5,6 +5,7 @@
 import { Renderer } from './webgl/renderer.js';
 import { initControls, loadPreset } from './ui/controls-v2.js';
 import { logger } from './utils/debug-logger.js';
+import { Animator } from './animation/animator.js';
 
 // Initialize when DOM is ready
 $(document).ready(function() {
@@ -181,6 +182,9 @@ $(document).ready(function() {
 
             // Controls are ready, start rendering
             renderer.start();
+
+            // Setup animation panel
+            setupAnimationPanel(renderer, manager);
 
             // Make utilities globally available for debugging
             window.renderer = renderer;
@@ -626,7 +630,154 @@ $(document).ready(function() {
         });
     }
 
-    // Step 7: Initialize accordion for controls sections
+    // Step 7: Setup animation panel
+    function setupAnimationPanel(renderer, manager) {
+        let animator = null;
+
+        // Open/close panel
+        $('#open-animation-panel').on('click', function() {
+            $('#animation-panel').toggle();
+        });
+
+        // Load animation script
+        $('#animation-script-input').on('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                try {
+                    const scriptData = JSON.parse(event.target.result);
+
+                    // Create animator
+                    animator = new Animator(renderer, manager);
+                    const script = animator.loadScript(scriptData);
+
+                    // Update UI with script info
+                    $('#anim-name').text(script.name);
+
+                    // Timeline-based animation (new format)
+                    const duration = script.timeline[script.timeline.length - 1].time;
+                    const totalFrames = Math.ceil(duration * script.fps);
+
+                    $('#anim-param').text(`${script.timeline.length} keyframes`);
+                    $('#anim-range').text(`0s → ${duration}s`);
+                    $('#anim-frames').text(totalFrames);
+                    $('#anim-fps').text(script.fps);
+                    $('#anim-duration').text(`${duration.toFixed(1)}s`);
+
+                    // Show info and enable run button
+                    $('#animation-info').show();
+                    $('#animation-run-btn').prop('disabled', false);
+                    $('#animation-download-btn').prop('disabled', true);
+
+                    logger.info(`Animation script loaded: ${script.name}`);
+                } catch (error) {
+                    alert('Failed to load animation script: ' + error.message);
+                    logger.error('Animation script load failed', error);
+                }
+            };
+            reader.readAsText(file);
+        });
+
+        // Run animation
+        $('#animation-run-btn').on('click', async function() {
+            if (!animator) return;
+
+            try {
+                // Disable controls
+                $('#animation-run-btn').prop('disabled', true);
+                $('#animation-pause-btn').prop('disabled', false);
+                $('#animation-stop-btn').prop('disabled', false);
+                $('#animation-script-input').prop('disabled', true);
+
+                // Show progress
+                $('#animation-progress').show();
+
+                // Run with progress callback
+                await animator.run((frameNum, totalFrames, time) => {
+                    const percent = (frameNum / totalFrames) * 100;
+                    $('#progress-bar').css('width', percent + '%');
+                    $('#progress-text').text(`Frame ${frameNum} / ${totalFrames}`);
+                    $('#progress-param').text(`Time: ${time.toFixed(2)}s`);
+                });
+
+                // Animation complete
+                logger.info('Animation complete!');
+                alert('Animation complete! ' + animator.frames.length + ' frames captured.');
+
+                // Enable download button
+                $('#animation-download-btn').prop('disabled', false);
+
+            } catch (error) {
+                logger.error('Animation failed', error);
+                alert('Animation failed: ' + error.message);
+            } finally {
+                // Re-enable controls
+                $('#animation-run-btn').prop('disabled', false);
+                $('#animation-pause-btn').prop('disabled', true);
+                $('#animation-stop-btn').prop('disabled', true);
+                $('#animation-script-input').prop('disabled', false);
+            }
+        });
+
+        // Pause animation
+        $('#animation-pause-btn').on('click', function() {
+            if (!animator) return;
+
+            if (animator.isPaused) {
+                animator.resume();
+                $(this).text('⏸ Pause');
+                logger.info('Animation resumed');
+            } else {
+                animator.pause();
+                $(this).text('▶ Resume');
+                logger.info('Animation paused');
+            }
+        });
+
+        // Stop animation
+        $('#animation-stop-btn').on('click', function() {
+            if (!animator) return;
+
+            animator.stop();
+            logger.info('Animation stopped');
+
+            // Reset UI
+            $('#animation-run-btn').prop('disabled', false);
+            $('#animation-pause-btn').prop('disabled', true);
+            $('#animation-stop-btn').prop('disabled', true);
+            $('#animation-script-input').prop('disabled', false);
+        });
+
+        // Download frames
+        $('#animation-download-btn').on('click', async function() {
+            if (!animator || animator.frames.length === 0) return;
+
+            try {
+                $(this).prop('disabled', true);
+                $(this).text('💾 Downloading...');
+
+                await animator.downloadFrames();
+
+                $(this).text('✓ Downloaded');
+                setTimeout(() => {
+                    $(this).text('💾 Download Frames (ZIP)');
+                    $(this).prop('disabled', false);
+                }, 2000);
+
+            } catch (error) {
+                logger.error('Download failed', error);
+                alert('Download failed: ' + error.message);
+                $(this).text('💾 Download Frames (ZIP)');
+                $(this).prop('disabled', false);
+            }
+        });
+
+        logger.info('Animation panel initialized');
+    }
+
+    // Step 8: Initialize accordion for controls sections
     function initAccordion() {
         const ACCORDION_STATE_KEY = 'accordionState';
 

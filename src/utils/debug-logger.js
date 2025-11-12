@@ -37,7 +37,8 @@ class DebugLogger {
             debug: 1,
             info: 2,
             warn: 3,
-            error: 4
+            error: 4,
+            silent: 999  // Silent mode - suppresses all logs
         };
 
         return levels[level] >= levels[this.verbosity];

@@ -658,6 +658,153 @@ export class TimestepControl extends Control {
         });
     }
 }
+/**
+ * Animatable Slider Control
+ * Extends SliderControl with animation bounds that interpolate with alpha
+ */
+export class AnimatableSliderControl extends SliderControl {
+    constructor(id, defaultValue, options = {}) {
+        super(id, defaultValue, options);
+
+        // Animation state
+        this.animationEnabled = false;
+        this.animationMin = options.animationMin !== undefined ? options.animationMin : this.transform(this.min);
+        this.animationMax = options.animationMax !== undefined ? options.animationMax : this.transform(this.max);
+        this.currentAlpha = 0.0;
+    }
+
+    /**
+     * Enable/disable animation for this control
+     */
+    setAnimationEnabled(enabled) {
+        this.animationEnabled = enabled;
+        this.updateAnimationUI();
+    }
+
+    /**
+     * Set animation bounds
+     */
+    setAnimationBounds(min, max) {
+        this.animationMin = min;
+        this.animationMax = max;
+    }
+
+    /**
+     * Update value based on current alpha (0.0 to 1.0)
+     */
+    updateFromAlpha(alpha) {
+        if (!this.animationEnabled) return;
+
+        this.currentAlpha = alpha;
+        const value = this.animationMin + alpha * (this.animationMax - this.animationMin);
+        this.setValue(value);
+
+        // Update the main slider visual state
+        const element = $(`#${this.id}`);
+        element.addClass('animating');
+    }
+
+    /**
+     * Update the UI to show/hide animation controls
+     */
+    updateAnimationUI() {
+        const boundsContainer = $(`#${this.id}-animation-bounds`);
+        const slider = $(`#${this.id}`);
+        const animBtn = $(`#${this.id}-anim-btn`);
+
+        if (this.animationEnabled) {
+            boundsContainer.slideDown(200);
+            slider.addClass('animating');
+            animBtn.addClass('active');
+            animBtn.attr('title', 'Disable animation');
+        } else {
+            boundsContainer.slideUp(200);
+            slider.removeClass('animating');
+            animBtn.removeClass('active');
+            animBtn.attr('title', 'Enable animation');
+        }
+    }
+
+    /**
+     * Override attach listeners to add animation controls
+     */
+    attachListeners(callback) {
+        // Call parent to attach basic slider listeners
+        super.attachListeners(callback);
+
+        const element = $(`#${this.id}`);
+        const container = element.closest('.slider-control');
+
+        // Add animation button
+        const animBtn = $('<button>')
+            .attr('id', `${this.id}-anim-btn`)
+            .addClass('slider-btn anim-btn')
+            .attr('title', 'Enable animation')
+            .html('🎬')
+            .on('click', (e) => {
+                e.stopPropagation();
+                this.setAnimationEnabled(!this.animationEnabled);
+            });
+
+        container.append(animBtn);
+
+        // Add animation bounds container (initially hidden)
+        const boundsHTML = `
+            <div id="${this.id}-animation-bounds" class="animation-bounds" style="display: none;">
+                <div class="bounds-row">
+                    <label>Min: <input type="number" id="${this.id}-anim-min" step="any" value="${this.animationMin}"/></label>
+                    <label>Max: <input type="number" id="${this.id}-anim-max" step="any" value="${this.animationMax}"/></label>
+                </div>
+            </div>
+        `;
+        container.after(boundsHTML);
+
+        // Attach listeners to bound inputs
+        $(`#${this.id}-anim-min`).on('input', () => {
+            this.animationMin = parseFloat($(`#${this.id}-anim-min`).val());
+        });
+
+        $(`#${this.id}-anim-max`).on('input', () => {
+            this.animationMax = parseFloat($(`#${this.id}-anim-max`).val());
+        });
+    }
+
+    /**
+     * Save animation state to settings
+     */
+    saveToSettings(settings) {
+        super.saveToSettings(settings);
+
+        if (this.animationEnabled) {
+            if (!settings.animations) settings.animations = {};
+            settings.animations[this.settingsKey] = {
+                enabled: true,
+                min: this.animationMin,
+                max: this.animationMax
+            };
+        }
+    }
+
+    /**
+     * Restore animation state from settings
+     */
+    restoreFromSettings(settings) {
+        super.restoreFromSettings(settings);
+
+        if (settings.animations && settings.animations[this.settingsKey]) {
+            const animData = settings.animations[this.settingsKey];
+            this.animationEnabled = animData.enabled || false;
+            this.animationMin = animData.min;
+            this.animationMax = animData.max;
+
+            // Update UI inputs
+            $(`#${this.id}-anim-min`).val(this.animationMin);
+            $(`#${this.id}-anim-max`).val(this.animationMax);
+
+            this.updateAnimationUI();
+        }
+    }
+}
 
 /**
  * Control Manager

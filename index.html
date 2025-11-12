@@ -89,6 +89,12 @@
             color: #2E7D32;
         }
 
+        body.light-theme #step-time-counter {
+            background: rgba(255, 255, 255, 0.9);
+            border-color: #ccc;
+            color: #F57C00;
+        }
+
         body.light-theme #fps-counter {
             background: rgba(255, 255, 255, 0.9);
             border-color: #ccc;
@@ -151,6 +157,12 @@
             font-size: 12px;
             color: #4CAF50;
             z-index: 100;
+            transition: left 0.3s ease-in-out;
+        }
+
+        #cursor-position.shifted {
+            right: 390px;
+            left: auto;
         }
 
         #histogram-panel {
@@ -162,6 +174,12 @@
             border: 1px solid #444;
             border-radius: 4px;
             z-index: 100;
+            transition: left 0.3s ease-in-out, right 0.3s ease-in-out;
+        }
+
+        #histogram-panel.shifted {
+            right: 390px;
+            left: auto;
         }
 
         #histogram-panel.collapsed #histogram-body {
@@ -211,6 +229,21 @@
             color: #888;
         }
 
+        #step-time-counter {
+            position: absolute;
+            bottom: 48px;
+            right: 10px;
+            background: rgba(30, 30, 30, 0.9);
+            border: 1px solid #444;
+            border-radius: 4px;
+            padding: 8px 12px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            font-weight: bold;
+            color: #FFA726;
+            z-index: 10;
+        }
+
         #fps-counter {
             position: absolute;
             bottom: 10px;
@@ -238,6 +271,7 @@
             max-height: calc(90vh - 60px);
             overflow-y: auto;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            z-index: 200;
         }
 
         #controls h1 {
@@ -394,6 +428,123 @@
 
         .slider-btn:active {
             background: #222;
+        }
+
+        .slider-btn.anim-btn.active {
+            background: #4CAF50;
+            color: white;
+            border-color: #4CAF50;
+        }
+
+        /* Animation bounds slider */
+        .animation-bounds-slider {
+            margin: 8px 0;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            border: 1px solid #444;
+        }
+
+        .bounds-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #aaa;
+            margin-bottom: 8px;
+        }
+
+        .bounds-labels span {
+            font-weight: bold;
+        }
+
+        /* Multi-thumb slider */
+        .multi-thumb-slider {
+            position: relative;
+            height: 32px;
+            margin: 4px 0;
+        }
+
+        .slider-track {
+            position: absolute;
+            top: 14px;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+        }
+
+        .slider-range {
+            position: absolute;
+            top: 14px;
+            height: 4px;
+            background: #4CAF50;
+            border-radius: 2px;
+            pointer-events: none;
+        }
+
+        .slider-current-indicator {
+            position: absolute;
+            top: 12px;
+            width: 2px;
+            height: 8px;
+            background: #FFA726;
+            pointer-events: none;
+            z-index: 5;
+            transform: translateX(-1px);
+        }
+
+        .slider-thumb {
+            position: absolute;
+            top: 0;
+            width: 16px;
+            height: 32px;
+            background: #555;
+            border: 2px solid #888;
+            border-radius: 4px;
+            cursor: grab;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .slider-thumb:hover {
+            background: #666;
+            border-color: #aaa;
+        }
+
+        .slider-thumb.dragging {
+            cursor: grabbing;
+            background: #777;
+            border-color: #ccc;
+            z-index: 11;
+        }
+
+        .slider-thumb.min-thumb {
+            border-color: #2196F3;
+        }
+
+        .slider-thumb.max-thumb {
+            border-color: #F44336;
+        }
+
+        .slider-thumb.min-thumb:hover {
+            border-color: #42A5F5;
+        }
+
+        .slider-thumb.max-thumb:hover {
+            border-color: #EF5350;
+        }
+
+        .thumb-label {
+            font-size: 7px;
+            font-weight: bold;
+            color: #ccc;
+            writing-mode: vertical-rl;
+            text-orientation: mixed;
         }
 
         button {
@@ -919,6 +1070,7 @@
                 </label>
             </div>
 
+
             <div class="control-group">
                 <button id="open-rendering-settings" class="secondary" style="width: 100%;">Rendering Effects</button>
                 <div class="info">HDR, tone mapping, and particle intensity settings</div>
@@ -963,6 +1115,106 @@
                 <button id="save-image" class="secondary" style="flex: 1;">Save Image</button>
             </div>
         </div>
+
+        <!-- Animation Section -->
+        <h1 style="cursor: pointer; user-select: none;" id="animation-section-toggle">
+            Animation <span id="animation-section-arrow">▼</span>
+        </h1>
+        <div id="animation-section-content" style="display: none;">
+            <h4 style="margin: 8px 0; padding: 0; font-size: 12px; color: #4CAF50;">Interactive Testing</h4>
+
+            <!-- Animation alpha control will be injected here -->
+            <div id="animation-alpha-container"></div>
+
+            <!-- Animation speed control -->
+            <div id="animation-speed-container"></div>
+
+            <div class="control-group" style="margin-top: 12px;">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="animation-clear-particles" style="margin-right: 8px;">
+                    <span>Reset particles on alpha change</span>
+                </label>
+                <div class="info">Reinitialize particle positions when alpha updates</div>
+            </div>
+
+            <div class="control-group">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="animation-clear-screen" style="margin-right: 8px;">
+                    <span>Freeze screen between alpha changes</span>
+                </label>
+                <div class="info">During animation: clear screen and freeze rendering between alpha updates for clean transitions</div>
+            </div>
+
+            <div class="control-group">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="animation-smooth-timing" style="margin-right: 8px;">
+                    <span>Alpha step time smoothing</span>
+                </label>
+                <div class="info">Maintain consistent frame time by adding delays to faster alpha steps</div>
+            </div>
+
+            <div class="control-group" style="margin-top: 12px;">
+                <button id="export-animation-json" style="width: 100%; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                    💾 Export Settings as Animation JSON
+                </button>
+                <div class="info">Export current settings as animation base template</div>
+            </div>
+
+            <hr style="border: none; border-top: 1px solid #333; margin: 16px 0;">
+
+            <h4 style="margin: 8px 0; padding: 0; font-size: 12px; color: #4CAF50;">Batch Rendering</h4>
+
+            <div class="control-group">
+                <label>Load Animation Script:</label>
+                <input type="file" id="animation-script-input" accept=".json" style="width: 100%; padding: 6px; background: #333; border: 1px solid #555; color: #fff; border-radius: 3px; cursor: pointer;">
+                <div class="info">Load JSON script defining parameter animation</div>
+            </div>
+
+            <div id="animation-info" style="display: none; margin-top: 12px; padding: 10px; background: #2a2a2a; border-radius: 4px; border: 1px solid #444;">
+                <h4 style="margin: 0 0 8px 0; font-size: 11px; color: #4CAF50;">Script Info</h4>
+                <div style="font-size: 10px; line-height: 1.6;">
+                    <div><strong>Name:</strong> <span id="anim-name">-</span></div>
+                    <div><strong>Keyframes:</strong> <span id="anim-param">-</span></div>
+                    <div><strong>Duration:</strong> <span id="anim-range">-</span></div>
+                    <div><strong>Frames:</strong> <span id="anim-frames">-</span></div>
+                    <div><strong>FPS:</strong> <span id="anim-fps">-</span></div>
+                </div>
+            </div>
+
+            <div class="control-group" style="margin-top: 12px;">
+                <button id="animation-run-btn" style="width: 100%; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;" disabled>
+                    ▶ Run Animation
+                </button>
+            </div>
+
+            <div class="control-group">
+                <button id="animation-pause-btn" style="width: 100%; padding: 6px; background: #FFA726; color: white; border: none; border-radius: 4px; cursor: pointer;" disabled>
+                    ⏸ Pause
+                </button>
+            </div>
+
+            <div class="control-group">
+                <button id="animation-stop-btn" style="width: 100%; padding: 6px; background: #EF5350; color: white; border: none; border-radius: 4px; cursor: pointer;" disabled>
+                    ⏹ Stop
+                </button>
+            </div>
+
+            <div id="animation-progress" style="display: none; margin-top: 12px;">
+                <div style="font-size: 10px; margin-bottom: 4px;">
+                    <span id="progress-text">Frame 0 / 0</span>
+                </div>
+                <div style="background: #2a2a2a; border-radius: 4px; overflow: hidden; height: 16px; border: 1px solid #444;">
+                    <div id="progress-bar" style="background: linear-gradient(90deg, #4CAF50, #8BC34A); width: 0%; height: 100%; transition: width 0.3s;"></div>
+                </div>
+            </div>
+
+            <div class="control-group" style="margin-top: 12px;">
+                <button id="animation-download-btn" style="width: 100%; padding: 6px; background: #42A5F5; color: white; border: none; border-radius: 4px; cursor: pointer;" disabled>
+                    💾 Download Frames (ZIP)
+                </button>
+                <div class="info" style="font-size: 9px;">Download captured frames as ZIP. Use ffmpeg to assemble video.</div>
+            </div>
+        </div>
     </div>
 
     <canvas id="grid-canvas"></canvas>
@@ -983,6 +1235,7 @@
         </div>
     </div>
 
+    <div id="step-time-counter" style="display: none;">Step: --ms</div>
     <div id="fps-counter">FPS: --</div>
 
     <div id="debug-console" class="collapsed">
@@ -1281,8 +1534,99 @@
         </div>
     </div>
 
+    <!-- Floating animation panel -->
+    <div id="animation-panel" class="floating-panel" style="display: none; left: 20px; right: auto; z-index: 10000;">
+        <div class="floating-panel-header">
+            <h3>Animation</h3>
+            <button id="animation-panel-lock" style="background: none; border: 1px solid #666; color: #666; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 16px; margin-left: auto;" title="Lock panel open">🔓</button>
+        </div>
+        <div class="floating-panel-content">
+            <!-- Animation Testing Section -->
+            <h4 style="margin: 0 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Interactive Testing</h4>
+
+            <!-- Animation alpha control will be injected here -->
+            <div id="animation-alpha-container"></div>
+
+            <!-- Animation speed control -->
+            <div id="animation-speed-container"></div>
+
+            <div class="control-group" style="margin-top: 12px;">
+                <button id="export-animation-json" style="width: 100%; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                    💾 Export Settings as Animation JSON
+                </button>
+                <div class="info">Export current settings as animation base template</div>
+            </div>
+
+            <hr style="border: none; border-top: 1px solid #333; margin: 20px 0;">
+
+            <h4 style="margin: 0 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Batch Rendering</h4>
+
+            <div class="control-group">
+                <label>Load Animation Script:</label>
+                <input type="file" id="animation-script-input" accept=".json" style="width: 100%; padding: 6px; background: #333; border: 1px solid #555; color: #fff; border-radius: 3px; cursor: pointer;">
+                <div class="info">Load JSON script defining parameter animation</div>
+            </div>
+
+            <div id="animation-info" style="display: none; margin-top: 12px; padding: 10px; background: #2a2a2a; border-radius: 4px; border: 1px solid #444;">
+                <h4 style="margin: 0 0 8px 0; font-size: 12px; color: #4CAF50;">Script Info</h4>
+                <div style="font-size: 11px; line-height: 1.6;">
+                    <div><strong>Name:</strong> <span id="anim-name">-</span></div>
+                    <div><strong>Parameter:</strong> <span id="anim-param">-</span></div>
+                    <div><strong>Range:</strong> <span id="anim-range">-</span></div>
+                    <div><strong>Frames:</strong> <span id="anim-frames">-</span></div>
+                    <div><strong>FPS:</strong> <span id="anim-fps">-</span></div>
+                    <div><strong>Duration:</strong> <span id="anim-duration">-</span></div>
+                </div>
+            </div>
+
+            <div class="control-group" style="margin-top: 16px;">
+                <button id="animation-run-btn" style="width: 100%; padding: 10px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: bold;" disabled>
+                    ▶ Run Animation
+                </button>
+            </div>
+
+            <div class="control-group">
+                <button id="animation-pause-btn" style="width: 100%; padding: 8px; background: #FFA726; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;" disabled>
+                    ⏸ Pause
+                </button>
+            </div>
+
+            <div class="control-group">
+                <button id="animation-stop-btn" style="width: 100%; padding: 8px; background: #EF5350; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;" disabled>
+                    ⏹ Stop
+                </button>
+            </div>
+
+            <div id="animation-progress" style="display: none; margin-top: 12px;">
+                <div style="font-size: 11px; margin-bottom: 6px;">
+                    <span id="progress-text">Frame 0 / 0</span>
+                    <span id="progress-param" style="float: right; color: #4CAF50;">-</span>
+                </div>
+                <div style="background: #2a2a2a; border-radius: 4px; overflow: hidden; height: 20px; border: 1px solid #444;">
+                    <div id="progress-bar" style="background: linear-gradient(90deg, #4CAF50, #8BC34A); width: 0%; height: 100%; transition: width 0.3s;"></div>
+                </div>
+            </div>
+
+            <div class="control-group" style="margin-top: 16px;">
+                <button id="animation-download-btn" style="width: 100%; padding: 8px; background: #42A5F5; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;" disabled>
+                    💾 Download Frames (ZIP)
+                </button>
+                <div class="info">Download captured frames as ZIP. Use ffmpeg to assemble video.</div>
+            </div>
+
+            <div style="margin-top: 16px; padding: 10px; background: #1a1a1a; border-radius: 4px; font-size: 10px; line-height: 1.6; border: 1px solid #333;">
+                <strong style="color: #FFA726;">Assembly Instructions:</strong><br>
+                Extract ZIP, then run:<br>
+                <code style="display: block; background: #0a0a0a; padding: 6px; margin-top: 4px; border-radius: 3px; font-family: monospace; white-space: pre;">./scripts/assemble_video.sh \
+  ./frames output.mp4 30</code>
+            </div>
+        </div>
+    </div>
+
     <!-- Nerdamer for symbolic differentiation (Jacobian computation) -->
     <script src="https://cdn.jsdelivr.net/npm/nerdamer@latest/all.min.js"></script>
+    <!-- JSZip for bundling animation frames -->
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <!-- Register Service Worker and wait for it to be ready before loading modules -->
     <script>

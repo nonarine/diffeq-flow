@@ -15,7 +15,7 @@
 
 // Transform parameter slider constants
 const TRANSFORM_PARAM_MIN = 0.0001;
-const TRANSFORM_PARAM_MAX = 100.0;
+const TRANSFORM_PARAM_MAX = 25.0;
 const TRANSFORM_PARAM_STEP = 0.0001;
 
 /**

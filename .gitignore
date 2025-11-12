@@ -98,5 +98,7 @@ state.json
 # Archived code and documentation
 archive/
 
+animations/
+
 # Self-signed SSL certificates (for local HTTPS development)
 *.pem

@@ -1,0 +1,24 @@
+{
+  "name": "de-render",
+  "version": "1.0.0",
+  "description": "N-Dimensional Vector Field Flow Renderer with WebGL",
+  "type": "module",
+  "scripts": {
+    "render": "node scripts/render-animation.js",
+    "serve": "python3 -m http.server 8000"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "puppeteer": "^22.0.0"
+  },
+  "keywords": [
+    "webgl",
+    "visualization",
+    "dynamical-systems",
+    "attractors",
+    "particles",
+    "animation"
+  ],
+  "author": "",
+  "license": "MIT"
+}

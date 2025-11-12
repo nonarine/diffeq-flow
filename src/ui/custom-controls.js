@@ -4,7 +4,7 @@
  */
 
 import { Control, CheckboxControl } from './control-base.js';
-import { ParameterControl } from './parameter-control.js';
+import { ParameterControl, AnimatableParameterControl } from './parameter-control.js';
 import { getTransform } from '../math/transforms.js';
 import { logger } from '../utils/debug-logger.js';
 
@@ -515,13 +515,13 @@ export class TransformParamsControl extends Control {
             return;
         }
 
-        // Create ParameterControl for each parameter
+        // Create AnimatableParameterControl for each parameter
         paramDefs.forEach((paramDef, index) => {
             const controlId = `transform-param-${index}`;
             const defaultValue = this.currentParams[paramDef.name] ?? paramDef.default;
 
-            // Create parameter control
-            const paramControl = new ParameterControl(
+            // Create animatable parameter control
+            const paramControl = new AnimatableParameterControl(
                 controlId,
                 paramDef,
                 defaultValue,

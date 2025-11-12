@@ -220,6 +220,9 @@ function toJS(rpn, variables) {
     const velocityVars = ['dx', 'dy', 'dz', 'dw', 'du', 'dv'];
     velocityVars.forEach(v => varSet.add(v));
 
+    // Add animation alpha variable
+    varSet.add('a');
+
     for (const token of rpn) {
         if (token.type === TOKEN_TYPES.NUMBER) {
             if (token.isConstant) {
@@ -233,7 +236,7 @@ function toJS(rpn, variables) {
             if (varSet.has(token.value)) {
                 stack.push(token.value);
             } else {
-                throw new Error(`Unknown variable: ${token.value}. Available: ${variables.join(', ')}, dx, dy, dz, dw, du, dv`);
+                throw new Error(`Unknown variable: ${token.value}. Available: ${variables.join(', ')}, dx, dy, dz, dw, du, dv, a (animation alpha)`);
             }
         } else if (token.type === TOKEN_TYPES.OPERATOR) {
             if (stack.length < 2) throw new Error('Invalid expression');
@@ -301,6 +304,9 @@ function toGLSL(rpn, variables) {
             varMap[v] = `velocity[${i}]`;
         }
     });
+
+    // Map animation alpha variable to uniform
+    varMap['a'] = 'u_alpha';
 
     for (const token of rpn) {
         if (token.type === TOKEN_TYPES.NUMBER) {

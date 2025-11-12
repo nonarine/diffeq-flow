@@ -105,6 +105,7 @@ uniform vec2 u_bbox_min;
 uniform vec2 u_bbox_max;
 uniform float u_resolution;
 uniform float u_sample_count;
+uniform float u_alpha;
 
 varying vec2 v_texcoord;
 
@@ -177,7 +178,7 @@ void main() {
     /**
      * Compute velocity statistics
      */
-    compute(positionTextures, bbox, resolution) {
+    compute(positionTextures, bbox, resolution, animationAlpha = 0.0) {
         if (!this.initialized) {
             return this.stats;
         }
@@ -202,6 +203,7 @@ void main() {
         gl.uniform2f(gl.getUniformLocation(this.program, 'u_bbox_max'), bbox.max[0], bbox.max[1]);
         gl.uniform1f(gl.getUniformLocation(this.program, 'u_resolution'), resolution);
         gl.uniform1f(gl.getUniformLocation(this.program, 'u_sample_count'), 64);
+        gl.uniform1f(gl.getUniformLocation(this.program, 'u_alpha'), animationAlpha);
 
         // Draw quad
         gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);

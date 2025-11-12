@@ -153,6 +153,9 @@ export class Renderer {
         this.dropProbability = 0.003;
         this.dropLowVelocity = false; // Drop particles below velocity threshold
 
+        // Animation support
+        this.animationAlpha = 0.0; // Alpha parameter for animation (0.0 to 1.0)
+
         // Exponential moving average for max velocity (for color scaling)
         this.maxVelocity = 5.0; // Initial reasonable value
         this.prevMaxVelocity = 5.0; // Previous value for change detection
@@ -559,6 +562,9 @@ export class Renderer {
                 whitePoint: this.whitePoint
             });
 
+            // Set flag to indicate shaders were just recompiled (for animation timing)
+            this.shadersJustRecompiled = true;
+
             return null; // No error
         } catch (error) {
             return error.message;
@@ -614,6 +620,12 @@ export class Renderer {
         gl.uniform1f(gl.getUniformLocation(program, 'u_max_velocity'), velocityScale);
         gl.uniform1f(gl.getUniformLocation(program, 'u_drop_low_velocity'), this.dropLowVelocity ? 1.0 : 0.0);
         gl.uniform1f(gl.getUniformLocation(program, 'u_velocity_threshold'), this.lowVelocityThreshold);
+
+        // Set animation alpha parameter (for time-based expressions)
+        const alphaLoc = gl.getUniformLocation(program, 'u_alpha');
+        if (alphaLoc !== null) {
+            gl.uniform1f(alphaLoc, this.animationAlpha);
+        }
 
         // Set transform parameters (if transform is active)
         if (this.transformType !== 'identity') {
@@ -686,7 +698,7 @@ export class Renderer {
             // GPU-based velocity sampling (much faster than CPU approach)
             if (this.velocityStatsManager && this.velocityStatsManager.initialized) {
                 const posTextures = this.textureManager.getReadTextures();
-                const stats = this.velocityStatsManager.compute(posTextures, this.bbox, this.particleSystem.getResolution());
+                const stats = this.velocityStatsManager.compute(posTextures, this.bbox, this.particleSystem.getResolution(), this.animationAlpha);
 
                 // Log occasionally for debugging
                 if (this.frame % 600 === 0 && stats.sampleCount > 0) {
@@ -757,6 +769,12 @@ export class Renderer {
         gl.uniform2f(gl.getUniformLocation(program, 'u_max'), this.bbox.max[0], this.bbox.max[1]);
         gl.uniform1f(gl.getUniformLocation(program, 'u_particle_intensity'), this.particleIntensity);
         gl.uniform1f(gl.getUniformLocation(program, 'u_color_saturation'), this.colorSaturation);
+
+        // Set animation alpha parameter (for color expressions using 'a')
+        const alphaLoc = gl.getUniformLocation(program, 'u_alpha');
+        if (alphaLoc !== null) {
+            gl.uniform1f(alphaLoc, this.animationAlpha);
+        }
 
         // Set max velocity uniform if needed
         if (this.usesMaxVelocity) {
@@ -953,8 +971,9 @@ export class Renderer {
 
     /**
      * Render one frame
+     * @param {boolean} displayToCanvas - If false, renders to hidden buffer without displaying (for double-buffering)
      */
-    render() {
+    render(displayToCanvas = true) {
         const gl = this.gl;
 
         // Log HDR status on first frame
@@ -1051,7 +1070,10 @@ export class Renderer {
         this.smaaManager.applyToFramebuffer(filteredTexture, this.finalFramebuffer, this.quadBuffer);
 
         // Downsample to canvas (with linear filtering for smooth result)
-        this.downsampleToCanvas();
+        // Skip if we're accumulating in hidden buffer (double-buffering mode)
+        if (displayToCanvas) {
+            this.downsampleToCanvas();
+        }
 
         // Update buffer statistics periodically
         if (!this.frame) this.frame = 0;
@@ -1398,6 +1420,56 @@ export class Renderer {
      */
     stop() {
         this.isRunning = false;
+    }
+
+    /**
+     * Set animation alpha parameter (0.0 to 1.0)
+     * Used in expressions with the 'a' variable
+     */
+    setAnimationAlpha(alpha) {
+        this.animationAlpha = Math.max(0.0, Math.min(1.0, alpha));
+    }
+
+    /**
+     * Clear only the render buffer (remove trails but keep particles)
+     * Useful for animation frames where you want to reset the canvas
+     * but keep particles at their current positions
+     */
+    clearRenderBuffer() {
+        this.framebufferManager.clearAll(0, 0, 0, 1);
+        logger.verbose('Render buffer cleared (particles preserved)');
+    }
+
+    /**
+     * Reset particles to random initial positions
+     * Useful for starting a new animation frame with fresh particles
+     * @param {boolean} recompileShaders - Whether to recompile shaders after reset (default: false)
+     */
+    resetParticles(recompileShaders = false) {
+        this.particleSystem.initializeParticles();
+        this.textureManager.initializeData(this.particleSystem.getAllData());
+        logger.verbose('Particles reinitialized to random positions');
+
+        if (recompileShaders) {
+            logger.info('Recompiling shaders after particle reset...');
+            try {
+                this.compileShaders();
+                logger.info('Shaders recompiled successfully');
+            } catch (error) {
+                logger.error('Failed to recompile shaders:', error);
+            }
+        }
+    }
+
+    /**
+     * Run N integration steps without rendering to canvas
+     * Useful for convergence/burn-in during animation
+     * @param {number} steps - Number of integration steps to execute
+     */
+    step(steps = 1) {
+        for (let i = 0; i < steps; i++) {
+            this.updatePositions();
+        }
     }
 
     /**

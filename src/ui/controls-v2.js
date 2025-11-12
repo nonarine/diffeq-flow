@@ -14,6 +14,8 @@ import {
     SelectControl,
     CheckboxControl
 } from './control-base.js';
+import { AnimatableSliderControl } from './animatable-slider.js';
+import { AnimatableParameterControl } from './parameter-control.js';
 import { DimensionInputsControl, MapperParamsControl, GradientControl, TransformParamsControl } from './custom-controls.js';
 import { initGradientEditor } from './gradient-editor.js';
 import { getDefaultGradient } from '../math/gradients.js';
@@ -144,19 +146,35 @@ export function initControls(renderer, callback) {
         displayFormat: v => v.toFixed(0)
     }));
 
-    const fadeControl = manager.register(new LogSliderControl('fade', 0.999, {
+    const fadeControl = manager.register(new AnimatableSliderControl('fade', 0.999, {
         settingsKey: 'fadeOpacity',
-        minValue: 0.9,
-        maxValue: 0.9999,
+        min: 0,
+        max: 100,
+        step: 0.1,
         displayId: 'fade-value',
-        displayFormat: v => v.toFixed(4)
+        displayFormat: v => v.toFixed(4),
+        // Transform slider [0-100] to log scale [0.9-0.9999]
+        transform: (sliderValue) => {
+            const minLog = Math.log(0.9);
+            const maxLog = Math.log(0.9999);
+            const scale = (maxLog - minLog) / 100;
+            return Math.exp(minLog + scale * sliderValue);
+        },
+        inverseTransform: (value) => {
+            const minLog = Math.log(0.9);
+            const maxLog = Math.log(0.9999);
+            const scale = (maxLog - minLog) / 100;
+            return (Math.log(value) - minLog) / scale;
+        },
+        animationMin: 0.95,
+        animationMax: 0.9995
     }));
 
     const dropControl = manager.register(new SliderControl('drop', 0.0, {
         settingsKey: 'dropProbability',
         min: 0,
-        max: 0.01,
-        step: 0.0001,
+        max: 0.1,
+        step: 0.001,
         displayId: 'drop-value',
         displayFormat: v => v.toFixed(4)
     }));
@@ -424,6 +442,134 @@ export function initControls(renderer, callback) {
         displayFormat: v => v.toFixed(2)
     }));
 
+    // === Animation Testing Controls ===
+
+    // Animation state
+    let animationRunning = false; // Is animation currently running
+    let animationFrameId = null; // requestAnimationFrame ID
+    let animationDirection = 1; // 1 for forward, -1 for backward
+    let animationStepsPerIncrement = 10; // Number of integration steps before alpha increments
+    let animationStepCounter = 0; // Counter for integration steps
+
+    // Timing smoothing state - Asymmetric EMA to track high percentile (slow frames)
+    const ALPHA_STEP_TIME_TARGET_PERCENTILE = 95; // Target percentile to track (higher = smoother but slower to adapt)
+    const ALPHA_STEP_TIME_DECAY = 0.005; // Base decay rate when frames are faster than EMA
+    // Calculate upward tracking rate using rule of thumb: ratio = P/(100-P)
+    const ALPHA_STEP_TIME_UPWARD = (ALPHA_STEP_TIME_TARGET_PERCENTILE / (100 - ALPHA_STEP_TIME_TARGET_PERCENTILE)) * ALPHA_STEP_TIME_DECAY;
+    const ALPHA_STEP_TIME_WARMUP_CYCLES = 3; // Number of alpha cycles to skip before initializing EMA (warm-up period)
+    const ALPHA_STEP_TIME_DISPLAY_INTERVAL = 10; // Update step time display every N alpha cycles (reduce UI overhead)
+    let alphaStepTimeEMA = null; // Asymmetric EMA tracking ~95th percentile of step time (ms)
+    let alphaStepStartTime = null; // Timestamp when current alpha cycle started
+    let alphaStepWarmupCounter = 0; // Counter for warm-up cycles
+    let alphaStepDisplayCounter = 0; // Counter for display updates
+    let cachedAnimatableControls = null; // Cached list of animatable controls (populated when animation starts)
+    let cachedAnimatableParams = null; // Cached list of animatable parameter controls
+    let lastAppliedSettings = null; // Track last applied settings to detect changes
+    let savedLoggerVerbosity = null; // Save logger verbosity level during animation
+
+    // Settings that require shader recompilation - never apply during animation
+    const SHADER_RECOMPILE_SETTINGS = new Set([
+        'expressions',           // Vector field expressions compiled into shader
+        'dimensions',           // Changes shader structure
+        'integratorType',       // Changes shader code
+        'solutionMethod',       // Changes shader code
+        'transformType',        // Changes shader code
+        'transformParams',      // Transform params compiled into shader
+        'mapperType',           // Changes shader code
+        'mapperParams',         // Mapper params compiled into shader (e.g., projection matrix)
+        'colorMode'             // Changes shader code
+    ]);
+
+    // Create animation alpha control dynamically
+    const animAlphaContainer = $('#animation-alpha-container');
+    logger.info(`Animation alpha container found: ${animAlphaContainer.length > 0}`);
+
+    if (animAlphaContainer.length) {
+        const controlHTML = `
+            <div class="control-group">
+                <label>Animation Alpha (a): <span class="range-value" id="animation-alpha-value">0.00</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="animation-alpha" data-action="decrease">-</button>
+                    <input type="range" id="animation-alpha" min="0" max="100" value="0" step="1">
+                    <button class="slider-btn" data-slider="animation-alpha" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="animation-alpha" data-action="reset" title="Reset to 0.0">↺</button>
+                    <button id="animation-alpha-animate-btn" class="slider-btn" style="margin-left: 8px; background: #4CAF50; color: white;" title="Auto-animate">▶</button>
+                </div>
+                <div class="info">Test time-based expressions with the 'a' variable (0.0 - 1.0). Use in expressions like: sin(x + a*PI), 0.01 + a*0.09</div>
+            </div>
+        `;
+        animAlphaContainer.html(controlHTML);
+        logger.info('Animation alpha control HTML injected');
+    } else {
+        logger.warn('Animation alpha container not found!');
+    }
+
+    // Create animation speed control
+    const animSpeedContainer = $('#animation-speed-container');
+    if (animSpeedContainer.length) {
+        const speedHTML = `
+            <div class="control-group">
+                <label>Steps per Alpha Increment: <span class="range-value" id="animation-speed-value">10</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="animation-speed" data-action="decrease">-</button>
+                    <input type="range" id="animation-speed" min="1" max="100" value="10" step="1">
+                    <button class="slider-btn" data-slider="animation-speed" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="animation-speed" data-action="reset" title="Reset to 10">↺</button>
+                </div>
+                <div class="info">Integration steps to perform before incrementing alpha by 0.01</div>
+            </div>
+        `;
+        animSpeedContainer.html(speedHTML);
+    }
+
+    const animationAlphaControl = manager.register(new PercentSliderControl('animation-alpha', 0.0, {
+        settingsKey: 'animationAlpha',
+        displayId: 'animation-alpha-value',
+        displayFormat: v => v.toFixed(2),
+        onChange: (value) => {
+            // Update renderer immediately (no debounce for animation testing)
+            if (window.renderer) {
+                window.renderer.setAnimationAlpha(value);
+
+                // Check if we should clear particles
+                if ($('#animation-clear-particles').is(':checked')) {
+                    window.renderer.resetParticles();
+                }
+
+                // Check if we should clear screen
+                if ($('#animation-clear-screen').is(':checked')) {
+                    window.renderer.clearRenderBuffer();
+                }
+            }
+        }
+    }));
+
+    // Animation speed control (linear scale for steps)
+    const animationSpeedControl = manager.register(new SliderControl('animation-speed', 10, {
+        minValue: 1,
+        maxValue: 100,
+        displayId: 'animation-speed-value',
+        displayFormat: v => {
+            animationStepsPerIncrement = Math.round(v);
+            return Math.round(v).toString();
+        }
+    }));
+
+    // Animation clear checkboxes
+    manager.register(new CheckboxControl('animation-clear-particles', false, {
+        settingsKey: 'animationClearParticles'
+    }));
+
+    manager.register(new CheckboxControl('animation-clear-screen', false, {
+        settingsKey: 'animationClearScreen'
+    }));
+
+    manager.register(new CheckboxControl('animation-smooth-timing', false, {
+        settingsKey: 'animationSmoothTiming'
+    }));
+
+    logger.info('Animation alpha control registered');
+
     // === Theme control (special handling for immediate application) ===
 
     const themeControl = manager.register(new SelectControl('theme-selector', 'dark', {
@@ -686,17 +832,366 @@ export function initControls(renderer, callback) {
         showRenderingPanel();
     });
 
-    // Close rendering panel when clicking outside
-    $(document).on('click', function(e) {
-        const panel = $('#rendering-panel');
-        const openButton = $('#open-rendering-settings');
+    // Animation section accordion toggle
+    $('#animation-section-toggle').on('click', function() {
+        const content = $('#animation-section-content');
+        const arrow = $('#animation-section-arrow');
+        const histogram = $('#histogram-panel');
+        const cursor = $('#cursor-position');
 
-        if ($(e.target).is(openButton) ||
-            $(e.target).closest('#rendering-panel').length > 0) {
-            return;
+        if (content.is(':visible')) {
+            content.slideUp(200);
+            arrow.text('▼');
+            // Slide panels back to left
+            histogram.removeClass('shifted');
+            cursor.removeClass('shifted');
+        } else {
+            content.slideDown(200);
+            arrow.text('▲');
+            // Slide panels to right to avoid overlap
+            histogram.addClass('shifted');
+            cursor.addClass('shifted');
+        }
+    });
+
+    // Animation alpha animate button
+    $('#animation-alpha-animate-btn').on('click', function(e) {
+        e.stopPropagation(); // Prevent panel close
+        const btn = $(this);
+
+        if (animationRunning) {
+            // Stop animation
+            animationRunning = false;
+            if (animationFrameId !== null) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+
+            // Resume main renderer loop
+            if (window.renderer && !window.renderer.isRunning) {
+                window.renderer.start();
+            }
+
+            // Hide step time counter
+            $('#step-time-counter').hide();
+
+            // Clear cached controls and settings
+            cachedAnimatableControls = null;
+            cachedAnimatableParams = null;
+            lastAppliedSettings = null;
+
+            // Restore logger verbosity
+            if (savedLoggerVerbosity !== null) {
+                logger.setVerbosity(savedLoggerVerbosity);
+                savedLoggerVerbosity = null;
+            }
+
+            btn.text('▶');
+            btn.css('background', '#4CAF50');
+            btn.attr('title', 'Auto-animate');
+        } else {
+            // Start animation
+            animationRunning = true;
+
+            // Pause main renderer loop so we have full control
+            if (window.renderer) {
+                window.renderer.stop();
+            }
+
+            btn.text('⏸');
+            btn.css('background', '#FFA726');
+            btn.attr('title', 'Stop auto-animate');
+
+            // Reset step counter and timing state when starting animation
+            animationStepCounter = 0;
+            alphaStepTimeEMA = null;
+            alphaStepStartTime = null;
+            alphaStepWarmupCounter = 0;
+            alphaStepDisplayCounter = 0;
+            lastAppliedSettings = null;
+
+            // Suppress verbose logging during animation
+            savedLoggerVerbosity = logger.verbosity;
+            logger.setVerbosity('silent');
+
+            // Cache animatable controls to avoid repeated DOM queries and instanceof checks
+            cachedAnimatableControls = [];
+            manager.controls.forEach((control) => {
+                if (control instanceof AnimatableSliderControl) {
+                    cachedAnimatableControls.push(control);
+                }
+            });
+
+            // Cache animatable parameter controls
+            cachedAnimatableParams = [];
+            const transformParamsControl = manager.controls.get('transform-params');
+            if (transformParamsControl && transformParamsControl.parameterControls) {
+                transformParamsControl.parameterControls.forEach((paramControl) => {
+                    if (paramControl instanceof AnimatableParameterControl) {
+                        cachedAnimatableParams.push(paramControl);
+                    }
+                });
+            }
+
+            // Animation loop that performs integration steps
+            const animationLoop = () => {
+                if (!animationRunning) {
+                    return; // Animation was stopped
+                }
+
+                const freezeScreen = $('#animation-clear-screen').is(':checked');
+                const smoothTiming = $('#animation-smooth-timing').is(':checked');
+
+                // Increment step counter
+                animationStepCounter++;
+
+                // Start timing on first step of alpha cycle
+                if (animationStepCounter === 1) {
+                    // Clear shader recompilation flag (don't reset warm-up during animation)
+                    if (window.renderer && window.renderer.shadersJustRecompiled) {
+                        window.renderer.shadersJustRecompiled = false;
+                    }
+                    alphaStepStartTime = performance.now();
+                }
+
+                // Check if we should increment alpha
+                if (animationStepCounter >= animationStepsPerIncrement) {
+                    animationStepCounter = 0;
+
+                    // If freeze mode: render final accumulated frame to display
+                    if (freezeScreen && window.renderer) {
+                        window.renderer.render(true); // Display the accumulated N steps
+                    }
+
+                    // Calculate elapsed time for this alpha cycle
+                    const alphaStepEndTime = performance.now();
+                    const alphaStepElapsed = alphaStepEndTime - alphaStepStartTime;
+
+                    // Update asymmetric EMA (tracks ~95th percentile) after warm-up
+                    if (alphaStepWarmupCounter < ALPHA_STEP_TIME_WARMUP_CYCLES) {
+                        // Still warming up - skip this cycle and don't update EMA
+                        alphaStepWarmupCounter++;
+                    } else if (alphaStepTimeEMA === null) {
+                        // Warm-up complete - initialize EMA from this cycle
+                        alphaStepTimeEMA = alphaStepElapsed;
+                    } else {
+                        // Use asymmetric smoothing: fast upward tracking, slow downward decay
+                        if (alphaStepElapsed > alphaStepTimeEMA) {
+                            // Slower than EMA - track upward quickly
+                            alphaStepTimeEMA = ALPHA_STEP_TIME_UPWARD * alphaStepElapsed +
+                                              (1 - ALPHA_STEP_TIME_UPWARD) * alphaStepTimeEMA;
+                        } else {
+                            // Faster than EMA - decay slowly
+                            alphaStepTimeEMA = ALPHA_STEP_TIME_DECAY * alphaStepElapsed +
+                                              (1 - ALPHA_STEP_TIME_DECAY) * alphaStepTimeEMA;
+                        }
+                    }
+
+                    // Update step time display if smoothing is enabled (throttled to reduce UI overhead)
+                    if (smoothTiming) {
+                        alphaStepDisplayCounter++;
+                        if (alphaStepDisplayCounter >= ALPHA_STEP_TIME_DISPLAY_INTERVAL) {
+                            alphaStepDisplayCounter = 0;
+                            if (alphaStepTimeEMA === null) {
+                                $('#step-time-counter').text(`Step: ${alphaStepElapsed.toFixed(1)}ms (warming up...)`);
+                            } else {
+                                $('#step-time-counter').text(`Step: ${alphaStepElapsed.toFixed(1)}ms (EMA: ${alphaStepTimeEMA.toFixed(1)}ms)`);
+                            }
+                            $('#step-time-counter').show();
+                        }
+                    } else {
+                        $('#step-time-counter').hide();
+                    }
+
+                    let currentValue = animationAlphaControl.getValue();
+
+                    // Update value based on direction
+                    currentValue += animationDirection * 0.01;
+
+                    // Bounce at boundaries
+                    if (currentValue >= 1.0) {
+                        currentValue = 1.0;
+                        animationDirection = -1;
+                    } else if (currentValue <= 0.0) {
+                        currentValue = 0.0;
+                        animationDirection = 1;
+                    }
+
+                    // Update slider value WITHOUT triggering input event (avoid debounced apply)
+                    animationAlphaControl.setValue(currentValue);
+
+                    // Update all animatable controls based on alpha (use cached list)
+                    for (let i = 0; i < cachedAnimatableControls.length; i++) {
+                        cachedAnimatableControls[i].updateFromAlpha(currentValue);
+                    }
+
+                    // Update animatable parameter controls (use cached list)
+                    for (let i = 0; i < cachedAnimatableParams.length; i++) {
+                        cachedAnimatableParams[i].updateFromAlpha(currentValue);
+                    }
+
+                    // Manually update renderer with new alpha value and apply interpolated settings
+                    if (window.renderer) {
+                        window.renderer.setAnimationAlpha(currentValue);
+
+                        // Get current settings from all controls (including interpolated animatable values)
+                        const settings = manager.getSettings();
+
+                        // Filter to only settings that changed (avoid unnecessary shader recompilation)
+                        // Also exclude settings that require shader recompilation
+                        const changedSettings = {};
+                        if (lastAppliedSettings === null) {
+                            // First time - apply all settings except blacklisted ones
+                            for (const key in settings) {
+                                if (!SHADER_RECOMPILE_SETTINGS.has(key)) {
+                                    // Skip empty transformParams
+                                    if (key === 'transformParams' && (!settings[key] || Object.keys(settings[key]).length === 0)) {
+                                        continue;
+                                    }
+                                    changedSettings[key] = settings[key];
+                                }
+                            }
+                        } else {
+                            // Only include settings that changed and aren't blacklisted
+                            for (const key in settings) {
+                                if (!SHADER_RECOMPILE_SETTINGS.has(key) && settings[key] !== lastAppliedSettings[key]) {
+                                    // Skip empty transformParams
+                                    if (key === 'transformParams' && (!settings[key] || Object.keys(settings[key]).length === 0)) {
+                                        continue;
+                                    }
+                                    changedSettings[key] = settings[key];
+                                }
+                            }
+                        }
+
+                        // Apply only changed settings to renderer (no debounce during animation)
+                        if (Object.keys(changedSettings).length > 0) {
+                            try {
+                                window.renderer.updateConfig(changedSettings);
+                                // Update last applied settings with the changes
+                                lastAppliedSettings = Object.assign({}, settings);
+                            } catch (error) {
+                                logger.error('Failed to apply animation settings:', error);
+                            }
+                        }
+
+                        // Check if we should clear particles
+                        if ($('#animation-clear-particles').is(':checked')) {
+                            window.renderer.resetParticles();
+                        }
+
+                        // Check if we should clear screen (for next accumulation cycle)
+                        if (freezeScreen) {
+                            window.renderer.clearRenderBuffer();
+                        }
+
+                        // If NOT freeze mode: render normally with display
+                        if (!freezeScreen) {
+                            window.renderer.render(true);
+                        }
+                    }
+
+                    // Alpha cycle complete - check if we need to delay for timing smoothing
+                    if (smoothTiming && alphaStepTimeEMA !== null && alphaStepElapsed < alphaStepTimeEMA) {
+                        const delayNeeded = alphaStepTimeEMA - alphaStepElapsed;
+                        // Wait before starting next cycle
+                        setTimeout(() => {
+                            if (animationRunning) {
+                                animationFrameId = requestAnimationFrame(animationLoop);
+                            }
+                        }, delayNeeded);
+                        return; // Exit early, setTimeout will continue the loop
+                    }
+                } else {
+                    // Between alpha changes (steps 1 to N-1)
+                    if (window.renderer) {
+                        if (freezeScreen) {
+                            // Freeze mode: accumulate in hidden buffer (don't display yet)
+                            window.renderer.render(false);
+                        } else {
+                            // Normal mode: render and display continuously
+                            window.renderer.render(true);
+                        }
+                    }
+                }
+
+                // Continue animation loop if still running
+                if (animationRunning) {
+                    animationFrameId = requestAnimationFrame(animationLoop);
+                }
+            };
+
+            // Start the animation loop
+            animationFrameId = requestAnimationFrame(animationLoop);
+        }
+    });
+
+    // Export Animation JSON button
+    $('#export-animation-json').on('click', function() {
+        const settings = manager.getSettings();
+
+        // Add bbox from renderer
+        if (renderer && renderer.bbox) {
+            settings.bbox = {
+                min: [renderer.bbox.min[0], renderer.bbox.min[1]],
+                max: [renderer.bbox.max[0], renderer.bbox.max[1]]
+            };
         }
 
-        if (panel.is(':visible')) {
+        // Remove animationAlpha from export (it's test-only)
+        delete settings.animationAlpha;
+
+        // Create animation template
+        const animationTemplate = {
+            name: "Untitled Animation",
+            description: "Animation created from current settings",
+            fps: 30,
+            baseSettings: settings,
+            timeline: [
+                {
+                    time: 0.0,
+                    settings: {},
+                    easing: "linear"
+                },
+                {
+                    time: 10.0,
+                    settings: {
+                        // Add your parameter changes here
+                    },
+                    easing: "linear"
+                }
+            ],
+            frameConfig: {
+                burnInSteps: 5000,
+                clearAfterBurnIn: true,
+                accumulationSteps: 2000
+            }
+        };
+
+        // Download as JSON
+        const blob = new Blob([JSON.stringify(animationTemplate, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'animation-template.json';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        logger.info('Exported animation template JSON');
+    });
+
+    // Close panels when clicking outside
+    $(document).on('click', function(e) {
+        // Close rendering panel
+        const renderingPanel = $('#rendering-panel');
+        const renderingButton = $('#open-rendering-settings');
+
+        if ($(e.target).is(renderingButton) ||
+            $(e.target).closest('#rendering-panel').length > 0) {
+            // Don't close rendering panel
+        } else if (renderingPanel.is(':visible')) {
             hideRenderingPanel();
         }
     });

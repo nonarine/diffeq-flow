@@ -240,13 +240,21 @@ export class FramebufferManager {
      */
     checkFramebufferStatus(index) {
         const gl = this.gl;
+
+        // Check if WebGL context is lost
+        if (gl.isContextLost()) {
+            throw new Error('WebGL context lost');
+        }
+
         const status = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
 
         if (status !== gl.FRAMEBUFFER_COMPLETE) {
             const errorMsg = this.getFramebufferStatusString(status);
             logger.error(`Framebuffer ${index} is not complete: ${errorMsg}`, {
                 format: this.getTextureFormatName(),
-                size: `${this.width}x${this.height}`
+                size: `${this.width}x${this.height}`,
+                status: status,
+                contextLost: gl.isContextLost()
             });
             throw new Error(`Framebuffer ${index} incomplete: ${errorMsg}`);
         }
