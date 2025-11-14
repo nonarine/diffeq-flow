@@ -59,13 +59,17 @@ export class FramebufferManager {
         this.floatLinearExt = gl.getExtension('OES_texture_float_linear');
         this.halfFloatLinearExt = gl.getExtension('OES_texture_half_float_linear');
 
+        // Check for float blending (needed for additive blending with float framebuffers)
+        this.floatBlendExt = gl.getExtension('EXT_float_blend');
+
         logger.verbose('WebGL extension support:', {
             OES_texture_float: !!this.floatTextureExt,
             OES_texture_half_float: !!this.halfFloatTextureExt,
             WEBGL_color_buffer_float: !!this.floatColorBufferExt,
             EXT_color_buffer_half_float: !!this.halfFloatColorBufferExt,
             OES_texture_float_linear: !!this.floatLinearExt,
-            OES_texture_half_float_linear: !!this.halfFloatLinearExt
+            OES_texture_half_float_linear: !!this.halfFloatLinearExt,
+            EXT_float_blend: !!this.floatBlendExt
         });
 
         // Determine HDR support

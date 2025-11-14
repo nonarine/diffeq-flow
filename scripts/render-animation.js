@@ -165,8 +165,14 @@ async function renderAnimation() {
                 window.renderer.render();
                 await new Promise(resolve => requestAnimationFrame(resolve));
 
-                // Capture frame as data URL
-                const dataUrl = window.renderer.canvas.toDataURL('image/png');
+                // Capture frame from render buffer at scaled resolution
+                const blob = await window.renderer.captureRenderBuffer();
+                const dataUrl = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => resolve(reader.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                });
                 frames.push({
                     frameNum,
                     time,

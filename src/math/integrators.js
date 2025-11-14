@@ -393,10 +393,6 @@ export function implicitEulerIntegrator(dimensions, iterations = 3, solutionMeth
 
     // Choose solver method
     if (solutionMethod === 'newton' && expressions) {
-        // BUG: There's a known issue where Newton's method sometimes fails to compile
-        // correctly on initial page load (Jacobian computation may return inconsistent
-        // results or fail silently). Workaround is to always start in fixed-point mode
-        // and switch to Newton after a 3-second delay (see controls-v2.js).
         logger.info('Computing Jacobian for Newton\'s method');
 
         const jacobian = computeSymbolicJacobian(expressions, dimensions);

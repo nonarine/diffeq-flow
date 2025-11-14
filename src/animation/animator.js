@@ -222,18 +222,10 @@ export class Animator {
     }
 
     /**
-     * Capture current canvas as PNG blob
+     * Capture current render buffer as PNG blob at scaled resolution
      */
     async captureFrame() {
-        return new Promise((resolve, reject) => {
-            this.renderer.canvas.toBlob(blob => {
-                if (blob) {
-                    resolve(blob);
-                } else {
-                    reject(new Error('Failed to capture frame'));
-                }
-            }, 'image/png');
-        });
+        return this.renderer.captureRenderBuffer();
     }
 
     /**

@@ -140,15 +140,16 @@ export class Renderer {
         this.bilateralSpatialSigma = config.bilateralSpatialSigma !== undefined ? config.bilateralSpatialSigma : 4.0;
         this.bilateralIntensitySigma = config.bilateralIntensitySigma !== undefined ? config.bilateralIntensitySigma : 0.2;
 
-        // Supersampling (render at higher resolution, downsample to canvas)
-        // Validate and clamp supersample factor
+        // Render scale (render at different resolution, resample to canvas)
+        // Supports both downsampling (0.5x for performance) and supersampling (2x+ for quality)
+        // Validate and clamp render scale factor
         let supersampleFactor = config.supersampleFactor !== undefined ? config.supersampleFactor : 1.0;
         if (typeof supersampleFactor !== 'number' || isNaN(supersampleFactor) || supersampleFactor <= 0) {
             logger.warn(`Invalid supersampleFactor: ${supersampleFactor}, using default 1.0`);
             supersampleFactor = 1.0;
         }
-        this.supersampleFactor = Math.max(0.5, Math.min(3.0, supersampleFactor));
-        logger.info(`Initial supersample factor set to: ${this.supersampleFactor}`);
+        this.supersampleFactor = Math.max(0.5, Math.min(4.0, supersampleFactor));
+        logger.info(`Initial render scale factor set to: ${this.supersampleFactor}`);
 
         this.timestep = 0.01;
         this.fadeOpacity = 0.99;
@@ -337,11 +338,12 @@ export class Renderer {
 
         logger.info('LDR framebuffer created for tone mapping output');
 
-        // Create final output framebuffer for supersampled rendering
-        // SMAA will render to this at high resolution, then we downsample to canvas
+        // Create final output framebuffer for scaled rendering
+        // SMAA will render to this at scaled resolution, then we resample to canvas
         this.finalFramebuffer = gl.createFramebuffer();
         this.finalTexture = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, this.finalTexture);
+        // Use linear filtering (mipmaps require power-of-two textures in WebGL 1.0)
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -839,6 +841,8 @@ export class Renderer {
         gl.uniform2f(gl.getUniformLocation(program, 'u_max'), this.bbox.max[0], this.bbox.max[1]);
         gl.uniform1f(gl.getUniformLocation(program, 'u_particle_intensity'), this.particleIntensity);
         gl.uniform1f(gl.getUniformLocation(program, 'u_particle_size'), this.particleSize);
+        gl.uniform2f(gl.getUniformLocation(program, 'u_viewport_size'), this.renderWidth, this.renderHeight);
+        gl.uniform2f(gl.getUniformLocation(program, 'u_canvas_size'), this.canvas.width, this.canvas.height);
         gl.uniform1f(gl.getUniformLocation(program, 'u_color_saturation'), this.colorSaturation);
 
         // Set animation alpha parameter (for color expressions using 'a')
@@ -1001,8 +1005,8 @@ export class Renderer {
     }
 
     /**
-     * Downsample supersampled image to canvas
-     * Simple copy with linear filtering for smooth result
+     * Resample scaled render to canvas
+     * Uses bilinear filtering for smooth resampling (both up and down)
      */
     downsampleToCanvas() {
         const gl = this.gl;
@@ -1011,33 +1015,16 @@ export class Renderer {
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
         gl.viewport(0, 0, this.canvas.width, this.canvas.height);
 
-        // Use a simple copy shader (reuse tone map program's vertex shader)
-        gl.useProgram(this.tonemapProgram);
+        // Use simple copy shader (screenFadeProgram just samples texture)
+        gl.useProgram(this.screenFadeProgram);
 
-        const aPosLoc = gl.getAttribLocation(this.tonemapProgram, 'a_pos');
+        const aPosLoc = gl.getAttribLocation(this.screenFadeProgram, 'a_pos');
         gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
         gl.enableVertexAttribArray(aPosLoc);
         gl.vertexAttribPointer(aPosLoc, 2, gl.FLOAT, false, 0, 0);
 
-        // Bind final texture (supersampled SMAA output)
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.finalTexture);
-        gl.uniform1i(gl.getUniformLocation(this.tonemapProgram, 'u_screen'), 0);
-
-        // Disable bloom for downsample (already applied)
-        gl.uniform1i(gl.getUniformLocation(this.tonemapProgram, 'u_bloom_enabled'), 0);
-
-        // Set uniforms to passthrough (exposure=1, gamma=1)
-        // Actually, tone mapping is already done, so we just need to copy
-        // But tonemapProgram applies tone mapping, so we need a simpler shader
-        // Let's reuse the screen copy shader instead
-        gl.useProgram(this.screenFadeProgram);
-
-        const aPosLoc2 = gl.getAttribLocation(this.screenFadeProgram, 'a_pos');
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
-        gl.enableVertexAttribArray(aPosLoc2);
-        gl.vertexAttribPointer(aPosLoc2, 2, gl.FLOAT, false, 0, 0);
-
+        // Bind final texture (SMAA output at scaled resolution)
+        // Bilinear filtering provides smooth resampling
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.finalTexture);
         gl.uniform1i(gl.getUniformLocation(this.screenFadeProgram, 'u_screen'), 0);
@@ -1146,7 +1133,7 @@ export class Renderer {
         // SMAA reads from filtered texture and outputs to final framebuffer
         this.smaaManager.applyToFramebuffer(filteredTexture, this.finalFramebuffer, this.quadBuffer);
 
-        // Downsample to canvas (with linear filtering for smooth result)
+        // Resample to canvas (bilinear filtering for smooth scaling)
         // Skip if we're accumulating in hidden buffer (double-buffering mode)
         if (displayToCanvas) {
             this.downsampleToCanvas();
@@ -1472,14 +1459,27 @@ export class Renderer {
     start() {
         this.isRunning = true;
         this.frameCount = 0;
+        this.totalFrames = 0; // Total frames since last screen clear
         this.lastFpsUpdate = performance.now();
         this.fps = 0;
+
+        // Only initialize frame limit settings if they don't exist yet
+        // (don't reset them on restart, preserve user settings)
+        if (this.frameLimitEnabled === undefined) {
+            this.frameLimitEnabled = false;
+        }
+        if (this.frameLimit === undefined) {
+            this.frameLimit = 1000;
+        }
+
+        logger.verbose(`Starting render loop (frameLimitEnabled: ${this.frameLimitEnabled}, frameLimit: ${this.frameLimit})`);
 
         const loop = () => {
             if (!this.isRunning) return;
 
             // Update FPS counter
             this.frameCount++;
+            this.totalFrames++;
             const now = performance.now();
             const elapsed = now - this.lastFpsUpdate;
 
@@ -1490,6 +1490,20 @@ export class Renderer {
             }
 
             this.render();
+
+            // Check if frame limit is reached AFTER rendering this frame
+            if (this.frameLimitEnabled && this.totalFrames >= this.frameLimit) {
+                // Update FPS one last time before stopping
+                const finalNow = performance.now();
+                const finalElapsed = finalNow - this.lastFpsUpdate;
+                if (finalElapsed > 0) {
+                    this.fps = Math.round((this.frameCount * 1000) / finalElapsed);
+                }
+                logger.info(`Frame limit reached (${this.frameLimit} frames), stopping render loop`);
+                this.stop();
+                return;
+            }
+
             requestAnimationFrame(loop);
         };
         loop();
@@ -1517,6 +1531,16 @@ export class Renderer {
      */
     clearRenderBuffer() {
         this.framebufferManager.clearAll(0, 0, 0, 1);
+
+        // Reset frame counter since screen was cleared
+        this.totalFrames = 0;
+
+        // Restart rendering if it was stopped (e.g., from frame limit)
+        if (!this.isRunning) {
+            logger.info('Restarting render loop after render buffer clear');
+            this.start();
+        }
+
         logger.verbose('Render buffer cleared (particles preserved)');
     }
 
@@ -1563,7 +1587,71 @@ export class Renderer {
         this.particleSystem.initializeParticles();
         this.textureManager.initializeData(this.particleSystem.getAllData());
 
+        // Reset frame counter since screen was cleared
+        this.totalFrames = 0;
+
+        // Restart rendering if it was stopped (e.g., from frame limit)
+        if (!this.isRunning) {
+            logger.info('Restarting render loop after screen clear');
+            this.start();
+        }
+
         logger.verbose('Screen cleared and particles reinitialized');
+    }
+
+    /**
+     * Capture the high-resolution render buffer as a PNG blob
+     * This captures the render buffer at the scaled resolution (renderWidth x renderHeight)
+     * instead of the canvas resolution, preserving full quality at higher render scales.
+     * @returns {Promise<Blob>} PNG image blob
+     */
+    captureRenderBuffer() {
+        return new Promise((resolve, reject) => {
+            const gl = this.gl;
+
+            try {
+                // Bind the final framebuffer to read from it
+                gl.bindFramebuffer(gl.FRAMEBUFFER, this.finalFramebuffer);
+
+                // Read pixels from the framebuffer
+                const pixels = new Uint8Array(this.renderWidth * this.renderHeight * 4);
+                gl.readPixels(0, 0, this.renderWidth, this.renderHeight, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+                // Unbind framebuffer
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+                // Create a temporary canvas at render resolution
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = this.renderWidth;
+                tempCanvas.height = this.renderHeight;
+                const ctx = tempCanvas.getContext('2d');
+
+                // Create ImageData from the pixel array
+                const imageData = ctx.createImageData(this.renderWidth, this.renderHeight);
+                imageData.data.set(pixels);
+
+                // WebGL reads pixels from bottom-up, but canvas uses top-down
+                // We need to flip the image vertically
+                ctx.save();
+                ctx.scale(1, -1); // Flip vertically
+                ctx.translate(0, -this.renderHeight); // Translate back
+                ctx.putImageData(imageData, 0, 0);
+                ctx.restore();
+
+                // Convert to blob
+                tempCanvas.toBlob((blob) => {
+                    if (blob) {
+                        resolve(blob);
+                    } else {
+                        reject(new Error('Failed to create blob from canvas'));
+                    }
+                }, 'image/png');
+
+            } catch (error) {
+                logger.error('Failed to capture render buffer:', error);
+                reject(error);
+            }
+        });
     }
 
     /**
@@ -1667,10 +1755,6 @@ export class Renderer {
             needsRecompile = true;
         }
 
-        // BUG: Newton's method sometimes fails to compile correctly on initial page load,
-        // possibly due to Nerdamer not being fully initialized or timing issues with
-        // symbolic differentiation. Workaround is in controls-v2.js where we delay
-        // Newton's method activation by 3 seconds on startup.
         if (config.solutionMethod !== undefined && config.solutionMethod !== this.solutionMethod) {
             logger.info(`Changing solution method: ${this.solutionMethod} → ${config.solutionMethod}`);
             this.solutionMethod = config.solutionMethod;
@@ -1908,16 +1992,16 @@ export class Renderer {
             this.bilateralManager.updateConfig({ intensitySigma: config.bilateralIntensitySigma });
         }
         if (config.supersampleFactor !== undefined && config.supersampleFactor !== this.supersampleFactor) {
-            logger.info(`Supersampling factor: ${this.supersampleFactor} → ${config.supersampleFactor}`);
+            logger.info(`Render scale factor: ${this.supersampleFactor} → ${config.supersampleFactor}`);
 
-            // Validate supersample factor
-            const validFactor = Math.max(0.5, Math.min(3.0, config.supersampleFactor));
+            // Validate render scale factor
+            const validFactor = Math.max(0.5, Math.min(4.0, config.supersampleFactor));
             if (validFactor !== config.supersampleFactor) {
-                logger.warn(`Invalid supersample factor ${config.supersampleFactor}, clamping to ${validFactor}`);
+                logger.warn(`Invalid render scale factor ${config.supersampleFactor}, clamping to ${validFactor}`);
             }
 
             this.supersampleFactor = validFactor;
-            logger.info(`Applying supersample factor: ${this.supersampleFactor}`);
+            logger.info(`Applying render scale factor: ${this.supersampleFactor}`);
             // Trigger resize to update all framebuffers
             this.resize(this.canvas.width, this.canvas.height);
         }

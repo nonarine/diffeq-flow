@@ -760,23 +760,6 @@ ${solverBody}
 
 ---
 
-## Known Issues & Workarounds
-
-### Newton's Method Initialization Bug
-
-**Issue**: Newton's method sometimes fails to compile correctly on initial page load due to Nerdamer (symbolic differentiation library) initialization timing.
-
-**Workaround** (in `controls-v2.js:499-522`):
-- Always start in fixed-point mode
-- If settings specify Newton's method, wait 3 seconds
-- Automatically switch to Newton's method after delay
-
-**Files Affected**:
-- `src/ui/controls-v2.js` - Delayed activation
-- `src/math/jacobian.js` - Symbolic Jacobian computation
-
----
-
 ## References
 
 - **Hairer & Wanner, "Solving Ordinary Differential Equations II: Stiff and Differential-Algebraic Problems"** - Authoritative reference on implicit methods

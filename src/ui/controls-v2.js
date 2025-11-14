@@ -271,9 +271,13 @@ export function initControls(renderer, callback) {
         settingsKey: 'useDepthTest'
     }));
 
-    // === Supersampling ===
+    // === Render Scale (formerly Supersampling) ===
+    // Allows rendering at different resolutions (0.5x for performance, 2x+ for quality)
 
     const supersampleFactorControl = manager.register(new SliderControl('supersample-factor', 1.0, {
+        min: 0.5,
+        max: 4.0,
+        step: 0.5,
         displayId: 'supersample-factor-value',
         displayFormat: v => v.toFixed(1) + 'x',
         settingsKey: 'supersampleFactor'
@@ -452,6 +456,44 @@ export function initControls(renderer, callback) {
         displayFormat: v => v.toFixed(2)
     }));
 
+    // === Frame Limit Controls (in FPS counter) ===
+
+    const frameLimitEnabledControl = manager.register(new CheckboxControl('frame-limit-enabled', false, {
+        settingsKey: 'frameLimitEnabled',
+        onChange: (enabled) => {
+            // Update renderer's frame limit enabled state
+            if (window.renderer) {
+                window.renderer.frameLimitEnabled = enabled;
+                // Also sync the current frame limit value when enabling
+                if (enabled) {
+                    const limitValue = frameLimitControl.getValue();
+                    window.renderer.frameLimit = limitValue;
+                    logger.info(`Frame limit enabled: will stop at ${limitValue} frames`);
+                }
+            }
+        }
+    }));
+
+    const frameLimitControl = manager.register(new LogSliderControl('frame-limit', 1000, {
+        minValue: 100,
+        maxValue: 100000,
+        displayId: 'frame-limit-value',
+        displayFormat: v => {
+            if (v >= 1000) {
+                return `${Math.floor(v / 1000)}k`;
+            }
+            return Math.floor(v).toString();
+        },
+        settingsKey: 'frameLimit',
+        onChange: (value) => {
+            // Update renderer's frame limit
+            if (window.renderer) {
+                window.renderer.frameLimit = value;
+                logger.verbose(`Frame limit updated to: ${value} frames`);
+            }
+        }
+    }));
+
     // === Animation Testing Controls ===
 
     // Animation state
@@ -538,6 +580,23 @@ export function initControls(renderer, callback) {
         displayId: 'animation-alpha-value',
         displayFormat: v => v.toFixed(2),
         onChange: (value) => {
+            // Update all animatable controls based on alpha
+            manager.controls.forEach((control) => {
+                if (control instanceof AnimatableSliderControl && control.animationEnabled) {
+                    control.updateFromAlpha(value);
+                }
+            });
+
+            // Update animatable parameter controls
+            const transformParamsControl = manager.controls.get('transform-params');
+            if (transformParamsControl && transformParamsControl.parameterControls) {
+                transformParamsControl.parameterControls.forEach((paramControl) => {
+                    if (paramControl.animationEnabled) {
+                        paramControl.updateFromAlpha(value);
+                    }
+                });
+            }
+
             // Update renderer immediately (no debounce for animation testing)
             if (window.renderer) {
                 window.renderer.setAnimationAlpha(value);
@@ -706,19 +765,20 @@ export function initControls(renderer, callback) {
         renderer.clearScreen();
     });
 
-    // Save Image button (saves canvas as PNG)
-    $('#save-image').on('click', function() {
-        const canvas = renderer.gl.canvas;
+    // Save Image button (saves render buffer at scaled resolution as PNG)
+    $('#save-image').on('click', async function() {
+        try {
+            // Capture the high-resolution render buffer
+            const blob = await renderer.captureRenderBuffer();
 
-        // Convert canvas to data URL
-        canvas.toBlob(function(blob) {
             // Create download link
             const url = URL.createObjectURL(blob);
             const link = document.createElement('a');
 
-            // Generate filename with timestamp
+            // Generate filename with timestamp and resolution
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-            link.download = `vector-field-${timestamp}.png`;
+            const resolution = `${renderer.renderWidth}x${renderer.renderHeight}`;
+            link.download = `vector-field-${timestamp}-${resolution}.png`;
 
             link.href = url;
             document.body.appendChild(link);
@@ -729,7 +789,10 @@ export function initControls(renderer, callback) {
             URL.revokeObjectURL(url);
 
             logger.info('Image saved: ' + link.download);
-        }, 'image/png');
+        } catch (error) {
+            logger.error('Failed to save image:', error);
+            alert('Failed to save image. Check console for details.');
+        }
     });
 
     // Storage strategy selector (requires page reload)
@@ -740,8 +803,15 @@ export function initControls(renderer, callback) {
     $('#storage-strategy').on('change', function() {
         const newStrategy = $(this).val();
 
-        // Save current settings before reload
-        manager.saveToStorage();
+        // Save current settings before reload (including bbox for pan/zoom state)
+        const settings = manager.getSettings();
+        if (renderer && renderer.bbox) {
+            settings.bbox = {
+                min: [...renderer.bbox.min],
+                max: [...renderer.bbox.max]
+            };
+        }
+        localStorage.setItem('vectorFieldSettings', JSON.stringify(settings));
 
         // Reload page with new storage strategy
         const url = new URL(window.location);
@@ -1173,8 +1243,8 @@ export function initControls(renderer, callback) {
 
                     // Capture frame if in frame capture mode
                     if (frameCaptureMode === 'fixed') {
-                        const canvas = window.renderer.gl.canvas;
-                        canvas.toBlob(function(blob) {
+                        // Capture the high-resolution render buffer
+                        window.renderer.captureRenderBuffer().then(function(blob) {
                             capturedFrames.push(blob);
                             frameCaptureCount++;
 
@@ -1190,7 +1260,11 @@ export function initControls(renderer, callback) {
                                     onComplete(capturedFrames);
                                 }
                             }
-                        }, 'image/png');
+                        }).catch(function(error) {
+                            console.error('Failed to capture animation frame:', error);
+                            stopAnimation();
+                            alert('Failed to capture animation frame. Check console for details.');
+                        });
                     }
                 }
 
@@ -1522,33 +1596,17 @@ export function initControls(renderer, callback) {
     // Then load and apply saved settings
     const savedSettings = loadSettingsFromURLOrStorage();
 
-    // WORKAROUND: Newton's method fails to compile correctly on initial page load
-    // (possibly due to Nerdamer not being fully initialized, or timing issues with
-    // symbolic differentiation during shader compilation). To avoid this, we always
-    // start in fixed-point mode and switch to Newton after a delay if needed.
-    let delayedSolutionMethod = null;
-    if (savedSettings && savedSettings.solutionMethod === 'newton') {
-        logger.info('Newton\'s method detected in saved settings - will apply after delay');
-        delayedSolutionMethod = 'newton';
-        savedSettings.solutionMethod = 'fixed-point'; // Force fixed-point initially
-    }
-
     if (savedSettings) {
         manager.applySettings(savedSettings);
+        // Trigger onApply callback to ensure all transformations happen
+        // (e.g., implicitIterations -> integratorParams)
+        manager.apply();
     }
 
-    // Apply Newton's method after a delay if it was in saved settings
-    if (delayedSolutionMethod === 'newton') {
-        logger.info('Scheduling delayed Newton\'s method activation in 3 seconds...');
-        setTimeout(() => {
-            logger.info('Applying delayed Newton\'s method activation');
-            // Replicate exactly what happens when you select from the dropdown:
-            // 1. Set the value in the DOM element
-            $('#solution-method').val('newton');
-            // 2. Trigger the 'change' event (this fires onChange handler + debounced apply)
-            $('#solution-method').trigger('change');
-            logger.info('Triggered solution-method dropdown change event');
-        }, 3000); // 3 second delay
+    // Initialize frame limit settings in renderer
+    if (renderer) {
+        renderer.frameLimitEnabled = frameLimitEnabledControl.getValue();
+        renderer.frameLimit = frameLimitControl.getValue();
     }
 
     // Initialize special UI states

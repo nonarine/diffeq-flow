@@ -60,6 +60,9 @@ export class BloomManager {
         this.floatLinearExt = gl.getExtension('OES_texture_float_linear');
         this.halfFloatLinearExt = gl.getExtension('OES_texture_half_float_linear');
 
+        // Check for float blending (needed for blending with float framebuffers)
+        this.floatBlendExt = gl.getExtension('EXT_float_blend');
+
         // Determine HDR support
         this.hdrSupported = !!(this.floatColorBufferExt || this.halfFloatColorBufferExt);
 

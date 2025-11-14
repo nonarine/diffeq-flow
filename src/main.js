@@ -220,7 +220,7 @@ $(document).ready(function() {
 
         // Create renderer with storage strategy from controls
         try {
-            // Get storage strategy from URL or default to Float (RGBA is broken)
+            // Get storage strategy from URL or default to Float (best precision)
             const urlParams = new URLSearchParams(window.location.search);
             const storageStrategy = urlParams.get('storage') || 'float';
 
@@ -679,10 +679,25 @@ $(document).ready(function() {
         setInterval(drawGrid, 100);
 
         // Update FPS counter
-        const fpsCounter = document.getElementById('fps-counter');
+        const fpsDisplay = document.querySelector('#fps-counter .fps-display');
+        function formatFrameCount(count) {
+            if (count >= 1000) {
+                const k = count / 1000;
+                // Show one decimal place for values like 1.5k, but not for 1k, 2k, etc.
+                if (k % 1 === 0) {
+                    return `${Math.floor(k)}k`;
+                } else {
+                    return `${k.toFixed(1)}k`;
+                }
+            }
+            return count.toString();
+        }
         function updateFPS() {
             if (renderer && renderer.fps !== undefined) {
-                fpsCounter.textContent = `FPS: ${renderer.fps}`;
+                const framesText = renderer.totalFrames !== undefined
+                    ? ` | ${formatFrameCount(renderer.totalFrames)} frames`
+                    : '';
+                fpsDisplay.textContent = `FPS: ${renderer.fps}${framesText}`;
             }
         }
         setInterval(updateFPS, 500); // Update every 500ms

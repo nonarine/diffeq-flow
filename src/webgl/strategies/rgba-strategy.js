@@ -1,61 +1,31 @@
 /**
  * RGBA-encoded coordinate storage strategy
- * Uses fixed-point encoding to store floats as RGBA bytes
- * This is the original implementation for maximum compatibility
+ * Uses 32-bit fixed-point encoding to store floats as RGBA bytes
  *
- * ⚠️ KNOWN ISSUES - COORDINATE MAPPING BUGS ⚠️
+ * Provides maximum compatibility with all WebGL devices, including those
+ * without floating-point texture support.
  *
- * This implementation has systematic coordinate mapping errors that cause particles
- * to cluster in specific quadrants (typically negative quadrants) rather than
- * maintaining proper circular orbits or uniform distributions.
+ * ENCODING:
+ * - World coordinates normalized to [0, 1] relative to viewport bounds
+ * - Normalized value mapped to 32-bit integer using scale factor 2^32 - 1
+ * - Integer split into 4 bytes (RGBA) using big-endian byte order
+ * - Provides approximately 32 bits of precision per coordinate
  *
- * SYMPTOMS OBSERVED:
- * - Frame 0: Particles initialize with balanced distribution across all quadrants
- * - Frame 120+: All particles drift and cluster in lower-left quadrant
- * - With simple rotation field (dx/dt = -y, dy/dt = x), particles should maintain
- *   circular orbits, but instead they systematically drift toward negative coordinates
- * - The clustering behavior is consistent and reproducible, not random drift
+ * PRECISION:
+ * - ~8 bits per RGBA channel, combined to 32-bit fixed-point
+ * - Slightly lower precision than native float textures (~23 bits mantissa)
+ * - Very minor quantization artifacts may appear in extreme zoom scenarios
+ * - Negligible for typical visualization use cases
  *
- * SUSPECTED ROOT CAUSES:
+ * PERFORMANCE:
+ * - No extension requirements, works on all devices
+ * - Small encoding/decoding overhead in shaders
+ * - Recommended for maximum compatibility
  *
- * 1. **Precision Loss in Fixed-Point Encoding**
- *    - 32-bit fixed-point (RGBA bytes) may have insufficient precision for world coordinates
- *    - Each encode/decode cycle through GPU introduces quantization error
- *    - Errors accumulate over frames, causing systematic drift
- *
- * 2. **Asymmetric Precision Around Zero**
- *    - Normalization to [0,1] before encoding: normalized = (worldValue - min) / (max - min)
- *    - For bbox [-5, 5], world value 0 maps to normalized 0.5
- *    - Floating point operations in GLSL may have asymmetric rounding behavior
- *    - Small biases toward one direction accumulate over time
- *
- * 3. **GLSL floor() in Byte Extraction**
- *    - The encodeFloat function uses floor() to extract bytes (see getGLSLEncodeFunction)
- *    - floor() always rounds down, potentially introducing systematic bias
- *    - Combined with normalization, this may create coordinate-dependent errors
- *
- * 4. **Texture Sampling Interpolation**
- *    - Even with NEAREST filtering, texture coordinate calculations involve floating point
- *    - Subtle interpolation or sampling errors could introduce position-dependent bias
- *
- * 5. **Byte-Order or Endianness Issues**
- *    - Big-endian byte packing (R = MSB, A = LSB) may interact poorly with GPU hardware
- *    - Different GPUs may handle byte-order differently
- *
- * WHY FLOAT TEXTURES FIX IT:
- * - Float textures (OES_texture_float) store world coordinates directly
- * - No encode/decode step = no quantization error accumulation
- * - No normalization = no asymmetric precision issues
- * - Direct float storage has ~23 bits mantissa precision vs ~8 bits per RGBA channel
- *
- * TESTING PERFORMED:
- * - Confirmed dropProbability = 0 (no respawning) still shows clustering
- * - Proved bug is in integration/encoding pipeline, not random particle initialization
- * - Float texture implementation shows perfect circular orbits and uniform distribution
- *
- * RECOMMENDATION:
- * Use FloatStrategy whenever possible. Only use RGBAStrategy for compatibility
- * with very old mobile devices that don't support OES_texture_float.
+ * COMPARISON TO FLOAT STRATEGY:
+ * - FloatStrategy provides higher precision (~23-bit mantissa, direct storage)
+ * - RGBAStrategy has wider device compatibility (no extension required)
+ * - Both strategies produce visually identical results for most systems
  */
 
 import { CoordinateStrategy } from '../coordinate-strategy.js';

@@ -361,9 +361,12 @@ uniform vec2 u_min;
 uniform vec2 u_max;
 uniform float u_alpha;
 uniform float u_particle_size;
+uniform vec2 u_viewport_size;  // Actual render resolution (renderWidth, renderHeight)
+uniform vec2 u_canvas_size;    // Canvas resolution (canvas.width, canvas.height)
 
 varying vec${dimensions} v_pos;
-varying vec${dimensions} v_velocity;
+varying vec${dimensions} v_velocity;          // Full N-dimensional velocity (for expression mode)
+varying vec${dimensions} v_velocity_projected; // Projected 2D velocity (for angle-based color modes)
 
 ${mapperCode}
 
@@ -445,17 +448,32 @@ void main() {
     // Calculate velocity for coloring
     ${vecType} velocity = get_velocity(pos);
 
-    // Pass to fragment shader
+    // Pass N-dimensional position and full velocity to fragment shader
     v_pos = pos;
-    v_velocity = velocity;
+    v_velocity = velocity; // Full N-dimensional velocity for expression mode
 
     // Skip newly spawned particles (age < 1) by moving them off-screen
     if (age < 1.0) {
         gl_Position = vec4(10.0, 10.0, 10.0, 1.0); // Far outside clip space
         gl_PointSize = 0.0;
+        v_velocity_projected = velocity; // Won't be used since particle is off-screen
     } else {
-        // Project to 3D (with depth)
+        // Project position to 3D (with depth)
         vec3 pos_3d = project_to_3d(pos);
+
+        // Project velocity to 2D (using same mapper)
+        // For linear projections, this is correct for tangent vectors
+        vec2 velocity_2d = project_to_2d(velocity);
+
+        // Create 2D velocity vector (pad to match dimensions for varying)
+        ${vecType} velocity_projected;
+        velocity_projected.x = velocity_2d.x;
+        velocity_projected.y = velocity_2d.y;
+        ${dimensions > 2 ? 'velocity_projected.z = 0.0;' : ''}
+        ${dimensions > 3 ? 'velocity_projected.w = 0.0;' : ''}
+
+        // Pass projected 2D velocity to fragment shader (for angle-based color modes)
+        v_velocity_projected = velocity_projected;
 
         // Map to screen space
         vec2 normalized = (pos_3d.xy - u_min) / (u_max - u_min);
@@ -466,7 +484,11 @@ void main() {
         depth_normalized = clamp(depth_normalized, -1.0, 1.0);
 
         gl_Position = vec4(normalized * 2.0 - 1.0, depth_normalized, 1.0);
-        gl_PointSize = u_particle_size;
+
+        // Scale particle size by render scale to maintain consistent visual size
+        // Calculate render scale as viewport size / canvas size
+        float render_scale = u_viewport_size.x / u_canvas_size.x;
+        gl_PointSize = u_particle_size * render_scale;
     }
 }
 `;
@@ -485,18 +507,21 @@ precision highp float;
 ${customFunctions}
 
 varying vec${dimensions} v_pos;
-varying vec${dimensions} v_velocity;
+varying vec${dimensions} v_velocity;          // Full N-dimensional velocity (for expression mode)
+varying vec${dimensions} v_velocity_projected; // Projected 2D velocity (for angle-based color modes)
 
 ${usesMaxVelocity ? 'uniform float u_max_velocity;\nuniform float u_velocity_log_scale;' : ''}
 uniform float u_particle_intensity;
 uniform float u_color_saturation;
 uniform float u_alpha;
+uniform vec2 u_viewport_size;  // Actual render resolution
+uniform vec2 u_canvas_size;    // Canvas resolution
 
 ${colorCode}
 
 void main() {
     // Get color based on position and velocity
-    vec3 color = getColor(v_pos, v_velocity);
+    vec3 color = getColor(v_pos, v_velocity, v_velocity_projected);
 
     // Apply saturation adjustment (for attractor visualization)
     // 0.0 = grayscale, 1.0 = full saturation
@@ -509,8 +534,17 @@ void main() {
     // Scale by intensity for HDR (allows colors > 1.0)
     color *= u_particle_intensity;
 
+    // Calculate render scale factor
+    float render_scale = u_viewport_size.x / u_canvas_size.x;
+
+    // Compensate alpha for particle size scaling to maintain constant brightness
+    // Particle area scales with render_scale², so divide alpha by render_scale²
+    // This ensures that larger particles contribute the same total brightness
+    float area_compensation = 1.0 / (render_scale * render_scale);
+    float adjusted_alpha = 0.35 * area_compensation;
+
     // Alpha blending allows proper fade to black
-    gl_FragColor = vec4(color, 0.35);
+    gl_FragColor = vec4(color, adjusted_alpha);
 }
 `;
 }

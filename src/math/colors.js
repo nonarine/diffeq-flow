@@ -10,7 +10,7 @@ export function getColorMode(name, dimensions) {
             name: 'Solid White',
             code: `
 // Simple solid white particles
-vec3 getColor(${vecType} pos, ${vecType} velocity) {
+vec3 getColor(${vecType} pos, ${vecType} velocity, ${vecType} velocity_proj) {
     return vec3(1.0, 1.0, 1.0);
 }
 `
@@ -20,8 +20,8 @@ vec3 getColor(${vecType} pos, ${vecType} velocity) {
             usesMaxVelocity: true,
             code: `
 // Color based on speed (velocity magnitude)
-// Dynamically scaled against fastest particle
-vec3 getColor(${vecType} pos, ${vecType} velocity) {
+// Uses full N-dimensional velocity magnitude
+vec3 getColor(${vecType} pos, ${vecType} velocity, ${vecType} velocity_proj) {
     float speed = length(velocity);
 
     // Normalize speed to [0, 1] range using max velocity
@@ -51,10 +51,10 @@ vec3 getColor(${vecType} pos, ${vecType} velocity) {
         velocity_angle: {
             name: 'Velocity Angle',
             code: `
-// Color based on velocity direction
-vec3 getColor(${vecType} pos, ${vecType} velocity) {
-    // Use angle of velocity in x-y plane
-    float angle = atan(velocity.y, velocity.x);
+// Color based on velocity direction in projected 2D space
+vec3 getColor(${vecType} pos, ${vecType} velocity, ${vecType} velocity_proj) {
+    // Use angle of PROJECTED velocity in x-y plane
+    float angle = atan(velocity_proj.y, velocity_proj.x);
 
     // Convert angle [-π, π] to hue [0, 1]
     float hue = (angle + 3.14159265) / (2.0 * 3.14159265);
@@ -79,12 +79,12 @@ vec3 getColor(${vecType} pos, ${vecType} velocity) {
             name: 'Velocity Angle + Magnitude',
             usesMaxVelocity: true,
             code: `
-// Color by angle, saturation by magnitude
-vec3 getColor(${vecType} pos, ${vecType} velocity) {
+// Color by projected angle, saturation by full magnitude
+vec3 getColor(${vecType} pos, ${vecType} velocity, ${vecType} velocity_proj) {
     float speed = length(velocity);
 
-    // Use angle of velocity in x-y plane for hue
-    float angle = atan(velocity.y, velocity.x);
+    // Use angle of PROJECTED velocity in x-y plane for hue
+    float angle = atan(velocity_proj.y, velocity_proj.x);
     float hue = (angle + 3.14159265) / (2.0 * 3.14159265);
 
     // Normalize speed to [0, 1] for saturation
@@ -122,9 +122,9 @@ vec3 getColor(${vecType} pos, ${vecType} velocity) {
             name: 'Custom (Advanced)',
             code: `
 // Custom color function
-// Inputs: pos (position vector), velocity (velocity vector)
+// Inputs: pos (position vector), velocity (full N-D velocity), velocity_proj (projected 2D velocity)
 // Output: RGB color vec3
-vec3 getColor(${vecType} pos, ${vecType} velocity) {
+vec3 getColor(${vecType} pos, ${vecType} velocity, ${vecType} velocity_proj) {
     return vec3(1.0, 1.0, 1.0);
 }
 `
@@ -156,14 +156,14 @@ export function generateExpressionColorMode(dimensions, expressionGLSL, gradient
 
     for (let i = 0; i < dimensions; i++) {
         varDecls.push(`float ${swizzles[i]} = pos.${swizzles[i]};`);
-        varDecls.push(`float ${velocityVars[i]} = velocity.${swizzles[i]};`);
+        varDecls.push(`float ${velocityVars[i]} = velocity.${swizzles[i]};`); // Use full N-D velocity
     }
 
     return `
 ${gradientGLSL}
 
-vec3 getColor(${vecType} pos, ${vecType} velocity) {
-    // Unpack position and velocity components for user expression
+vec3 getColor(${vecType} pos, ${vecType} velocity, ${vecType} velocity_proj) {
+    // Unpack position and FULL velocity components for user expression
     ${varDecls.join('\n    ')}
 
     // Evaluate user expression
@@ -190,6 +190,7 @@ export function generateGradientColorMode(modeName, dimensions, gradientGLSL) {
     switch (modeName) {
         case 'velocity_magnitude':
             valueExpression = `
+    // Use full N-dimensional velocity magnitude
     float speed = length(velocity);
     float normalized;
     if (u_velocity_log_scale > 0.5) {
@@ -204,15 +205,17 @@ export function generateGradientColorMode(modeName, dimensions, gradientGLSL) {
 
         case 'velocity_angle':
             valueExpression = `
-    float angle = atan(velocity.y, velocity.x);
+    // Use projected 2D velocity angle
+    float angle = atan(velocity_proj.y, velocity_proj.x);
     float hue = (angle + 3.14159265) / (2.0 * 3.14159265);
     return evaluateGradient(hue);`;
             break;
 
         case 'velocity_combined':
             valueExpression = `
+    // Full velocity for magnitude, projected velocity for angle
     float speed = length(velocity);
-    float angle = atan(velocity.y, velocity.x);
+    float angle = atan(velocity_proj.y, velocity_proj.x);
     float hue = (angle + 3.14159265) / (2.0 * 3.14159265);
     float saturation;
     if (u_velocity_log_scale > 0.5) {
@@ -238,7 +241,7 @@ export function generateGradientColorMode(modeName, dimensions, gradientGLSL) {
     return `
 ${gradientGLSL}
 
-vec3 getColor(${vecType} pos, ${vecType} velocity) {
+vec3 getColor(${vecType} pos, ${vecType} velocity, ${vecType} velocity_proj) {
     ${valueExpression}
 }
 `;
