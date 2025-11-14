@@ -1,0 +1,42 @@
+{
+  "name": "Minimal Test Animation",
+  "fps": 30,
+  "baseSettings": {
+    "dimensions": 2,
+    "particleCount": 1000,
+    "expressions": ["-y", "x"],
+    "integrator": "euler",
+    "timestep": 0.01,
+    "fadeSpeed": 0.05,
+    "dropProbability": 0.0,
+    "mapper": "select",
+    "mapperParams": {
+      "horizontalDim": 0,
+      "verticalDim": 1
+    },
+    "colorMode": "white",
+    "bbox": {
+      "minX": -2,
+      "maxX": 2,
+      "minY": -2,
+      "maxY": 2
+    }
+  },
+  "timeline": [
+    {
+      "time": 0.0,
+      "settings": {},
+      "easing": "linear"
+    },
+    {
+      "time": 0.3,
+      "settings": {},
+      "easing": "linear"
+    }
+  ],
+  "frameConfig": {
+    "burnInSteps": 100,
+    "clearAfterBurnIn": false,
+    "accumulationSteps": 50
+  }
+}

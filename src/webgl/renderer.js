@@ -31,6 +31,7 @@ import { getTransform } from '../math/transforms.js';
 import { getColorMode, generateExpressionColorMode, generateGradientColorMode } from '../math/colors.js';
 import { generateGradientGLSL, getDefaultGradient } from '../math/gradients.js';
 import { generateTonemapGLSL, getToneMapper } from '../math/tonemapping.js';
+import { getCartesianSystem } from '../math/coordinate-systems.js';
 import { logger } from '../utils/debug-logger.js';
 import { RGBAStrategy } from './strategies/rgba-strategy.js';
 import { FloatStrategy } from './strategies/float-strategy.js';
@@ -81,11 +82,16 @@ export class Renderer {
         // Initialize state
         this.dimensions = 2;
         this.expressions = ['-y', 'x'];
+        this.coordinateSystem = getCartesianSystem(this.dimensions); // Must initialize BEFORE creating evaluators
 
         // Create velocity evaluators for sampling
         try {
-            this.velocityEvaluators = createVelocityEvaluators(this.expressions);
-            logger.verbose('Initial velocity evaluators created');
+            const coordinateVars = this.coordinateSystem.getVariableNames();
+            this.velocityEvaluators = createVelocityEvaluators(this.expressions, coordinateVars);
+            logger.verbose('Initial velocity evaluators created', {
+                coordinateSystem: this.coordinateSystem.name,
+                variables: coordinateVars
+            });
         } catch (error) {
             logger.warn('Failed to create initial velocity evaluators', error);
             this.velocityEvaluators = null;
@@ -466,9 +472,41 @@ export class Renderer {
         const gl = this.gl;
 
         try {
-            // Parse expressions to GLSL
-            const velocityGLSL = parseVectorField(this.expressions);
-            logger.verbose('Generated velocity GLSL', { expressions: this.expressions, glsl: velocityGLSL });
+            // Get coordinate system variable names
+            const coordinateVars = this.coordinateSystem.getVariableNames();
+            const isCartesian = this.coordinateSystem.name.includes('Cartesian');
+
+            // Parse expressions to GLSL using coordinate system variables
+            // For non-Cartesian systems, use 'pos_native' as the GLSL variable name
+            const posVarName = isCartesian ? 'pos' : 'pos_native';
+            const velocityGLSL = parseVectorField(this.expressions, coordinateVars, posVarName);
+            logger.verbose('Generated velocity GLSL', {
+                expressions: this.expressions,
+                coordinateSystem: this.coordinateSystem.name,
+                variables: coordinateVars,
+                posVarName: posVarName,
+                glsl: velocityGLSL
+            });
+
+            // Generate coordinate system GLSL code (if not Cartesian)
+            let coordinateSystemCode = null;
+            if (!isCartesian) {
+                const cartesianVars = ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, this.dimensions);
+                coordinateSystemCode = {
+                    name: this.coordinateSystem.name,
+                    forwardTransform: this.coordinateSystem.generateForwardTransformGLSL(cartesianVars, (expr, vars) => {
+                        return parseExpression(expr, vars.length, vars);
+                    }),
+                    velocityTransform: this.coordinateSystem.generateVelocityTransformGLSL(cartesianVars, (expr, vars) => {
+                        return parseExpression(expr, vars.length, vars);
+                    })
+                };
+                logger.verbose('Generated coordinate system code', {
+                    name: coordinateSystemCode.name,
+                    forward: coordinateSystemCode.forwardTransform,
+                    velocity: coordinateSystemCode.velocityTransform
+                });
+            }
 
             // Get integrator code (pass expressions and solutionMethod for Newton's method support)
             const integratorParams = {
@@ -534,7 +572,8 @@ export class Renderer {
                 velocityGLSL,
                 integrator.code,
                 this.strategy,
-                transformCode
+                transformCode,
+                coordinateSystemCode
             );
 
             this.updateProgram = createProgram(gl, updateVertexShader, updateFragmentShader);
@@ -543,7 +582,14 @@ export class Renderer {
 
             // Create draw program
             const isLineMode = this.particleRenderMode === 'lines';
-            const drawVertexShader = generateDrawVertexShader(this.dimensions, mapper.code, velocityGLSL, this.strategy, isLineMode);
+            const drawVertexShader = generateDrawVertexShader(
+                this.dimensions,
+                mapper.code,
+                velocityGLSL,
+                this.strategy,
+                isLineMode,
+                coordinateSystemCode
+            );
             const drawFragmentShader = generateDrawFragmentShader(this.dimensions, colorCode, usesMaxVelocity);
 
             this.drawProgram = createProgram(gl, drawVertexShader, drawFragmentShader);
@@ -560,10 +606,26 @@ export class Renderer {
                 velocityField: velocityGLSL  // Store for velocity stats manager
             };
 
+            // Dump shaders if flag is set
+            if (this.dumpShadersOnCompile) {
+                console.log('\n========== SHADER DUMP ==========');
+                console.log(`Config: ${this.dimensions}D, ${this.integratorType}, ${this.mapperType}, ${this.colorMode}`);
+                console.log('\n--- UPDATE VERTEX SHADER ---');
+                console.log(updateVertexShader);
+                console.log('\n--- UPDATE FRAGMENT SHADER ---');
+                console.log(updateFragmentShader);
+                console.log('\n--- DRAW VERTEX SHADER ---');
+                console.log(drawVertexShader);
+                console.log('\n--- DRAW FRAGMENT SHADER ---');
+                console.log(drawFragmentShader);
+                console.log('\n=================================\n');
+                this.dumpShadersOnCompile = false; // Only dump once
+            }
+
             // Initialize velocity stats manager with current velocity field
             if (this.velocityStatsManager) {
                 this.velocityStatsManager.dispose(); // Clean up old instance
-                const initSuccess = this.velocityStatsManager.initialize(this.dimensions, velocityGLSL);
+                const initSuccess = this.velocityStatsManager.initialize(this.dimensions, velocityGLSL, coordinateSystemCode);
                 if (initSuccess) {
                     logger.verbose('Velocity stats manager initialized');
                 } else {
@@ -1728,13 +1790,35 @@ export class Renderer {
             this.textureManager.initializeData(this.particleSystem.getAllData());
         }
 
+        // Handle coordinate system changes BEFORE expressions
+        // (so expression parsing uses the correct variables)
+        if (config.coordinateSystem !== undefined) {
+            logger.info(`Updating coordinate system: ${this.coordinateSystem.name} → ${config.coordinateSystem.name}`);
+            this.coordinateSystem = config.coordinateSystem;
+            needsRecompile = true;
+            logger.info('  needsRecompile flag set to true (coordinate system change)');
+        }
+
         if (config.expressions !== undefined) {
             logger.info('Updating vector field expressions', config.expressions);
             this.expressions = config.expressions;
             // Create velocity evaluators for computing statistics in JavaScript
             try {
-                this.velocityEvaluators = createVelocityEvaluators(config.expressions);
-                logger.verbose('Velocity evaluators created successfully');
+                // Get variable names from coordinate system
+                let coordinateVars;
+                if (this.coordinateSystem && typeof this.coordinateSystem.getVariableNames === 'function') {
+                    coordinateVars = this.coordinateSystem.getVariableNames();
+                } else {
+                    // Fallback to default Cartesian variables
+                    logger.warn('coordinateSystem missing getVariableNames(), using Cartesian fallback');
+                    coordinateVars = ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, this.dimensions);
+                }
+
+                this.velocityEvaluators = createVelocityEvaluators(config.expressions, coordinateVars);
+                logger.verbose('Velocity evaluators created successfully', {
+                    coordinateSystem: this.coordinateSystem ? this.coordinateSystem.name : 'unknown',
+                    variables: coordinateVars
+                });
             } catch (error) {
                 logger.warn('Failed to create velocity evaluators', error);
                 this.velocityEvaluators = null;

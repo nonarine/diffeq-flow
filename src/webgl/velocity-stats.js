@@ -27,8 +27,11 @@ export class VelocityStatsManager {
 
     /**
      * Initialize shaders and buffers
+     * @param {number} dimensions - Number of dimensions
+     * @param {string[]} velocityExpressions - Compiled GLSL expressions
+     * @param {Object} coordinateSystemCode - Optional coordinate system transformation code
      */
-    initialize(dimensions, velocityExpressions) {
+    initialize(dimensions, velocityExpressions, coordinateSystemCode = null) {
         const gl = this.gl;
 
         // Create quad buffer for full-screen pass
@@ -72,7 +75,24 @@ export class VelocityStatsManager {
             `    result.${swizzles[i]} = ${expr};`
         ).join('\n');
 
-        const velocityFunction = `
+        // Check if we have coordinate system transformations
+        const hasCoordinateSystem = coordinateSystemCode && coordinateSystemCode.forwardTransform;
+
+        const velocityFunction = hasCoordinateSystem ? `
+// User-defined velocity field in native coordinates
+${vecType} get_velocity_native(${vecType} pos_native) {
+    ${vecType} result;
+${velocityComponents}
+    return result;
+}
+
+// Velocity field in Cartesian coordinates
+${vecType} get_velocity(${vecType} pos_cartesian) {
+    ${vecType} pos_native = transformToNative(pos_cartesian);
+    ${vecType} vel_native = get_velocity_native(pos_native);
+    return transformVelocityToCartesian(vel_native, pos_cartesian);
+}
+` : `
 // User-defined velocity field
 ${vecType} get_velocity(${vecType} pos) {
     ${vecType} result;
@@ -108,6 +128,8 @@ uniform float u_sample_count;
 uniform float u_alpha;
 
 varying vec2 v_texcoord;
+
+${hasCoordinateSystem ? coordinateSystemCode.forwardTransform + '\n' + coordinateSystemCode.velocityTransform : ''}
 
 ${velocityFunction}
 

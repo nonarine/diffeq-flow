@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "render": "node scripts/render-animation.js",
-    "serve": "python3 -m http.server 8000"
+    "serve": "python3 -m http.server 8000",
+    "test": "node test/run-all.cjs",
+    "test:unit": "node test/unit/animator-interpolation.cjs && node test/unit/parser.cjs && node test/unit/coordinate-systems.cjs",
+    "test:integration": "node test/integration/run-with-server.cjs",
+    "test:smoke": "node test/integration/run-with-server.cjs"
   },
   "dependencies": {},
   "devDependencies": {

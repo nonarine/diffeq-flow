@@ -19,6 +19,8 @@ import { AnimatableTimestepControl } from './animatable-timestep.js';
 import { AnimatableParameterControl } from './parameter-control.js';
 import { DimensionInputsControl, MapperParamsControl, GradientControl, TransformParamsControl } from './custom-controls.js';
 import { initGradientEditor } from './gradient-editor.js';
+import { showCoordinateEditor } from './coordinate-editor.js';
+import { CoordinateSystem, getCartesianSystem } from '../math/coordinate-systems.js';
 import { getDefaultGradient } from '../math/gradients.js';
 import { logger } from '../utils/debug-logger.js';
 import { resizeAccordion } from './accordion-utils.js';
@@ -43,13 +45,16 @@ export function initControls(renderer, callback) {
                 // Apply settings directly to renderer
                 renderer.updateConfig(settings);
 
-                // Save to localStorage (including bbox for pan/zoom state)
+                // Save to localStorage (including bbox for pan/zoom state and coordinate system)
                 const settingsToSave = manager.getSettings();
                 if (renderer && renderer.bbox) {
                     settingsToSave.bbox = {
                         min: [...renderer.bbox.min],
                         max: [...renderer.bbox.max]
                     };
+                }
+                if (renderer && renderer.coordinateSystem) {
+                    settingsToSave.coordinateSystem = renderer.coordinateSystem.toJSON();
                 }
                 localStorage.setItem('vectorFieldSettings', JSON.stringify(settingsToSave));
 
@@ -78,10 +83,15 @@ export function initControls(renderer, callback) {
         onChange: (value) => {
             logger.verbose('Dimensions changed to:', value);
 
+            // Reset coordinate system to Cartesian when dimensions change
+            const cartesianSystem = getCartesianSystem(value);
+            renderer.coordinateSystem = cartesianSystem;
+
             // Update dimension inputs when dimensions change
             const expressionsControl = manager.get('dimension-inputs');
             if (expressionsControl) {
                 logger.verbose('Calling updateInputs with dimensions:', value);
+                expressionsControl.setCoordinateSystem(cartesianSystem);
                 expressionsControl.updateInputs(value);
             } else {
                 logger.error('expressionsControl not found!');
@@ -260,6 +270,9 @@ export function initControls(renderer, callback) {
 
     // Set up expressions cross-reference to dimensions
     expressionsControl.setDimensionsControl(dimensionsControl);
+
+    // Initialize coordinate system labels (don't update UI yet - values not set)
+    expressionsControl.setCoordinateSystem(renderer.coordinateSystem, false);
 
     // === HDR and tone mapping controls ===
 
@@ -803,13 +816,16 @@ export function initControls(renderer, callback) {
     $('#storage-strategy').on('change', function() {
         const newStrategy = $(this).val();
 
-        // Save current settings before reload (including bbox for pan/zoom state)
+        // Save current settings before reload (including bbox for pan/zoom state and coordinate system)
         const settings = manager.getSettings();
         if (renderer && renderer.bbox) {
             settings.bbox = {
                 min: [...renderer.bbox.min],
                 max: [...renderer.bbox.max]
             };
+        }
+        if (renderer && renderer.coordinateSystem) {
+            settings.coordinateSystem = renderer.coordinateSystem.toJSON();
         }
         localStorage.setItem('vectorFieldSettings', JSON.stringify(settings));
 
@@ -880,6 +896,30 @@ export function initControls(renderer, callback) {
     // Open gradient editor button
     $('#open-gradient-editor').on('click', function() {
         showGradientPanel();
+    });
+
+    // Configure coordinates button
+    $('#configure-coordinates').on('click', function() {
+        const currentDimensions = renderer.dimensions;
+        let currentSystem = renderer.coordinateSystem;
+
+        // Validate that coordinate system dimensions match current dimensions
+        if (!currentSystem || currentSystem.dimensions !== currentDimensions) {
+            console.warn('Coordinate system dimension mismatch, resetting to Cartesian');
+            currentSystem = getCartesianSystem(currentDimensions);
+            renderer.coordinateSystem = currentSystem;
+        }
+
+        showCoordinateEditor(currentDimensions, currentSystem, (newSystem) => {
+            // Update renderer with new coordinate system
+            renderer.updateConfig({ coordinateSystem: newSystem });
+
+            // Update dimension input labels to reflect new coordinate variables
+            expressionsControl.setCoordinateSystem(newSystem);
+
+            // Trigger apply to recompile shaders with new coordinate system
+            manager.apply();
+        });
     });
 
     // Close gradient panel when clicking outside
@@ -1597,6 +1637,68 @@ export function initControls(renderer, callback) {
     const savedSettings = loadSettingsFromURLOrStorage();
 
     if (savedSettings) {
+        // Restore coordinate system if present and dimensions match
+        if (savedSettings.coordinateSystem && savedSettings.dimensions) {
+            try {
+                const coordSystemData = savedSettings.coordinateSystem;
+
+                // Convert Unicode symbols to ASCII in forward transforms
+                if (coordSystemData.forwardTransforms && window.UnicodeAutocomplete) {
+                    coordSystemData.forwardTransforms = coordSystemData.forwardTransforms.map(transform => {
+                        if (typeof transform === 'string' && window.UnicodeAutocomplete.unicodeToAscii) {
+                            return window.UnicodeAutocomplete.unicodeToAscii(transform);
+                        }
+                        return transform;
+                    });
+                }
+
+                const coordinateSystem = CoordinateSystem.fromJSON(coordSystemData);
+
+                // Validate that coordinate system dimensions match saved dimensions
+                if (coordinateSystem.dimensions === savedSettings.dimensions) {
+                    renderer.coordinateSystem = coordinateSystem;
+                    expressionsControl.setCoordinateSystem(coordinateSystem, false);
+                    console.log('Restored coordinate system:', coordinateSystem.name);
+                } else {
+                    // Dimension mismatch - reset to Cartesian for the correct dimensions
+                    console.warn(`Coordinate system dimension mismatch: system has ${coordinateSystem.dimensions}D but settings use ${savedSettings.dimensions}D. Resetting to Cartesian.`);
+                    const cartesianSystem = getCartesianSystem(savedSettings.dimensions);
+                    renderer.coordinateSystem = cartesianSystem;
+                    expressionsControl.setCoordinateSystem(cartesianSystem, false);
+                }
+            } catch (error) {
+                console.warn('Failed to restore coordinate system:', error);
+                // Fall back to Cartesian
+                if (savedSettings.dimensions) {
+                    const cartesianSystem = getCartesianSystem(savedSettings.dimensions);
+                    renderer.coordinateSystem = cartesianSystem;
+                    expressionsControl.setCoordinateSystem(cartesianSystem, false);
+                }
+            }
+        }
+
+        // Convert Unicode to ASCII in expressions (θ → theta, φ → phi, etc.)
+        if (savedSettings.expressions && Array.isArray(savedSettings.expressions) && window.UnicodeAutocomplete) {
+            savedSettings.expressions = savedSettings.expressions.map(expr => {
+                if (typeof expr === 'string' && window.UnicodeAutocomplete.unicodeToAscii) {
+                    return window.UnicodeAutocomplete.unicodeToAscii(expr);
+                }
+                return expr;
+            });
+        }
+
+        // Validate and fix mapper params if needed
+        if (savedSettings.mapperParams) {
+            const params = savedSettings.mapperParams;
+            // For select mapper, ensure dim2 is different from dim1 and defaults to 1
+            if (params.dim1 !== undefined && params.dim2 !== undefined) {
+                if (params.dim1 === params.dim2) {
+                    console.warn('Invalid mapper params: dim1 and dim2 are the same, fixing to default');
+                    savedSettings.mapperParams = { dim1: 0, dim2: 1 };
+                }
+            }
+        }
+
         manager.applySettings(savedSettings);
         // Trigger onApply callback to ensure all transformations happen
         // (e.g., implicitIterations -> integratorParams)
@@ -1630,6 +1732,21 @@ export function initControls(renderer, callback) {
     // Load presets data
     loadPresets();
 
+    // Initialize unicode autocomplete on all math input fields
+    if (window.unicodeAutocomplete) {
+        window.unicodeAutocomplete.setEnabled(true);
+
+        // Attach to all math input fields
+        window.unicodeAutocomplete.attachToAll('[id^="expr-"]');        // Vector field expressions
+        window.unicodeAutocomplete.attachToAll('#mapper-expression');    // Custom mapper expressions
+        window.unicodeAutocomplete.attachToAll('#color-expression');     // Color expressions
+        window.unicodeAutocomplete.attachToAll('#custom-color-code');    // Custom color code
+        window.unicodeAutocomplete.attachToAll('#custom-integrator-code'); // Custom integrator code
+        window.unicodeAutocomplete.attachToAll('#custom-functions-textarea'); // Custom functions
+
+        console.log('Unicode autocomplete enabled for all math inputs');
+    }
+
     // Create save function that includes bbox (pan/zoom state)
     function saveAllSettings() {
         const settings = manager.getSettings();
@@ -1640,6 +1757,11 @@ export function initControls(renderer, callback) {
                 min: [...renderer.bbox.min],
                 max: [...renderer.bbox.max]
             };
+        }
+
+        // Add coordinate system from renderer
+        if (renderer && renderer.coordinateSystem) {
+            settings.coordinateSystem = renderer.coordinateSystem.toJSON();
         }
 
         // Save to localStorage
@@ -1905,21 +2027,29 @@ function loadPresets() {
         '2d_rotation': {
             dimensions: 2,
             expressions: ['-y', 'x'],
+            integratorType: 'rk2',
             name: 'Simple Rotation'
         },
         '2d_vortex': {
             dimensions: 2,
             expressions: ['-y + x*(1 - x*x - y*y)', 'x + y*(1 - x*x - y*y)'],
+            integratorType: 'rk4',
+            bbox: {
+                min: [-3, -3],
+                max: [3, 3]
+            },
             name: 'Vortex'
         },
         '2d_vanderpol': {
             dimensions: 2,
             expressions: ['y', '(1 - x*x)*y - x'],
+            integratorType: 'rk4',
             name: 'Van der Pol Oscillator'
         },
         '3d_lorenz': {
             dimensions: 3,
             expressions: ['10*(y - x)', 'x*(28 - z) - y', 'x*y - 2.67*z'],
+            integratorType: 'rk4',
             name: 'Lorenz Attractor'
         },
         '3d_rossler': {
@@ -1978,6 +2108,31 @@ function loadPreset(name, manager) {
     }
 
     logger.info(`Loading preset: ${preset.name || name} (dimensions=${preset.dimensions}, expressions=${preset.expressions.length})`);
+
+    // Reset coordinate system to Cartesian unless preset specifies otherwise
+    // Presets expressions are written for Cartesian coordinates by default
+    if (preset.dimensions) {
+        let coordinateSystem;
+        if (preset.coordinateSystem) {
+            // Preset specifies a coordinate system - use it
+            coordinateSystem = CoordinateSystem.fromJSON(preset.coordinateSystem);
+        } else {
+            // No coordinate system specified - use Cartesian for the preset dimensions
+            coordinateSystem = getCartesianSystem(preset.dimensions);
+        }
+
+        // Update renderer and UI
+        if (window.renderer) {
+            window.renderer.coordinateSystem = coordinateSystem;
+        }
+
+        const expressionsControl = manager.get('dimension-inputs');
+        if (expressionsControl) {
+            expressionsControl.setCoordinateSystem(coordinateSystem);
+        }
+
+        logger.info(`Preset loaded with coordinate system: ${coordinateSystem.name}`);
+    }
 
     // Use the same loading logic as for loading settings from localStorage
     // This ensures consistent behavior and handles all control types properly

@@ -39,6 +39,7 @@ export class DimensionInputsControl extends Control {
         super('dimension-inputs', defaultValue, options);
         this.dimensionsControl = null; // Will be set to the dimensions control
         this.varNames = ['x', 'y', 'z', 'w', 'u', 'v'];
+        this.coordinateSystem = null; // Current coordinate system
     }
 
     /**
@@ -46,6 +47,29 @@ export class DimensionInputsControl extends Control {
      */
     setDimensionsControl(dimensionsControl) {
         this.dimensionsControl = dimensionsControl;
+    }
+
+    /**
+     * Update coordinate system and refresh variable labels
+     * @param {CoordinateSystem} coordinateSystem - The new coordinate system
+     * @param {boolean} updateUI - Whether to refresh the UI (default: true)
+     */
+    setCoordinateSystem(coordinateSystem, updateUI = true) {
+        this.coordinateSystem = coordinateSystem;
+
+        // Update varNames from coordinate system
+        if (coordinateSystem && coordinateSystem.getDisplayLabels) {
+            this.varNames = coordinateSystem.getDisplayLabels();
+        } else {
+            // Fallback to Cartesian
+            this.varNames = ['x', 'y', 'z', 'w', 'u', 'v'];
+        }
+
+        // Refresh the inputs with new labels (preserve current values)
+        // Skip during initialization to avoid overwriting saved values
+        if (updateUI) {
+            this.updateInputs();
+        }
     }
 
     /**
@@ -65,7 +89,13 @@ export class DimensionInputsControl extends Control {
         const dimensions = this.getDimensions();
         const expressions = [];
         for (let i = 0; i < dimensions; i++) {
-            const expr = $(`#expr-${i}`).val().trim();
+            let expr = $(`#expr-${i}`).val().trim();
+
+            // Convert Unicode symbols to ASCII (θ → theta, φ → phi, etc.)
+            if (expr && window.UnicodeAutocomplete && window.UnicodeAutocomplete.unicodeToAscii) {
+                expr = window.UnicodeAutocomplete.unicodeToAscii(expr);
+            }
+
             expressions.push(expr || '0');
         }
         return expressions;
@@ -146,6 +176,11 @@ export class DimensionInputsControl extends Control {
 
         // Reattach listeners to new inputs
         this.attachInputListeners();
+
+        // Attach unicode autocomplete to expression inputs
+        if (window.unicodeAutocomplete) {
+            window.unicodeAutocomplete.attachToAll('[id^="expr-"]');
+        }
 
         // Update accordion height to accommodate new inputs
         this.updateAccordionHeight();
@@ -252,10 +287,16 @@ export class MapperParamsControl extends Control {
         const dim2Element = $('#mapper-dim2');
 
         if (dim1Element.length && dim2Element.length) {
-            return {
-                dim1: parseInt(dim1Element.val()),
-                dim2: parseInt(dim2Element.val())
-            };
+            const dim1 = parseInt(dim1Element.val());
+            const dim2 = parseInt(dim2Element.val());
+
+            // Validate dimensions are valid numbers
+            if (isNaN(dim1) || isNaN(dim2)) {
+                console.warn('Invalid mapper dimensions, using defaults');
+                return this.defaultValue;
+            }
+
+            return { dim1, dim2 };
         }
 
         // Return default if elements don't exist yet

@@ -83,8 +83,9 @@ void main() {
  * @param {string} integratorCode - Integration method code
  * @param {CoordinateStrategy} strategy - Coordinate storage strategy
  * @param {object} transformCode - Transform GLSL code {forward, inverse, jacobian}
+ * @param {object} coordinateSystemCode - Coordinate system GLSL code {forwardTransform, velocityTransform}
  */
-export function generateUpdateFragmentShader(dimensions, velocityExpressions, integratorCode, strategy, transformCode = null) {
+export function generateUpdateFragmentShader(dimensions, velocityExpressions, integratorCode, strategy, transformCode = null, coordinateSystemCode = null) {
     // Generate uniforms for position textures
     const positionUniforms = Array.from({ length: dimensions }, (_, i) =>
         `uniform sampler2D u_pos_${i};`
@@ -104,6 +105,14 @@ export function generateUpdateFragmentShader(dimensions, velocityExpressions, in
         `    result.${swizzles[i]} = ${expr};`
     ).join('\n');
 
+    // Add coordinate system functions if provided
+    const hasCoordinateSystem = coordinateSystemCode && coordinateSystemCode.forwardTransform;
+    const coordinateSystemFunctions = hasCoordinateSystem ? `
+// Coordinate system transformation functions
+${coordinateSystemCode.forwardTransform}
+${coordinateSystemCode.velocityTransform}
+` : '';
+
     // Add transform functions if provided
     const hasTransform = transformCode && transformCode.forward;
     const transformFunctions = hasTransform ? `
@@ -114,8 +123,28 @@ ${transformCode.inverse}
 ${transformCode.jacobian}
 ` : '';
 
-    // Modify velocity function to include Jacobian if transform is active
-    const velocityFunction = hasTransform ? `
+    // Modify velocity function to include coordinate system and/or domain transform
+    // Priority: Coordinate system wraps the velocity definition, domain transform wraps integration
+    const velocityFunction = hasCoordinateSystem ? `
+// User-defined velocity field in native coordinates (${coordinateSystemCode.name || 'custom'})
+${vecType} get_velocity_native(${vecType} pos_native) {
+    ${vecType} result;
+${velocityComponents}
+    return result;
+}
+
+// Velocity field in Cartesian coordinates (for integration)
+${vecType} get_velocity(${vecType} pos_cartesian) {
+    // Transform position to native coordinates
+    ${vecType} pos_native = transformToNative(pos_cartesian);
+
+    // Evaluate velocity in native coordinates
+    ${vecType} vel_native = get_velocity_native(pos_native);
+
+    // Transform velocity back to Cartesian using Jacobian
+    return transformVelocityToCartesian(vel_native, pos_cartesian);
+}
+` : hasTransform ? `
 // Original velocity field in world coordinates
 ${vecType} get_velocity_original(${vecType} pos) {
     ${vecType} result;
@@ -185,6 +214,8 @@ uniform float u_drop_low_velocity;
 uniform float u_velocity_threshold;
 uniform float u_alpha;
 ${hasTransform ? 'uniform vec4 u_transform_params;' : ''}
+
+${coordinateSystemFunctions}
 
 ${transformFunctions}
 
@@ -320,7 +351,7 @@ void main() {
 /**
  * Generate particle rendering vertex shader
  */
-export function generateDrawVertexShader(dimensions, mapperCode, velocityExpressions, strategy, lineMode = false) {
+export function generateDrawVertexShader(dimensions, mapperCode, velocityExpressions, strategy, lineMode = false, coordinateSystemCode = null) {
     const positionUniforms = Array.from({ length: dimensions }, (_, i) =>
         `uniform sampler2D u_pos_${i};`
     ).join('\n');
@@ -337,6 +368,44 @@ export function generateDrawVertexShader(dimensions, mapperCode, velocityExpress
     const velocityComponents = velocityExpressions.map((expr, i) =>
         `    result.${swizzles[i]} = ${expr};`
     ).join('\n');
+
+    // Add coordinate system functions if provided
+    const hasCoordinateSystem = coordinateSystemCode && coordinateSystemCode.forwardTransform;
+    const coordinateSystemFunctions = hasCoordinateSystem ? `
+// Coordinate system transformation functions
+${coordinateSystemCode.forwardTransform}
+${coordinateSystemCode.velocityTransform}
+` : '';
+
+    // Velocity function with coordinate system support
+    const velocityFunction = hasCoordinateSystem ? `
+// User-defined velocity field in native coordinates
+${vecType} get_velocity_native(${vecType} pos_native) {
+    ${vecType} result;
+${velocityComponents}
+    return result;
+}
+
+// Velocity field in Cartesian coordinates
+${vecType} get_velocity(${vecType} pos_cartesian) {
+    ${vecType} pos_native = transformToNative(pos_cartesian);
+    ${vecType} vel_native = get_velocity_native(pos_native);
+    return transformVelocityToCartesian(vel_native, pos_cartesian);
+}
+` : `
+// User-defined velocity field
+${vecType} get_velocity(${vecType} pos) {
+    ${vecType} result;
+    float x = pos.x;
+    ${dimensions > 1 ? 'float y = pos.y;' : ''}
+    ${dimensions > 2 ? 'float z = pos.z;' : ''}
+    ${dimensions > 3 ? 'float w = pos.w;' : ''}
+
+${velocityComponents}
+
+    return result;
+}
+`;
 
     // Get custom function declarations
     const customFunctions = getGLSLFunctionDeclarations();
@@ -370,18 +439,9 @@ varying vec${dimensions} v_velocity_projected; // Projected 2D velocity (for ang
 
 ${mapperCode}
 
-// User-defined velocity field
-${vecType} get_velocity(${vecType} pos) {
-    ${vecType} result;
-    float x = pos.x;
-    ${dimensions > 1 ? 'float y = pos.y;' : ''}
-    ${dimensions > 2 ? 'float z = pos.z;' : ''}
-    ${dimensions > 3 ? 'float w = pos.w;' : ''}
+${coordinateSystemFunctions}
 
-${velocityComponents}
-
-    return result;
-}
+${velocityFunction}
 
 void main() {
     ${lineMode ? `

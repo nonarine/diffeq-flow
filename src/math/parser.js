@@ -25,7 +25,7 @@ const OPERATORS = {
 };
 
 const BUILTIN_FUNCTIONS = new Set([
-    'sin', 'cos', 'tan', 'asin', 'acos', 'atan',
+    'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2',
     'sinh', 'cosh', 'tanh',
     'exp', 'log', 'log2', 'sqrt', 'abs',
     'floor', 'ceil', 'fract', 'sign',
@@ -283,7 +283,7 @@ function toJS(rpn, variables) {
 /**
  * Convert RPN AST to GLSL code
  */
-function toGLSL(rpn, variables, useDirectMapping = false) {
+function toGLSL(rpn, variables, useDirectMapping = false, posVarName = 'pos') {
     const stack = [];
     const varMap = {};
 
@@ -297,12 +297,12 @@ function toGLSL(rpn, variables, useDirectMapping = false) {
         const swizzles = ['x', 'y', 'z', 'w', 'u', 'v'];
         const velocityVars = ['dx', 'dy', 'dz', 'dw', 'du', 'dv'];
 
-        // Map position variables (x, y, z, w, u, v)
+        // Map position variables (x, y, z, w, u, v) or custom variables (r, theta, etc.)
         variables.forEach((v, i) => {
             if (i < 6) {
-                varMap[v] = `pos.${swizzles[i]}`;
+                varMap[v] = `${posVarName}.${swizzles[i]}`;
             } else {
-                varMap[v] = `pos[${i}]`;
+                varMap[v] = `${posVarName}[${i}]`;
             }
         });
 
@@ -376,7 +376,14 @@ function toGLSL(rpn, variables, useDirectMapping = false) {
                 args.unshift(stack.pop());
             }
 
-            stack.push(`${token.value}(${args.join(', ')})`);
+            // Map function names to GLSL equivalents
+            let glslFunc = token.value;
+            if (token.value === 'atan2') {
+                // GLSL uses atan(y, x) instead of atan2(y, x)
+                glslFunc = 'atan';
+            }
+
+            stack.push(`${glslFunc}(${args.join(', ')})`);
         }
     }
 
@@ -432,15 +439,17 @@ function generateGLSLFunctionDeclarations(availableVars) {
  * Main parser function
  * @param {string} expression - Math expression to parse
  * @param {number} dimensions - Number of dimensions
+ * @param {Array<string>} customVariables - Optional custom variable names (e.g., ['r', 'theta'])
+ * @param {string} posVarName - Optional GLSL position variable name (default: 'pos')
  * @returns {string} GLSL code
  */
-export function parseExpression(expression, dimensions) {
-    const variables = ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, dimensions);
+export function parseExpression(expression, dimensions, customVariables = null, posVarName = 'pos') {
+    const variables = customVariables || ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, dimensions);
 
     try {
         const tokens = tokenize(expression);
         const rpn = parse(tokens);
-        const glsl = toGLSL(rpn, variables);
+        const glsl = toGLSL(rpn, variables, false, posVarName);
         return glsl;
     } catch (error) {
         throw new Error(`Parse error: ${error.message}`);
@@ -459,13 +468,15 @@ export function getGLSLFunctionDeclarations() {
 /**
  * Parse all dimension expressions
  * @param {string[]} expressions - Array of expressions, one per dimension
+ * @param {Array<string>} customVariables - Optional custom variable names (e.g., ['r', 'theta'])
+ * @param {string} posVarName - Optional GLSL position variable name (default: 'pos')
  * @returns {string[]} Array of GLSL code strings
  */
-export function parseVectorField(expressions) {
+export function parseVectorField(expressions, customVariables = null, posVarName = 'pos') {
     const dimensions = expressions.length;
     return expressions.map((expr, i) => {
         try {
-            return parseExpression(expr.trim(), dimensions);
+            return parseExpression(expr.trim(), dimensions, customVariables, posVarName);
         } catch (error) {
             throw new Error(`Error in dimension ${i}: ${error.message}`);
         }
@@ -475,11 +486,12 @@ export function parseVectorField(expressions) {
 /**
  * Create JavaScript velocity evaluator functions
  * @param {string[]} expressions - Array of expressions, one per dimension
+ * @param {Array<string>} customVariables - Optional custom variable names (e.g., ['r', 'theta'])
  * @returns {Function[]} Array of evaluator functions
  */
-export function createVelocityEvaluators(expressions) {
+export function createVelocityEvaluators(expressions, customVariables = null) {
     const dimensions = expressions.length;
-    const variables = ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, dimensions);
+    const variables = customVariables || ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, dimensions);
 
     return expressions.map((expr, i) => {
         try {

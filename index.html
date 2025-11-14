@@ -768,8 +768,12 @@
             border-radius: 8px;
             box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
             overflow: hidden;
-            z-index: 900;
-            animation: slideInFromLeft 0.2s ease-out;
+        }
+
+        /* Wider panel for coordinate editor */
+        #coordinate-editor-panel {
+            width: 480px;
+            z-index: 300; /* Above controls panel (z-index: 200) */
         }
 
         @keyframes slideInFromLeft {
@@ -811,10 +815,137 @@
             color: #212121;
         }
 
+        /* Alias for coordinate editor */
+        .panel-header {
+            padding: 12px 16px;
+            background: #252525;
+            border-bottom: 1px solid #444;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        body.light-theme .panel-header {
+            background: #f5f5f5;
+            border-bottom-color: #ddd;
+        }
+
+        .panel-header h3 {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 500;
+            color: #fff;
+        }
+
+        body.light-theme .panel-header h3 {
+            color: #212121;
+        }
+
+        .panel-close {
+            background: none;
+            border: none;
+            color: #999;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .panel-close:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        body.light-theme .panel-close:hover {
+            background: rgba(0, 0, 0, 0.1);
+            color: #212121;
+        }
+
+        .panel-content {
+            padding: 20px;
+            max-height: calc(90vh - 110px);
+            overflow-y: auto;
+        }
+
         .floating-panel-content {
             padding: 12px;
             max-height: calc(90vh - 110px);
             overflow-y: auto;
+        }
+
+        /* Coordinate Editor Styles */
+        .coordinate-editor-content {
+            min-width: 400px;
+        }
+
+        .coordinate-variables {
+            margin: 20px 0 15px 0;
+        }
+
+        .coordinate-variables > div:first-child {
+            margin-bottom: 12px;
+        }
+
+        .coord-var-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+
+        .coord-var-label {
+            width: 60px !important;
+            flex-shrink: 0;
+            text-align: center;
+            font-weight: 500;
+        }
+
+        .coord-var-transform {
+            flex: 1;
+            min-width: 0; /* Allow flex item to shrink below content size */
+        }
+
+        .coordinate-editor-buttons {
+            margin-top: 20px;
+            padding-top: 15px;
+            border-top: 1px solid #444;
+            display: flex;
+            gap: 10px;
+        }
+
+        body.light-theme .coordinate-editor-buttons {
+            border-top-color: #ddd;
+        }
+
+        .coordinate-editor-buttons button {
+            flex: 1;
+            transition: all 0.2s;
+        }
+
+        .coordinate-editor-buttons button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .info-text {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 4px;
+            font-size: 11px;
+            line-height: 1.4;
+            color: #999;
+        }
+
+        body.light-theme .info-text {
+            background: rgba(0, 0, 0, 0.03);
+            color: #666;
         }
 
         #gradient-preset-toggle {
@@ -1144,6 +1275,11 @@
                     <option value="project">Linear Projection</option>
                     <option value="custom">Custom (Advanced)</option>
                 </select>
+            </div>
+
+            <div class="control-group">
+                <button id="configure-coordinates" class="secondary" style="width: 100%;">Configure Coordinates</button>
+                <div class="info">Define alternate coordinate systems (polar, spherical, etc.)</div>
             </div>
 
             <div id="mapper-controls">
@@ -1886,6 +2022,12 @@
     <!-- JSZip for bundling animation frames -->
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+    <!-- Coordinate System Modules (loaded before main.js) -->
+    <script type="module" src="src/ui/unicode-autocomplete.js"></script>
+    <script type="module" src="src/math/coordinate-systems.js"></script>
+    <script type="module" src="src/ui/coordinate-editor.js"></script>
+
     <!-- Register Service Worker and wait for it to be ready before loading modules -->
     <script>
         (async function() {
