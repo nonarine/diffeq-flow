@@ -4,6 +4,7 @@
  */
 
 import { SliderControl } from './control-base.js';
+import { resizeAccordion } from './accordion-utils.js';
 
 /**
  * AnimatableSliderControl
@@ -107,12 +108,18 @@ export class AnimatableSliderControl extends SliderControl {
         const animBtn = $(`#${this.id}-anim-btn`);
 
         if (this.animationEnabled) {
-            boundsContainer.slideDown(200);
+            boundsContainer.slideDown(200, () => {
+                // Resize accordion after animation completes
+                resizeAccordion(`#${this.id}`, 0);
+            });
             animBtn.addClass('active');
             animBtn.attr('title', 'Disable animation (🎬)');
             this.updateBoundsDisplay();
         } else {
-            boundsContainer.slideUp(200);
+            boundsContainer.slideUp(200, () => {
+                // Resize accordion after animation completes
+                resizeAccordion(`#${this.id}`, 0);
+            });
             animBtn.removeClass('active');
             animBtn.attr('title', 'Enable animation (🎬)');
         }

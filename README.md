@@ -17,7 +17,7 @@ A WebGL-based visualization tool for exploring n-dimensional dynamical systems t
 1. Clone this repository
 2. Open `index.html` in a modern browser (Chrome, Firefox, Edge recommended)
 3. Modify the vector field equations in the UI
-4. Click "Apply Changes" to see the visualization update
+4. Changes apply automatically after 300ms (auto-apply with debouncing)
 
 That's it! No npm install, no build process.
 
@@ -200,16 +200,29 @@ dw/dt = z
 - Try different particle counts to balance quality and performance
 - Use console to load presets: `loadPreset('3d_lorenz')`
 
-## Future Extensions
+## Recent Enhancements
 
-Potential enhancements:
+**Implemented Features:**
+- ✅ Custom integrators via UI (GLSL and custom expressions)
+- ✅ Export/import configurations (localStorage persistence, shareable URLs, user presets)
+- ✅ Video recording (animation system with frame capture, see `animations/README.md`)
+- ✅ Color modes (velocity magnitude, direction, combined, expression-based, gradient editor)
+- ✅ Implicit integrators with multiple solver methods (Fixed-Point, Midpoint, Newton's Method)
+- ✅ Domain transforms (logarithmic, exponential, tanh, etc.)
+- ✅ HDR rendering with tone mapping (ACES, Reinhard, Uncharted 2, etc.)
+- ✅ Animation system with parameter interpolation (see `ANIMATION_FORMAT.md`)
+- ✅ Custom mathematical functions in GLSL
 
-- Custom integrators via UI
-- More projection methods (PCA, t-SNE)
-- Export/import configurations
-- Video recording
-- Color modes (velocity magnitude, direction)
+**Future Possibilities:**
+- More projection methods (PCA, t-SNE, UMAP)
 - Poincaré sections for periodic orbits
 - Bifurcation diagrams
+- Real-time Lyapunov exponent visualization
+- Phase portraits with nullclines
+
+**Documentation:**
+- Technical details: See [CLAUDE.md](./CLAUDE.md)
+- Animation guide: See [animations/README.md](./animations/README.md)
+- All docs: See [DOCUMENTATION.md](./DOCUMENTATION.md)
 
 Enjoy exploring the beauty of dynamical systems!

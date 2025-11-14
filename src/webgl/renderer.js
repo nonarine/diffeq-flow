@@ -114,6 +114,8 @@ export class Renderer {
         this.luminanceGamma = config.luminanceGamma !== undefined ? config.luminanceGamma : 1.0;
         this.whitePoint = config.whitePoint !== undefined ? config.whitePoint : 2.0;
         this.particleIntensity = config.particleIntensity !== undefined ? config.particleIntensity : 1.0;
+        this.particleSize = config.particleSize !== undefined ? config.particleSize : 1.0;
+        this.particleRenderMode = config.particleRenderMode || 'points'; // 'points' or 'lines'
 
         // Depth testing (plasma mode)
         this.useDepthTest = config.useDepthTest !== undefined ? config.useDepthTest : false;
@@ -189,6 +191,11 @@ export class Renderer {
             this.particleSystem.getResolution(),
             this.strategy
         );
+
+        // Set line mode if configured
+        if (this.particleRenderMode === 'lines') {
+            this.textureManager.setLineMode(true);
+        }
 
         // Create framebuffer for particle position updates (not HDR, separate from screen rendering)
         this.updateFramebuffer = gl.createFramebuffer();
@@ -389,8 +396,10 @@ export class Renderer {
         });
         this.textureManager.initializeData(this.particleSystem.getAllData());
 
-        // Create particle index buffer
-        this.indexBuffer = this.createBuffer(this.particleSystem.getIndices());
+        // Create particle index buffers for both modes
+        this.indexBufferPoints = this.createBuffer(this.particleSystem.getIndices());
+        this.indexBufferLines = this.createLineIndexBuffer(this.particleSystem.getActualParticleCount());
+        this.vertexIdBufferLines = this.createLineVertexIdBuffer(this.particleSystem.getActualParticleCount());
 
         // Animation state
         this.isRunning = false;
@@ -406,6 +415,44 @@ export class Renderer {
         const buffer = gl.createBuffer();
         gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
         gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+        return buffer;
+    }
+
+    /**
+     * Create line mode index buffer (each particle index appears twice)
+     */
+    createLineIndexBuffer(particleCount) {
+        const gl = this.gl;
+        const indices = new Float32Array(particleCount * 2);
+
+        // Each particle renders 2 vertices: [0,0,1,1,2,2,3,3,...]
+        for (let i = 0; i < particleCount; i++) {
+            indices[i * 2] = i;
+            indices[i * 2 + 1] = i;
+        }
+
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+        return buffer;
+    }
+
+    /**
+     * Create vertex ID buffer for line mode (alternating 0,1 for prev/current)
+     */
+    createLineVertexIdBuffer(particleCount) {
+        const gl = this.gl;
+        const vertexIds = new Float32Array(particleCount * 2);
+
+        // Alternating pattern: [0,1,0,1,0,1,...]
+        // 0 = previous position, 1 = current position
+        for (let i = 0; i < particleCount * 2; i++) {
+            vertexIds[i] = i % 2;
+        }
+
+        const buffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+        gl.bufferData(gl.ARRAY_BUFFER, vertexIds, gl.STATIC_DRAW);
         return buffer;
     }
 
@@ -493,7 +540,8 @@ export class Renderer {
             // Note: Age is now stored in alpha channel of u_pos_0, no separate age shader needed
 
             // Create draw program
-            const drawVertexShader = generateDrawVertexShader(this.dimensions, mapper.code, velocityGLSL, this.strategy);
+            const isLineMode = this.particleRenderMode === 'lines';
+            const drawVertexShader = generateDrawVertexShader(this.dimensions, mapper.code, velocityGLSL, this.strategy, isLineMode);
             const drawFragmentShader = generateDrawFragmentShader(this.dimensions, colorCode, usesMaxVelocity);
 
             this.drawProgram = createProgram(gl, drawVertexShader, drawFragmentShader);
@@ -760,20 +808,37 @@ export class Renderer {
         // Prevent from dropping too low
         this.maxVelocity = Math.max(this.maxVelocity, 0.5);
 
-        // Bind particle indices
+        // Bind particle indices (different buffer for line mode)
         const aIndexLoc = gl.getAttribLocation(program, 'a_index');
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.indexBuffer);
+        const indexBuffer = this.particleRenderMode === 'lines' ? this.indexBufferLines : this.indexBufferPoints;
+        gl.bindBuffer(gl.ARRAY_BUFFER, indexBuffer);
         gl.enableVertexAttribArray(aIndexLoc);
         gl.vertexAttribPointer(aIndexLoc, 1, gl.FLOAT, false, 0, 0);
 
+        // Bind vertex ID buffer for line mode (distinguishes prev vs current vertex)
+        if (this.particleRenderMode === 'lines') {
+            const aVertexIdLoc = gl.getAttribLocation(program, 'a_vertex_id');
+            if (aVertexIdLoc !== -1) {
+                gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexIdBufferLines);
+                gl.enableVertexAttribArray(aVertexIdLoc);
+                gl.vertexAttribPointer(aVertexIdLoc, 1, gl.FLOAT, false, 0, 0);
+            }
+        }
+
         // Bind position textures (age is in alpha channel of u_pos_0)
         this.textureManager.bindReadTextures(program);
+
+        // Bind previous position textures if in line mode
+        if (this.particleRenderMode === 'lines') {
+            this.textureManager.bindPrevTextures(program);
+        }
 
         // Set uniforms
         gl.uniform1f(gl.getUniformLocation(program, 'u_particles_res'), this.particleSystem.getResolution());
         gl.uniform2f(gl.getUniformLocation(program, 'u_min'), this.bbox.min[0], this.bbox.min[1]);
         gl.uniform2f(gl.getUniformLocation(program, 'u_max'), this.bbox.max[0], this.bbox.max[1]);
         gl.uniform1f(gl.getUniformLocation(program, 'u_particle_intensity'), this.particleIntensity);
+        gl.uniform1f(gl.getUniformLocation(program, 'u_particle_size'), this.particleSize);
         gl.uniform1f(gl.getUniformLocation(program, 'u_color_saturation'), this.colorSaturation);
 
         // Set animation alpha parameter (for color expressions using 'a')
@@ -789,8 +854,14 @@ export class Renderer {
             gl.uniform1f(gl.getUniformLocation(program, 'u_velocity_log_scale'), this.velocityLogScale ? 1.0 : 0.0);
         }
 
-        // Draw particles
-        gl.drawArrays(gl.POINTS, 0, this.particleSystem.getActualParticleCount());
+        // Draw particles (points or lines)
+        if (this.particleRenderMode === 'lines') {
+            // In line mode, we render 2 vertices per particle (previous and current position)
+            gl.drawArrays(gl.LINES, 0, this.particleSystem.getActualParticleCount() * 2);
+        } else {
+            // Point mode
+            gl.drawArrays(gl.POINTS, 0, this.particleSystem.getActualParticleCount());
+        }
     }
 
     /**
@@ -1561,6 +1632,11 @@ export class Renderer {
                 this.particleSystem.getResolution(),
                 this.strategy
             );
+
+            // Restore line mode if configured
+            if (this.particleRenderMode === 'lines') {
+                this.textureManager.setLineMode(true);
+            }
             this.textureManager.initializeData(this.particleSystem.getAllData());
         }
 
@@ -1752,6 +1828,18 @@ export class Renderer {
             logger.verbose(`Particle intensity: ${this.particleIntensity} → ${config.particleIntensity}`);
             this.particleIntensity = config.particleIntensity;
         }
+        if (config.particleSize !== undefined) {
+            logger.verbose(`Particle size: ${this.particleSize} → ${config.particleSize}`);
+            this.particleSize = config.particleSize;
+        }
+        if (config.particleRenderMode !== undefined && config.particleRenderMode !== this.particleRenderMode) {
+            logger.info(`Particle render mode: ${this.particleRenderMode} → ${config.particleRenderMode}`);
+            this.particleRenderMode = config.particleRenderMode;
+            // Enable/disable line mode in texture manager
+            const isLineMode = this.particleRenderMode === 'lines';
+            this.textureManager.setLineMode(isLineMode);
+            needsRecompile = true; // Shader needs to be regenerated for line mode
+        }
         if (config.colorSaturation !== undefined) {
             logger.verbose(`Color saturation: ${this.colorSaturation} → ${config.colorSaturation}`);
             this.colorSaturation = config.colorSaturation;
@@ -1839,9 +1927,13 @@ export class Renderer {
             this.textureManager.resize(this.particleSystem.getResolution());
             this.textureManager.initializeData(this.particleSystem.getAllData());
 
-            // Recreate index buffer
-            this.gl.deleteBuffer(this.indexBuffer);
-            this.indexBuffer = this.createBuffer(this.particleSystem.getIndices());
+            // Recreate both index buffers and vertex ID buffer
+            this.gl.deleteBuffer(this.indexBufferPoints);
+            this.gl.deleteBuffer(this.indexBufferLines);
+            this.gl.deleteBuffer(this.vertexIdBufferLines);
+            this.indexBufferPoints = this.createBuffer(this.particleSystem.getIndices());
+            this.indexBufferLines = this.createLineIndexBuffer(this.particleSystem.getActualParticleCount());
+            this.vertexIdBufferLines = this.createLineVertexIdBuffer(this.particleSystem.getActualParticleCount());
         }
 
         if (config.bbox !== undefined) {

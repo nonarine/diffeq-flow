@@ -965,6 +965,7 @@
                         <option value="3d_lorenz">Lorenz Attractor (3D)</option>
                         <option value="3d_rossler">Rössler Attractor (3D)</option>
                         <option value="4d_hypersphere">4D Hypersphere Rotation</option>
+                        <option value="4d_double_pendulum">Double Pendulum (4D Chaotic)</option>
                     </optgroup>
                     <optgroup label="Custom Presets" id="custom-presets-group" style="display: none;">
                     </optgroup>
@@ -1042,8 +1043,10 @@
                     <input type="range" id="timestep">
                     <button class="slider-btn" data-slider="timestep" data-action="increase" title="Increase by 0.001">+</button>
                     <button class="slider-btn" data-slider="timestep" data-action="increase-large" title="Increase by 0.01">++</button>
+                    <button class="slider-btn" data-slider="timestep" data-action="reset" title="Reset to 0.01">↺</button>
+                    <!-- Animation button will be added by AnimatableTimestepControl -->
                 </div>
-                <div class="info">Fine control: +/- = 0.001, ++/-- = 0.01. Scaled by integrator cost factor.</div>
+                <div class="info">Fine control: +/- = 0.001, ++/-- = 0.01. Scaled by integrator cost factor. Click 🎬 to enable animation.</div>
             </div>
 
             <div class="control-group" id="implicit-iterations-group" style="display: none;">
@@ -1190,6 +1193,11 @@
                 <button id="open-rendering-settings" class="secondary" style="width: 100%;">Rendering Effects</button>
                 <div class="info">HDR, tone mapping, and particle intensity settings</div>
             </div>
+
+            <div class="control-group">
+                <button id="open-custom-functions" class="secondary" style="width: 100%;">Custom Functions</button>
+                <div class="info">Define custom mathematical functions in GLSL</div>
+            </div>
         </div>
 
         <h2>Advanced</h2>
@@ -1216,7 +1224,7 @@
             <button class="zoom-pan-btn" id="pan-up" title="Pan Up">▲</button>
             <button class="zoom-pan-btn" id="pan-up-right" title="Pan Up-Right">↗</button>
             <button class="zoom-pan-btn" id="pan-left" title="Pan Left">◀</button>
-            <button class="zoom-pan-btn" id="pan-reset" title="Reset View">⊙</button>
+            <button class="zoom-pan-btn" id="pan-reset" title="Center View at Origin">⊙</button>
             <button class="zoom-pan-btn" id="pan-right" title="Pan Right">▶</button>
             <button class="zoom-pan-btn" id="pan-down-left" title="Pan Down-Left">↙</button>
             <button class="zoom-pan-btn" id="pan-down" title="Pan Down">▼</button>
@@ -1316,7 +1324,15 @@
             <div class="control-group">
                 <label>Loops:</label>
                 <input type="number" id="animation-loops" value="1" min="1" max="100" style="width: 100%; padding: 6px; background: #333; border: 1px solid #555; color: #fff; border-radius: 3px;">
-                <div class="info">Number of complete alpha cycles (0.0 → 1.0 → 0.0)</div>
+                <div class="info" id="animation-loops-info">Number of complete alpha cycles (0.0 → 1.0 → 0.0)</div>
+            </div>
+
+            <div class="control-group">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="animation-half-loops" style="margin-right: 8px;">
+                    <span>Count as half-loops</span>
+                </label>
+                <div class="info">When enabled, 1 loop = 0.0 → 1.0 (one-way). When disabled, 1 loop = 0.0 → 1.0 → 0.0 (ping-pong)</div>
             </div>
 
             <div class="control-group" style="margin-top: 12px;">
@@ -1638,6 +1654,28 @@
                 <div class="info">Logarithmic scale (0.001 - 100.0). Brightness multiplier for particles. Use very low values (0.01-0.05) for attractor visualization.</div>
             </div>
 
+            <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Particle Size</h4>
+            <div class="control-group">
+                <label>Size: <span class="range-value" id="particle-size-value">1.0</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="particle-size" data-action="decrease">-</button>
+                    <input type="range" id="particle-size">
+                    <button class="slider-btn" data-slider="particle-size" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="particle-size" data-action="reset" title="Reset to default (1.0)">↺</button>
+                </div>
+                <div class="info">Logarithmic scale (0.1 - 10.0). Size of rendered particles in pixels.</div>
+            </div>
+
+            <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Particle Render Mode</h4>
+            <div class="control-group">
+                <label>Mode:</label>
+                <select id="particle-render-mode">
+                    <option value="points">Points</option>
+                    <option value="lines">Lines (Motion Trails)</option>
+                </select>
+                <div class="info">Render particles as points or as lines connecting consecutive positions for motion trails.</div>
+            </div>
+
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Color Saturation</h4>
             <div class="control-group">
                 <label>Saturation: <span class="range-value" id="color-saturation-value">1.00</span></label>
@@ -1672,6 +1710,48 @@
                 </div>
                 <div class="info">Desaturates dim regions, saturates bright regions (0.0 - 1.0). Sparse trails look washed out, dense accumulations pop with full color. Higher values = more aggressive effect.</div>
             </div>
+        </div>
+    </div>
+
+    <!-- Floating custom functions panel -->
+    <div id="custom-functions-panel" class="floating-panel" style="display: none;">
+        <div class="floating-panel-header">
+            <h3>Custom Functions</h3>
+        </div>
+        <div class="floating-panel-content">
+            <div class="info" style="margin-bottom: 16px;">
+                Define custom functions using mathematical syntax. Functions can be used in vector field expressions, color expressions, and mapper functions.
+            </div>
+
+            <h4 style="margin: 0 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Syntax</h4>
+            <div class="info" style="margin-bottom: 16px; font-family: monospace; background: #000; padding: 8px; border-radius: 4px; font-size: 11px;">
+                functionName(arg1, arg2, ...) = expression<br>
+                <br>
+                <span style="color: #888;">Examples:</span><br>
+                <span style="color: #4CAF50;">smoothstep(x, a, b) = ((x-a)/(b-a))^3 * (3 - 2*((x-a)/(b-a)))</span><br>
+                <span style="color: #4CAF50;">lerp(a, b, t) = a * (1-t) + b * t</span><br>
+                <span style="color: #4CAF50;">sqr(x) = x * x</span><br>
+                <span style="color: #4CAF50;">cube(x) = x * x * x</span>
+            </div>
+
+            <h4 style="margin: 0 0 8px 0; padding: 0; font-size: 14px; color: #4CAF50;">Function Definitions</h4>
+            <div class="control-group">
+                <textarea id="custom-functions-input"
+                    rows="12"
+                    style="width: 100%; font-family: 'Courier New', monospace; font-size: 12px; background: #1a1a1a; color: #4CAF50; border: 1px solid #444; border-radius: 4px; padding: 10px; resize: vertical;"
+                    placeholder="Enter custom function definitions (one per line)...&#10;&#10;Example:&#10;smoothstep(x, a, b) = ((x-a)/(b-a))^3 * (3 - 2*((x-a)/(b-a)))"></textarea>
+                <div class="info">One function per line. Use standard math operators (+, -, *, /, ^) and built-in functions (sin, cos, exp, log, sqrt, abs, etc.)</div>
+            </div>
+
+            <div class="control-group" style="margin-top: 12px;">
+                <button id="apply-custom-functions" style="width: 100%; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                    Apply Functions
+                </button>
+            </div>
+
+            <div id="custom-functions-error" style="display: none; margin-top: 12px; padding: 8px; background: rgba(244, 67, 54, 0.1); border: 1px solid #f44336; border-radius: 4px; color: #f44336; font-size: 11px;"></div>
+
+            <div id="custom-functions-success" style="display: none; margin-top: 12px; padding: 8px; background: rgba(76, 175, 80, 0.1); border: 1px solid #4CAF50; border-radius: 4px; color: #4CAF50; font-size: 11px;"></div>
         </div>
     </div>
 
@@ -1711,7 +1791,15 @@
             <div class="control-group">
                 <label>Loops:</label>
                 <input type="number" id="animation-loops" value="1" min="1" max="100" style="width: 100%; padding: 6px; background: #333; border: 1px solid #555; color: #fff; border-radius: 3px;">
-                <div class="info">Number of complete alpha cycles (0.0 → 1.0 → 0.0)</div>
+                <div class="info" id="animation-loops-info">Number of complete alpha cycles (0.0 → 1.0 → 0.0)</div>
+            </div>
+
+            <div class="control-group">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" id="animation-half-loops" style="margin-right: 8px;">
+                    <span>Count as half-loops</span>
+                </label>
+                <div class="info">When enabled, 1 loop = 0.0 → 1.0 (one-way). When disabled, 1 loop = 0.0 → 1.0 → 0.0 (ping-pong)</div>
             </div>
 
             <div class="control-group" style="margin-top: 16px;">

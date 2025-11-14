@@ -59,12 +59,14 @@ echo "Creating video at ${FPS} fps..."
 # Create video with ffmpeg
 # -framerate: input frame rate
 # -i: input pattern
+# -vf scale: ensure dimensions are divisible by 2 (required for H.264)
 # -c:v libx264: H.264 codec
 # -pix_fmt yuv420p: compatible pixel format
 # -preset slow: better compression
 # -crf 18: quality (lower = better, 18 = visually lossless)
 ffmpeg -framerate "$FPS" \
     -pattern_type glob -i "$FRAMES_DIR/frame_*.png" \
+    -vf "scale=trunc(iw/2)*2:trunc(ih/2)*2" \
     -c:v libx264 \
     -pix_fmt yuv420p \
     -preset slow \

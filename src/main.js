@@ -6,6 +6,13 @@ import { Renderer } from './webgl/renderer.js';
 import { initControls, loadPreset } from './ui/controls-v2.js';
 import { logger } from './utils/debug-logger.js';
 import { Animator } from './animation/animator.js';
+import { setCustomFunctions, getCustomFunctions } from './math/parser.js';
+
+// Expose MathParser API to window for use in UI controls
+window.MathParser = {
+    setCustomFunctions,
+    getCustomFunctions
+};
 
 // Initialize when DOM is ready
 $(document).ready(function() {
@@ -487,16 +494,16 @@ $(document).ready(function() {
         $('#pan-down-left').on('click', () => panView(-1, -1));
         $('#pan-down-right').on('click', () => panView(1, -1));
 
-        // Reset button - same as the Reset View button
+        // Center View at Origin button - centers view at (0,0) while keeping current zoom
         $('#pan-reset').on('click', function() {
-            const aspectRatio = canvas.width / canvas.height;
-            const height = 10;
-            const width = height * aspectRatio;
+            const currentBBox = renderer.bbox;
+            const currentWidth = currentBBox.max[0] - currentBBox.min[0];
+            const currentHeight = currentBBox.max[1] - currentBBox.min[1];
 
             renderer.updateConfig({
                 bbox: {
-                    min: [-width / 2, -5],
-                    max: [width / 2, 5]
+                    min: [-currentWidth / 2, -currentHeight / 2],
+                    max: [currentWidth / 2, currentHeight / 2]
                 },
                 reinitializeParticles: false
             });

@@ -13,7 +13,7 @@ export class TextureManager {
         this.resolution = resolution;
         this.strategy = strategy;
 
-        // Create read and write texture pairs for each dimension
+        // Create read and write texture pairs for each dimension (dual buffering for point mode)
         this.readTextures = [];
         this.writeTextures = [];
 
@@ -21,6 +21,10 @@ export class TextureManager {
             this.readTextures.push(this.createTexture());
             this.writeTextures.push(this.createTexture());
         }
+
+        // Triple buffering for line mode (lazy initialized when needed)
+        this.lineMode = false;
+        this.prevTextures = null;
 
         // Note: Age is stored in alpha channel of dimension 0, no separate age textures needed
 
@@ -59,6 +63,25 @@ export class TextureManager {
     }
 
     /**
+     * Enable or disable line rendering mode (triple buffering)
+     * @param {boolean} enabled - Whether to enable line mode
+     */
+    setLineMode(enabled) {
+        if (enabled === this.lineMode) return;
+
+        const gl = this.gl;
+        this.lineMode = enabled;
+
+        if (enabled && !this.prevTextures) {
+            // Lazy initialize previous textures for line mode
+            this.prevTextures = [];
+            for (let i = 0; i < this.dimensions; i++) {
+                this.prevTextures.push(this.createTexture());
+            }
+        }
+    }
+
+    /**
      * Initialize textures with particle data
      * @param {TypedArray[]} data - Array of encoded particle positions (one per dimension)
      */
@@ -94,6 +117,22 @@ export class TextureManager {
                 format.type,
                 null
             );
+
+            // Initialize previous textures if in line mode
+            if (this.lineMode && this.prevTextures) {
+                gl.bindTexture(gl.TEXTURE_2D, this.prevTextures[i]);
+                gl.texImage2D(
+                    gl.TEXTURE_2D,
+                    0,
+                    format.internalFormat,
+                    this.resolution,
+                    this.resolution,
+                    0,
+                    format.format,
+                    format.type,
+                    data[i] // Initialize with same data so first frame lines work
+                );
+            }
         }
 
         // Initialize alpha channel of dimension 0 to age = 1.0 so particles render immediately
@@ -125,6 +164,22 @@ export class TextureManager {
                 format.type,
                 dim0Data
             );
+
+            // Also upload to previous texture if in line mode
+            if (this.lineMode && this.prevTextures) {
+                gl.bindTexture(gl.TEXTURE_2D, this.prevTextures[0]);
+                gl.texImage2D(
+                    gl.TEXTURE_2D,
+                    0,
+                    format.internalFormat,
+                    this.resolution,
+                    this.resolution,
+                    0,
+                    format.format,
+                    format.type,
+                    dim0Data
+                );
+            }
         }
     }
 
@@ -148,6 +203,29 @@ export class TextureManager {
     }
 
     /**
+     * Bind previous frame textures to shader uniforms (line mode only)
+     * @param {WebGLProgram} program - Shader program
+     */
+    bindPrevTextures(program) {
+        if (!this.lineMode || !this.prevTextures) return;
+
+        const gl = this.gl;
+
+        for (let i = 0; i < this.dimensions; i++) {
+            const uniformName = `u_prev_pos_${i}`;
+            const location = gl.getUniformLocation(program, uniformName);
+
+            if (location !== null) {
+                // Use texture units after the current position textures
+                const textureUnit = this.textureUnitOffset + this.dimensions + i;
+                gl.activeTexture(gl.TEXTURE0 + textureUnit);
+                gl.bindTexture(gl.TEXTURE_2D, this.prevTextures[i]);
+                gl.uniform1i(location, textureUnit);
+            }
+        }
+    }
+
+    /**
      * Get write texture for a specific dimension
      * @param {number} dimension - Dimension index
      */
@@ -156,12 +234,21 @@ export class TextureManager {
     }
 
     /**
-     * Swap read and write textures (ping-pong)
+     * Swap read and write textures (ping-pong for points, triple-buffer rotation for lines)
      */
     swap() {
-        const temp = this.readTextures;
-        this.readTextures = this.writeTextures;
-        this.writeTextures = temp;
+        if (this.lineMode && this.prevTextures) {
+            // Triple buffer rotation: prev <- read <- write <- prev
+            const temp = this.prevTextures;
+            this.prevTextures = this.readTextures;
+            this.readTextures = this.writeTextures;
+            this.writeTextures = temp;
+        } else {
+            // Standard dual-buffer ping-pong
+            const temp = this.readTextures;
+            this.readTextures = this.writeTextures;
+            this.writeTextures = temp;
+        }
 
         // Age is now in alpha channel of dimension 0, swapped with position textures
     }
@@ -177,6 +264,9 @@ export class TextureManager {
         for (let i = 0; i < this.dimensions; i++) {
             gl.deleteTexture(this.readTextures[i]);
             gl.deleteTexture(this.writeTextures[i]);
+            if (this.prevTextures) {
+                gl.deleteTexture(this.prevTextures[i]);
+            }
         }
 
         // Create new ones
@@ -186,6 +276,14 @@ export class TextureManager {
         for (let i = 0; i < this.dimensions; i++) {
             this.readTextures.push(this.createTexture());
             this.writeTextures.push(this.createTexture());
+        }
+
+        // Recreate previous textures if in line mode
+        if (this.lineMode && this.prevTextures) {
+            this.prevTextures = [];
+            for (let i = 0; i < this.dimensions; i++) {
+                this.prevTextures.push(this.createTexture());
+            }
         }
     }
 
@@ -198,10 +296,14 @@ export class TextureManager {
         for (let i = 0; i < this.dimensions; i++) {
             gl.deleteTexture(this.readTextures[i]);
             gl.deleteTexture(this.writeTextures[i]);
+            if (this.prevTextures) {
+                gl.deleteTexture(this.prevTextures[i]);
+            }
         }
 
         this.readTextures = [];
         this.writeTextures = [];
+        this.prevTextures = null;
     }
 
     /**

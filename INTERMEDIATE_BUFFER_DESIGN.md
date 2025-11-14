@@ -1,5 +1,12 @@
 # Intermediate Results Buffer Architecture
 
+> **⚠️ STATUS: NOT YET IMPLEMENTED**
+> This document describes a proposed future architecture.
+> Current implementation uses per-dimension shaders without intermediate buffers.
+> Last updated: 2025-11-13
+
+---
+
 ## Problem Statement
 
 Current architecture splits particle updates across N separate shaders (one per dimension), but advanced methods require expensive computations that should be shared:

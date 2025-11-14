@@ -3,6 +3,8 @@
  * Each mapper reduces n-dimensional position to 2D screen coordinates
  */
 
+import { parseExpression } from './parser.js';
+
 /**
  * Select mapper - choose 2 dimensions to display (with optional depth)
  * @param {number} dim1 - First dimension index (0-based)
@@ -193,19 +195,51 @@ export function getMapper(type, dimensions, params = {}) {
             }
             return selectMapper(0, 1, dimensions);
 
+        case 'custom': {
+            const horizontalExpr = params.horizontalExpr || 'x';
+            const verticalExpr = params.verticalExpr || 'y';
+            const depthExpr = params.depthExpr || '';
+            return customMapper(horizontalExpr, verticalExpr, depthExpr, dimensions);
+        }
+
         default:
             return selectMapper(0, 1, dimensions);
     }
 }
 
 /**
- * Create custom mapper from user GLSL code
+ * Create custom mapper from user math expressions
+ * @param {string} horizontalExpr - Math expression for horizontal coordinate
+ * @param {string} verticalExpr - Math expression for vertical coordinate
+ * @param {string} depthExpr - Optional math expression for depth coordinate
+ * @param {number} dimensions - Number of dimensions
  */
-export function customMapper(glslCode, dimensions) {
+export function customMapper(horizontalExpr, verticalExpr, depthExpr, dimensions) {
+    // Parse expressions to GLSL
+    const horizontalGLSL = parseExpression(horizontalExpr || 'x', dimensions);
+    const verticalGLSL = parseExpression(verticalExpr || 'y', dimensions);
+    const depthGLSL = depthExpr ? parseExpression(depthExpr, dimensions) : '0.0';
+
     return {
         name: 'Custom',
-        params: {},
-        code: glslCode
+        params: { horizontalExpr, verticalExpr, depthExpr },
+        code: `
+// Custom mapper
+vec2 project_to_2d(vec${dimensions} pos) {
+    return vec2(
+        ${horizontalGLSL},
+        ${verticalGLSL}
+    );
+}
+
+vec3 project_to_3d(vec${dimensions} pos) {
+    return vec3(
+        ${horizontalGLSL},
+        ${verticalGLSL},
+        ${depthGLSL}
+    );
+}
+`
     };
 }
 

@@ -24,7 +24,7 @@ const OPERATORS = {
     '%': { precedence: 2, associativity: 'L' }
 };
 
-const FUNCTIONS = new Set([
+const BUILTIN_FUNCTIONS = new Set([
     'sin', 'cos', 'tan', 'asin', 'acos', 'atan',
     'sinh', 'cosh', 'tanh',
     'exp', 'log', 'log2', 'sqrt', 'abs',
@@ -32,6 +32,10 @@ const FUNCTIONS = new Set([
     'min', 'max', 'pow', 'mod',
     'length', 'normalize', 'dot'
 ]);
+
+// Custom function registry
+// Format: { functionName: { params: ['x', 'y', ...], body: 'expression' } }
+const customFunctions = {};
 
 const CONSTANTS = {
     'pi': 'PI',
@@ -77,7 +81,7 @@ function tokenize(expr) {
             }
 
             let token;
-            if (FUNCTIONS.has(name)) {
+            if (BUILTIN_FUNCTIONS.has(name) || customFunctions.hasOwnProperty(name)) {
                 token = { type: TOKEN_TYPES.FUNCTION, value: name };
             } else if (CONSTANTS.hasOwnProperty(name)) {
                 token = { type: TOKEN_TYPES.NUMBER, value: CONSTANTS[name], isConstant: true };
@@ -279,34 +283,41 @@ function toJS(rpn, variables) {
 /**
  * Convert RPN AST to GLSL code
  */
-function toGLSL(rpn, variables) {
+function toGLSL(rpn, variables, useDirectMapping = false) {
     const stack = [];
     const varMap = {};
 
-    // Map variable names to swizzle notation
-    const swizzles = ['x', 'y', 'z', 'w', 'u', 'v'];
-    const velocityVars = ['dx', 'dy', 'dz', 'dw', 'du', 'dv'];
+    if (useDirectMapping) {
+        // Direct mapping for custom functions - variables map to themselves
+        variables.forEach(v => {
+            varMap[v] = v;
+        });
+    } else {
+        // Map variable names to swizzle notation (for vector fields)
+        const swizzles = ['x', 'y', 'z', 'w', 'u', 'v'];
+        const velocityVars = ['dx', 'dy', 'dz', 'dw', 'du', 'dv'];
 
-    // Map position variables (x, y, z, w, u, v)
-    variables.forEach((v, i) => {
-        if (i < 6) {
-            varMap[v] = `pos.${swizzles[i]}`;
-        } else {
-            varMap[v] = `pos[${i}]`;
-        }
-    });
+        // Map position variables (x, y, z, w, u, v)
+        variables.forEach((v, i) => {
+            if (i < 6) {
+                varMap[v] = `pos.${swizzles[i]}`;
+            } else {
+                varMap[v] = `pos[${i}]`;
+            }
+        });
 
-    // Map velocity variables (dx, dy, dz, dw, du, dv)
-    velocityVars.forEach((v, i) => {
-        if (i < 6) {
-            varMap[v] = `velocity.${swizzles[i]}`;
-        } else {
-            varMap[v] = `velocity[${i}]`;
-        }
-    });
+        // Map velocity variables (dx, dy, dz, dw, du, dv)
+        velocityVars.forEach((v, i) => {
+            if (i < 6) {
+                varMap[v] = `velocity.${swizzles[i]}`;
+            } else {
+                varMap[v] = `velocity[${i}]`;
+            }
+        });
 
-    // Map animation alpha variable to uniform
-    varMap['a'] = 'u_alpha';
+        // Map animation alpha variable to uniform
+        varMap['a'] = 'u_alpha';
+    }
 
     for (const token of rpn) {
         if (token.type === TOKEN_TYPES.NUMBER) {
@@ -380,8 +391,41 @@ function toGLSL(rpn, variables) {
  * Get the number of arguments a function expects
  */
 function getFunctionArgCount(funcName) {
+    // Check custom functions first
+    if (customFunctions.hasOwnProperty(funcName)) {
+        return customFunctions[funcName].params.length;
+    }
+    // Check built-in functions
     const multiArg = new Set(['min', 'max', 'pow', 'mod', 'dot', 'atan2']);
     return multiArg.has(funcName) ? 2 : 1;
+}
+
+/**
+ * Generate GLSL function declarations for all custom functions
+ * @param {string[]} availableVars - Variables available in the current context
+ * @returns {string} GLSL function declarations
+ */
+function generateGLSLFunctionDeclarations(availableVars) {
+    let declarations = '';
+
+    for (const [funcName, func] of Object.entries(customFunctions)) {
+        // Parse the function body
+        const bodyTokens = tokenize(func.body);
+        const bodyRpn = parse(bodyTokens);
+
+        // Convert body to GLSL using function parameters as variables
+        // Use direct mapping so parameters are used as-is (not mapped to pos.x, etc.)
+        const bodyGLSL = toGLSL(bodyRpn, func.params, true);
+
+        // Generate GLSL function declaration
+        declarations += `float ${funcName}(`;
+        declarations += func.params.map(p => `float ${p}`).join(', ');
+        declarations += `) {\n`;
+        declarations += `    return ${bodyGLSL};\n`;
+        declarations += `}\n\n`;
+    }
+
+    return declarations;
 }
 
 /**
@@ -401,6 +445,15 @@ export function parseExpression(expression, dimensions) {
     } catch (error) {
         throw new Error(`Parse error: ${error.message}`);
     }
+}
+
+/**
+ * Get GLSL function declarations for custom functions
+ * This should be prepended to shaders that use custom functions
+ * @returns {string} GLSL function declarations
+ */
+export function getGLSLFunctionDeclarations() {
+    return generateGLSLFunctionDeclarations([]);
 }
 
 /**
@@ -442,4 +495,82 @@ export function createVelocityEvaluators(expressions) {
             throw new Error(`Error creating evaluator for dimension ${i}: ${error.message}`);
         }
     });
+}
+
+/**
+ * Parse and register custom function definitions
+ * @param {string} functionsText - Multi-line text with function definitions
+ * Format: functionName(arg1, arg2, ...) = expression
+ */
+export function setCustomFunctions(functionsText) {
+    // Clear existing custom functions
+    for (const key in customFunctions) {
+        delete customFunctions[key];
+    }
+
+    if (!functionsText || !functionsText.trim()) {
+        return; // Empty input, just cleared functions
+    }
+
+    const lines = functionsText.split('\n');
+
+    for (let lineNum = 0; lineNum < lines.length; lineNum++) {
+        const line = lines[lineNum].trim();
+
+        // Skip empty lines and comments
+        if (!line || line.startsWith('//') || line.startsWith('#')) {
+            continue;
+        }
+
+        // Parse function definition: functionName(arg1, arg2) = expression
+        const match = line.match(/^([a-zA-Z_][a-zA-Z_0-9]*)\s*\(([^)]*)\)\s*=\s*(.+)$/);
+
+        if (!match) {
+            throw new Error(`Line ${lineNum + 1}: Invalid function definition syntax. Expected: functionName(arg1, arg2) = expression`);
+        }
+
+        const [, functionName, paramsStr, body] = match;
+
+        // Check if function name conflicts with built-in functions
+        if (BUILTIN_FUNCTIONS.has(functionName)) {
+            throw new Error(`Line ${lineNum + 1}: Cannot override built-in function '${functionName}'`);
+        }
+
+        // Check if function name conflicts with constants
+        if (CONSTANTS.hasOwnProperty(functionName)) {
+            throw new Error(`Line ${lineNum + 1}: Cannot use constant name '${functionName}' as function name`);
+        }
+
+        // Parse parameters
+        const params = paramsStr.split(',').map(p => p.trim()).filter(p => p);
+
+        // Validate parameters are valid identifiers
+        for (const param of params) {
+            if (!/^[a-zA-Z_][a-zA-Z_0-9]*$/.test(param)) {
+                throw new Error(`Line ${lineNum + 1}: Invalid parameter name '${param}'`);
+            }
+        }
+
+        // Validate the function body can be parsed
+        try {
+            const testTokens = tokenize(body);
+            parse(testTokens);
+        } catch (error) {
+            throw new Error(`Line ${lineNum + 1}: Error parsing function body: ${error.message}`);
+        }
+
+        // Store the function definition
+        customFunctions[functionName] = {
+            params: params,
+            body: body
+        };
+    }
+}
+
+/**
+ * Get current custom function definitions
+ * @returns {object} Custom functions registry
+ */
+export function getCustomFunctions() {
+    return { ...customFunctions };
 }

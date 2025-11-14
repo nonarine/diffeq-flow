@@ -11,6 +11,7 @@ import {
     calculateLogIncrement,
     calculateLinearIncrement
 } from './control-utilities.js';
+import { resizeAccordion } from './accordion-utils.js';
 
 /**
  * ParameterControl - Generic control for any parameter with metadata
@@ -350,15 +351,7 @@ export class AnimatableParameterControl extends ParameterControl {
      * Update accordion section height to fit content
      */
     updateAccordionHeight() {
-        // Find the accordion section (not content) and update its max-height
-        setTimeout(() => {
-            const $accordionSection = $('#transform-controls').closest('.accordion-section');
-            if ($accordionSection.length && !$accordionSection.hasClass('collapsed')) {
-                // Recalculate and update max-height to fit all content
-                const newHeight = $accordionSection[0].scrollHeight;
-                $accordionSection.css('max-height', newHeight + 'px');
-            }
-        }, 0);
+        resizeAccordion('#transform-controls', 0);
     }
 
     /**

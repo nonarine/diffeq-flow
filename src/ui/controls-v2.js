@@ -15,11 +15,13 @@ import {
     CheckboxControl
 } from './control-base.js';
 import { AnimatableSliderControl } from './animatable-slider.js';
+import { AnimatableTimestepControl } from './animatable-timestep.js';
 import { AnimatableParameterControl } from './parameter-control.js';
 import { DimensionInputsControl, MapperParamsControl, GradientControl, TransformParamsControl } from './custom-controls.js';
 import { initGradientEditor } from './gradient-editor.js';
 import { getDefaultGradient } from '../math/gradients.js';
 import { logger } from '../utils/debug-logger.js';
+import { resizeAccordion } from './accordion-utils.js';
 
 /**
  * Initialize UI controls with ControlManager
@@ -101,14 +103,8 @@ export function initControls(renderer, callback) {
             $('#implicit-iterations-group').toggle(isImplicit);
             $('#solution-method-group').toggle(isImplicit);
 
-            // Update accordion height to accommodate shown/hidden controls
-            // Use setTimeout to allow DOM to update first
-            setTimeout(() => {
-                const $accordionSection = $('#integrator').closest('.accordion-section');
-                if ($accordionSection.length && !$accordionSection.hasClass('collapsed')) {
-                    $accordionSection.css('max-height', $accordionSection[0].scrollHeight + 'px');
-                }
-            }, 0);
+            // Resize accordion to accommodate shown/hidden controls
+            resizeAccordion('#integrator', 0);
         }
     }));
 
@@ -116,14 +112,16 @@ export function initControls(renderer, callback) {
         settingsKey: 'solutionMethod'
     }));
 
-    const timestepControl = manager.register(new TimestepControl('timestep', 0.01, {
+    const timestepControl = manager.register(new AnimatableTimestepControl('timestep', 0.01, {
         min: 0.001,
         max: 2.5,
         step: 0.001,
         smallIncrement: 0.001,  // - and + buttons
         largeIncrement: 0.01,   // -- and ++ buttons
         displayId: 'timestep-value',
-        displayFormat: v => v.toFixed(4)
+        displayFormat: v => v.toFixed(4),
+        animationMin: 0.001,    // Animation range: 0.001 to 0.1
+        animationMax: 0.1
     }));
 
     const implicitIterationsControl = manager.register(new SliderControl('implicit-iterations', 4, {
@@ -395,6 +393,18 @@ export function initControls(renderer, callback) {
         displayFormat: v => v.toFixed(3)
     }));
 
+    const particleSizeControl = manager.register(new LogSliderControl('particle-size', 1.0, {
+        settingsKey: 'particleSize',
+        minValue: 0.1,
+        maxValue: 10.0,
+        displayId: 'particle-size-value',
+        displayFormat: v => v.toFixed(1)
+    }));
+
+    const particleRenderModeControl = manager.register(new SelectControl('particle-render-mode', 'points', {
+        settingsKey: 'particleRenderMode'
+    }));
+
     const colorSaturationControl = manager.register(new PercentSliderControl('color-saturation', 1.0, {
         settingsKey: 'colorSaturation',
         displayId: 'color-saturation-value',
@@ -491,7 +501,7 @@ export function initControls(renderer, callback) {
                 <label>Animation Alpha (a): <span class="range-value" id="animation-alpha-value">0.00</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="animation-alpha" data-action="decrease">-</button>
-                    <input type="range" id="animation-alpha" min="0" max="100" value="0" step="1">
+                    <input type="range" id="animation-alpha">
                     <button class="slider-btn" data-slider="animation-alpha" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="animation-alpha" data-action="reset" title="Reset to 0.0">↺</button>
                     <button id="animation-alpha-animate-btn" class="slider-btn" style="margin-left: 8px; background: #4CAF50; color: white;" title="Auto-animate">▶</button>
@@ -513,7 +523,7 @@ export function initControls(renderer, callback) {
                 <label>Steps per Alpha Increment: <span class="range-value" id="animation-speed-value">10</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="animation-speed" data-action="decrease">-</button>
-                    <input type="range" id="animation-speed" min="1" max="100" value="10" step="1">
+                    <input type="range" id="animation-speed">
                     <button class="slider-btn" data-slider="animation-speed" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="animation-speed" data-action="reset" title="Reset to 10">↺</button>
                 </div>
@@ -547,8 +557,8 @@ export function initControls(renderer, callback) {
 
     // Animation speed control (linear scale for steps)
     const animationSpeedControl = manager.register(new SliderControl('animation-speed', 10, {
-        minValue: 1,
-        maxValue: 100,
+        min: 1,
+        max: 200,
         displayId: 'animation-speed-value',
         displayFormat: v => {
             animationStepsPerIncrement = Math.round(v);
@@ -839,6 +849,58 @@ export function initControls(renderer, callback) {
         showRenderingPanel();
     });
 
+    // ========================================
+    // Custom Functions Panel
+    // ========================================
+
+    function showCustomFunctionsPanel() {
+        $('#custom-functions-panel').show();
+    }
+
+    function hideCustomFunctionsPanel() {
+        $('#custom-functions-panel').hide();
+    }
+
+    $('#open-custom-functions').on('click', function() {
+        showCustomFunctionsPanel();
+    });
+
+    // Apply custom functions button
+    $('#apply-custom-functions').on('click', function() {
+        const functionsText = $('#custom-functions-input').val();
+        $('#custom-functions-error').hide();
+        $('#custom-functions-success').hide();
+
+        try {
+            // Parse and validate custom functions
+            window.MathParser.setCustomFunctions(functionsText);
+
+            // Show success message
+            const functionCount = functionsText.trim() ? functionsText.trim().split('\n').filter(line => line.trim() && !line.trim().startsWith('//')).length : 0;
+            $('#custom-functions-success').text(`✓ Successfully loaded ${functionCount} custom function(s)`).show();
+
+            // Save to localStorage
+            localStorage.setItem('customFunctions', functionsText);
+
+            // Trigger re-render
+            debouncedApply();
+        } catch (error) {
+            // Show error message
+            $('#custom-functions-error').text(`Error: ${error.message}`).show();
+        }
+    });
+
+    // Load custom functions from localStorage
+    const savedFunctions = localStorage.getItem('customFunctions');
+    if (savedFunctions) {
+        $('#custom-functions-input').val(savedFunctions);
+        try {
+            window.MathParser.setCustomFunctions(savedFunctions);
+        } catch (error) {
+            console.error('Error loading saved custom functions:', error);
+        }
+    }
+
     // Animation section accordion toggle
     $('#animation-section-toggle').on('click', function() {
         const content = $('#animation-section-content');
@@ -874,6 +936,7 @@ export function initControls(renderer, callback) {
             captureFrames = false,
             totalFrames = 0,
             loops = 1,
+            halfLoops = false,
             onProgress = null,
             onComplete = null
         } = options;
@@ -887,8 +950,11 @@ export function initControls(renderer, callback) {
             frameCaptureTotal = totalFrames;
             frameCaptureCount = 0;
             capturedFrames = [];
-            // Calculate alpha increment: each loop goes 0->1->0 (2 ranges)
-            frameCaptureAlphaIncrement = (loops * 2.0) / totalFrames;
+            // Calculate alpha increment based on half-loops mode
+            // halfLoops=false: each loop goes 0->1->0 (2 ranges per loop)
+            // halfLoops=true: each loop goes 0->1 (1 range per loop)
+            const rangesPerLoop = halfLoops ? 1.0 : 2.0;
+            frameCaptureAlphaIncrement = (loops * rangesPerLoop) / totalFrames;
         } else {
             frameCaptureMode = 'continuous';
             frameCaptureAlphaIncrement = 0.01;
@@ -1222,14 +1288,47 @@ export function initControls(renderer, callback) {
         }
     });
 
+    // Update loops info text based on half-loops checkbox
+    $('#animation-half-loops').on('change', function() {
+        const isHalfLoops = $(this).is(':checked');
+        const infoText = isHalfLoops
+            ? 'Number of half cycles (1 = 0.0 → 1.0, 2 = 0.0 → 1.0 → 0.0)'
+            : 'Number of complete alpha cycles (0.0 → 1.0 → 0.0)';
+        $('#animation-loops-info').text(infoText);
+    });
+
     // Create Animation button - captures frames during alpha animation
     $('#animation-create-btn').on('click', function() {
+        const createBtn = $(this);
+
+        // Check if button is in "stop" mode
+        if (createBtn.data('stop-animation')) {
+            // Stop the animation early
+            stopAnimation();
+
+            // Restore button state
+            createBtn.text('▶ Create Animation');
+            createBtn.css('background', '#4CAF50');
+            createBtn.data('stop-animation', false);
+
+            $('#animation-frames').prop('disabled', false);
+            $('#animation-loops').prop('disabled', false);
+            $('#animation-half-loops').prop('disabled', false);
+            $('#animation-download-btn').prop('disabled', capturedFrames.length === 0);
+
+            // Update progress to show it was stopped
+            $('#progress-text').text(`Stopped: ${capturedFrames.length} frames captured`);
+
+            logger.info(`Animation stopped early: ${capturedFrames.length} frames captured`);
+            return;
+        }
+
         if (animationRunning) return;
 
         const framesInput = $('#animation-frames');
         const loopsInput = $('#animation-loops');
+        const halfLoopsCheckbox = $('#animation-half-loops');
         const downloadBtn = $('#animation-download-btn');
-        const createBtn = $(this);
         const progressContainer = $('#animation-progress');
         const progressBar = $('#progress-bar');
         const progressText = $('#progress-text');
@@ -1238,12 +1337,16 @@ export function initControls(renderer, callback) {
         // Get parameters
         const totalFrames = parseInt(framesInput.val()) || 100;
         const loops = parseInt(loopsInput.val()) || 1;
+        const isHalfLoops = halfLoopsCheckbox.is(':checked');
 
-        // Update UI
-        createBtn.prop('disabled', true);
-        createBtn.text('⏳ Creating...');
+        // Update UI - button becomes stop button
+        createBtn.prop('disabled', false);
+        createBtn.text('⏹ Stop Animation');
+        createBtn.css('background', '#f44336'); // Red color for stop
+        createBtn.data('stop-animation', true); // Flag to indicate it's now a stop button
         framesInput.prop('disabled', true);
         loopsInput.prop('disabled', true);
+        halfLoopsCheckbox.prop('disabled', true);
         downloadBtn.prop('disabled', true);
         progressContainer.show();
         progressBar.css('width', '0%');
@@ -1255,6 +1358,7 @@ export function initControls(renderer, callback) {
             captureFrames: true,
             totalFrames: totalFrames,
             loops: loops,
+            halfLoops: isHalfLoops,
             onProgress: (frameCount, totalFrames, alpha) => {
                 const progress = (frameCount / totalFrames) * 100;
                 progressBar.css('width', `${progress}%`);
@@ -1262,16 +1366,19 @@ export function initControls(renderer, callback) {
                 progressAlpha.text(`α: ${alpha.toFixed(2)}`);
             },
             onComplete: (frames) => {
-                // Update UI
+                // Restore button state
                 createBtn.prop('disabled', false);
                 createBtn.text('▶ Create Animation');
+                createBtn.css('background', '#4CAF50');
+                createBtn.data('stop-animation', false);
                 framesInput.prop('disabled', false);
                 loopsInput.prop('disabled', false);
+                halfLoopsCheckbox.prop('disabled', false);
                 downloadBtn.prop('disabled', false);
                 progressBar.css('width', '100%');
-                progressText.text(`Complete: ${totalFrames} frames`);
+                progressText.text(`Complete: ${frames.length} frames`);
 
-                logger.info(`Animation creation complete: ${totalFrames} frames captured`);
+                logger.info(`Animation creation complete: ${frames.length} frames captured`);
             }
         });
     });
@@ -1392,6 +1499,17 @@ export function initControls(renderer, callback) {
         } else if (renderingPanel.is(':visible')) {
             hideRenderingPanel();
         }
+
+        // Close custom functions panel
+        const customFunctionsPanel = $('#custom-functions-panel');
+        const customFunctionsButton = $('#open-custom-functions');
+
+        if ($(e.target).is(customFunctionsButton) ||
+            $(e.target).closest('#custom-functions-panel').length > 0) {
+            // Don't close custom functions panel
+        } else if (customFunctionsPanel.is(':visible')) {
+            hideCustomFunctionsPanel();
+        }
     });
 
     // ========================================
@@ -1440,7 +1558,7 @@ export function initControls(renderer, callback) {
     updateVelocityScalingVisibility(manager.get('color-mode').getValue());
 
     // Initialize implicit method controls visibility
-    const currentIntegrator = manager.get('integrator').getValue();
+    const currentIntegrator = manager.get('integrator').getValue() || 'rk2';
     const isImplicit = currentIntegrator.startsWith('implicit-') || currentIntegrator === 'trapezoidal';
     $('#implicit-iterations-group').toggle(isImplicit);
     $('#solution-method-group').toggle(isImplicit);
@@ -1763,6 +1881,23 @@ function loadPresets() {
                 'x + cos(x)*sin(y)*3.0 - 0.1*y'
             ],
             name: 'Fluid Transport with Stirring'
+        },
+        '4d_double_pendulum': {
+            dimensions: 4,
+            expressions: [
+                'z',  // dθ₁/dt = ω₁
+                'w',  // dθ₂/dt = ω₂
+                '(-10*(2*sin(x) + sin(x - 2*y)) - 2*sin(x - y)*(w*w + z*z*cos(x - y))) / (3 - cos(2*x - 2*y))',  // dω₁/dt
+                '(2*sin(x - y)*(2*z*z + 20*cos(x) + w*w*cos(x - y))) / (3 - cos(2*x - 2*y))'  // dω₂/dt
+            ],
+            name: 'Double Pendulum (Chaotic)',
+            timestep: 0.005,
+            mapperType: 'custom',
+            mapperParams: {
+                horizontalExpr: 'sin(x) + sin(y)',
+                verticalExpr: '-cos(x) - cos(y)',
+                depthExpr: ''
+            }
         }
     };
 }

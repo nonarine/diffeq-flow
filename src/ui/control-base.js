@@ -68,7 +68,7 @@ export class Control {
      * Restore value from settings object
      */
     restoreFromSettings(settings) {
-        if (settings && settings[this.settingsKey] !== undefined) {
+        if (settings && settings[this.settingsKey] != null) {
             this.setValue(settings[this.settingsKey]);
         }
     }
@@ -320,7 +320,9 @@ export class SelectControl extends Control {
 
     getValue() {
         const element = $(`#${this.id}`);
-        return element.val();
+        const value = element.val();
+        // Return defaultValue if element returns null/undefined
+        return value != null ? value : this.defaultValue;
     }
 
     setValue(value) {

@@ -2,6 +2,8 @@
  * Shader templates and compilation utilities
  */
 
+import { getGLSLFunctionDeclarations } from '../math/parser.js';
+
 /**
  * Compile a shader
  */
@@ -155,6 +157,9 @@ ${velocityComponents}
 }
 `;
 
+    // Get custom function declarations
+    const customFunctions = getGLSLFunctionDeclarations();
+
     return `
 precision highp float;
 
@@ -163,6 +168,8 @@ ${strategy.getGLSLDecodeFunction()}
 ${strategy.getGLSLEncodeFunction()}
 ${strategy.getGLSLNormalizeFunction()}
 ${strategy.getGLSLDenormalizeFunction()}
+
+${customFunctions}
 
 ${positionUniforms}
 
@@ -313,10 +320,15 @@ void main() {
 /**
  * Generate particle rendering vertex shader
  */
-export function generateDrawVertexShader(dimensions, mapperCode, velocityExpressions, strategy) {
+export function generateDrawVertexShader(dimensions, mapperCode, velocityExpressions, strategy, lineMode = false) {
     const positionUniforms = Array.from({ length: dimensions }, (_, i) =>
         `uniform sampler2D u_pos_${i};`
     ).join('\n');
+
+    // Add previous position uniforms for line mode
+    const prevPositionUniforms = lineMode ? Array.from({ length: dimensions }, (_, i) =>
+        `uniform sampler2D u_prev_pos_${i};`
+    ).join('\n') : '';
 
     const vecType = `vec${dimensions}`;
 
@@ -326,6 +338,9 @@ export function generateDrawVertexShader(dimensions, mapperCode, velocityExpress
         `    result.${swizzles[i]} = ${expr};`
     ).join('\n');
 
+    // Get custom function declarations
+    const customFunctions = getGLSLFunctionDeclarations();
+
     return `
 precision highp float;
 
@@ -333,14 +348,19 @@ ${strategy.getGLSLConstants()}
 ${strategy.getGLSLDecodeFunction()}
 ${strategy.getGLSLDenormalizeFunction()}
 
+${customFunctions}
+
 attribute float a_index;
+${lineMode ? 'attribute float a_vertex_id; // 0 = prev, 1 = current' : ''}
 
 ${positionUniforms}
+${prevPositionUniforms}
 
 uniform float u_particles_res;
 uniform vec2 u_min;
 uniform vec2 u_max;
 uniform float u_alpha;
+uniform float u_particle_size;
 
 varying vec${dimensions} v_pos;
 varying vec${dimensions} v_velocity;
@@ -361,11 +381,21 @@ ${velocityComponents}
 }
 
 void main() {
+    ${lineMode ? `
+    // Line mode: index buffer has [0,0,1,1,2,2,3,3,...], vertex ID buffer has [0,1,0,1,0,1,...]
+    // a_vertex_id = 0 means previous position, 1 means current position
+    float particle_index = a_index;
+    bool is_current = a_vertex_id > 0.5;
+    ` : `
+    // Point mode: one vertex per particle
+    float particle_index = a_index;
+    `}
+
     // Calculate texture coordinate from particle index
     // Add 0.5 to sample from texel centers
     vec2 texcoord = vec2(
-        (mod(a_index, u_particles_res) + 0.5) / u_particles_res,
-        (floor(a_index / u_particles_res) + 0.5) / u_particles_res
+        (mod(particle_index, u_particles_res) + 0.5) / u_particles_res,
+        (floor(particle_index / u_particles_res) + 0.5) / u_particles_res
     );
 
     // Read age from alpha channel of u_pos_0
@@ -373,6 +403,33 @@ void main() {
 
     // Read position from textures and denormalize to world coordinates
     ${vecType} pos;
+    ${lineMode ? `
+    if (is_current) {
+        // Current position
+        ${Array.from({ length: dimensions }, (_, i) => {
+            const coord = ['x', 'y', 'z', 'w'][i];
+            if (i === 0) {
+                return `pos.${coord} = denormalizeFromViewport(decodeFloat(texture2D(u_pos_${i}, texcoord)), u_min.x, u_max.x);`;
+            } else if (i === 1) {
+                return `pos.${coord} = denormalizeFromViewport(decodeFloat(texture2D(u_pos_${i}, texcoord)), u_min.y, u_max.y);`;
+            } else {
+                return `pos.${coord} = denormalizeFromViewport(decodeFloat(texture2D(u_pos_${i}, texcoord)), -10.0, 10.0);`;
+            }
+        }).join('\n        ')}
+    } else {
+        // Previous position
+        ${Array.from({ length: dimensions }, (_, i) => {
+            const coord = ['x', 'y', 'z', 'w'][i];
+            if (i === 0) {
+                return `pos.${coord} = denormalizeFromViewport(decodeFloat(texture2D(u_prev_pos_${i}, texcoord)), u_min.x, u_max.x);`;
+            } else if (i === 1) {
+                return `pos.${coord} = denormalizeFromViewport(decodeFloat(texture2D(u_prev_pos_${i}, texcoord)), u_min.y, u_max.y);`;
+            } else {
+                return `pos.${coord} = denormalizeFromViewport(decodeFloat(texture2D(u_prev_pos_${i}, texcoord)), -10.0, 10.0);`;
+            }
+        }).join('\n        ')}
+    }
+    ` : `
     ${Array.from({ length: dimensions }, (_, i) => {
         const coord = ['x', 'y', 'z', 'w'][i];
         if (i === 0) {
@@ -383,6 +440,7 @@ void main() {
             return `pos.${coord} = denormalizeFromViewport(decodeFloat(texture2D(u_pos_${i}, texcoord)), -10.0, 10.0);`;
         }
     }).join('\n    ')}
+    `}
 
     // Calculate velocity for coloring
     ${vecType} velocity = get_velocity(pos);
@@ -408,7 +466,7 @@ void main() {
         depth_normalized = clamp(depth_normalized, -1.0, 1.0);
 
         gl_Position = vec4(normalized * 2.0 - 1.0, depth_normalized, 1.0);
-        gl_PointSize = 1.0;
+        gl_PointSize = u_particle_size;
     }
 }
 `;
@@ -418,8 +476,13 @@ void main() {
  * Generate particle rendering fragment shader
  */
 export function generateDrawFragmentShader(dimensions, colorCode, usesMaxVelocity) {
+    // Get custom function declarations
+    const customFunctions = getGLSLFunctionDeclarations();
+
     return `
 precision highp float;
+
+${customFunctions}
 
 varying vec${dimensions} v_pos;
 varying vec${dimensions} v_velocity;

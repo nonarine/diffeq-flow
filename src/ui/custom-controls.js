@@ -7,6 +7,7 @@ import { Control, CheckboxControl } from './control-base.js';
 import { ParameterControl, AnimatableParameterControl } from './parameter-control.js';
 import { getTransform } from '../math/transforms.js';
 import { logger } from '../utils/debug-logger.js';
+import { resizeAccordion } from './accordion-utils.js';
 
 /**
  * FloatCheckboxControl - checkbox that outputs 0.0 or 1.0 instead of boolean
@@ -154,14 +155,7 @@ export class DimensionInputsControl extends Control {
      * Update accordion section height to fit content
      */
     updateAccordionHeight() {
-        // Use setTimeout to allow DOM to update first
-        setTimeout(() => {
-            const $accordionSection = $('#dimension-inputs').closest('.accordion-section');
-            if ($accordionSection.length && !$accordionSection.hasClass('collapsed')) {
-                // Recalculate and update max-height
-                $accordionSection.css('max-height', $accordionSection[0].scrollHeight + 'px');
-            }
-        }, 0);
+        resizeAccordion('#dimension-inputs', 0);
     }
 
     /**
@@ -237,6 +231,23 @@ export class MapperParamsControl extends Control {
      * Get current mapper params
      */
     getValue() {
+        const { mapper } = this.getContext();
+
+        if (mapper === 'custom') {
+            const horizontalElement = $('#mapper-horizontal-expr');
+            const verticalElement = $('#mapper-vertical-expr');
+            const depthElement = $('#mapper-depth-expr');
+
+            if (horizontalElement.length && verticalElement.length) {
+                return {
+                    horizontalExpr: horizontalElement.val() || 'x',
+                    verticalExpr: verticalElement.val() || 'y',
+                    depthExpr: depthElement.val() || ''
+                };
+            }
+            return this.currentParams || { horizontalExpr: 'x', verticalExpr: 'y', depthExpr: '' };
+        }
+
         const dim1Element = $('#mapper-dim1');
         const dim2Element = $('#mapper-dim2');
 
@@ -310,6 +321,39 @@ export class MapperParamsControl extends Control {
         } else if (mapper === 'project') {
             const info = $('<div class="info">Linear projection uses default 2D projection</div>');
             container.append(info);
+
+        } else if (mapper === 'custom') {
+            const varNames = this.varNames.slice(0, dimensions).join(', ');
+
+            // Horizontal expression
+            const group1 = $('<div class="control-group"></div>');
+            group1.append(`<label>Horizontal (X):</label>`);
+            const currentHorizontal = this.currentParams?.horizontalExpr || 'x';
+            const input1 = $(`<input type="text" id="mapper-horizontal-expr" value="${currentHorizontal}" placeholder="e.g., sin(x) + sin(y)" style="font-family: monospace; width: 100%;" />`);
+            group1.append(input1);
+            container.append(group1);
+
+            // Vertical expression
+            const group2 = $('<div class="control-group"></div>');
+            group2.append(`<label>Vertical (Y):</label>`);
+            const currentVertical = this.currentParams?.verticalExpr || 'y';
+            const input2 = $(`<input type="text" id="mapper-vertical-expr" value="${currentVertical}" placeholder="e.g., -cos(x) - cos(y)" style="font-family: monospace; width: 100%;" />`);
+            group2.append(input2);
+            container.append(group2);
+
+            // Depth expression (optional)
+            const group3 = $('<div class="control-group"></div>');
+            group3.append(`<label>Depth (Z, optional):</label>`);
+            const currentDepth = this.currentParams?.depthExpr || '';
+            const input3 = $(`<input type="text" id="mapper-depth-expr" value="${currentDepth}" placeholder="optional, e.g., z" style="font-family: monospace; width: 100%;" />`);
+            group3.append(input3);
+            container.append(group3);
+
+            const info = $('<div class="info">Define math expressions using variables: ' + varNames + '. Functions: sin, cos, tan, exp, log, sqrt, abs, etc.</div>');
+            container.append(info);
+
+            // Attach change listeners
+            this.attachCustomListener();
         }
     }
 
@@ -324,6 +368,23 @@ export class MapperParamsControl extends Control {
 
         // Add new listeners
         $('#mapper-dim1, #mapper-dim2').on('change', () => {
+            this.currentParams = this.getValue();
+            if (this.onChange) this.onChange(this.currentParams);
+            if (callback) callback();
+        });
+    }
+
+    /**
+     * Attach listeners to custom mapper text inputs
+     */
+    attachCustomListener() {
+        const callback = this.onChangeCallback;
+
+        // Remove old listeners
+        $(document).off('input', '#mapper-horizontal-expr, #mapper-vertical-expr, #mapper-depth-expr');
+
+        // Add new listeners
+        $('#mapper-horizontal-expr, #mapper-vertical-expr, #mapper-depth-expr').on('input', () => {
             this.currentParams = this.getValue();
             if (this.onChange) this.onChange(this.currentParams);
             if (callback) callback();
@@ -552,15 +613,7 @@ export class TransformParamsControl extends Control {
      * Update accordion section height to fit content
      */
     updateAccordionHeight() {
-        // Use setTimeout to allow DOM to update first
-        setTimeout(() => {
-            // Find the accordion section containing transform controls
-            const $accordionSection = $('#transform-controls').closest('.accordion-section');
-            if ($accordionSection.length && !$accordionSection.hasClass('collapsed')) {
-                // Recalculate and update max-height
-                $accordionSection.css('max-height', $accordionSection[0].scrollHeight + 'px');
-            }
-        }, 0);
+        resizeAccordion('#transform-controls', 0);
     }
 
     /**
