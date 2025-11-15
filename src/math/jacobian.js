@@ -205,3 +205,56 @@ export function formatJacobian(jacobian) {
 
     return result;
 }
+
+/**
+ * Invert a symbolic Jacobian matrix using Nerdamer
+ * Supports 2x2, 3x3, and 4x4 matrices
+ *
+ * @param {string[][]} jacobian - Jacobian matrix to invert
+ * @returns {string[][]|null} - Inverted matrix or null if failed
+ */
+export function invertJacobian(jacobian) {
+    if (!jacobian || !Array.isArray(jacobian)) {
+        logger.error('Invalid Jacobian for inversion');
+        return null;
+    }
+
+    const n = jacobian.length;
+    if (n < 2 || n > 4) {
+        logger.error(`Jacobian inversion only supported for 2x2, 3x3, and 4x4 matrices (got ${n}x${n})`);
+        return null;
+    }
+
+    try {
+        // Convert to Nerdamer matrix
+        const matrixStr = `[${jacobian.map(row => `[${row.join(',')}]`).join(',')}]`;
+        logger.verbose('Inverting Jacobian matrix:', matrixStr);
+
+        const nerdMatrix = window.nerdamer(`matrix(${matrixStr})`);
+        const inverted = window.nerdamer(`invert(${nerdMatrix})`);
+
+        // Extract result as array
+        const result = [];
+        for (let i = 0; i < n; i++) {
+            const row = [];
+            for (let j = 0; j < n; j++) {
+                // Nerdamer uses 1-based indexing for matrix elements
+                const element = window.nerdamer(`${inverted}[${i+1}][${j+1}]`).toString();
+                const optimized = optimizePowerExpressions(element);
+                row.push(optimized);
+            }
+            result.push(row);
+        }
+
+        logger.verbose('Inverted Jacobian:');
+        for (let i = 0; i < result.length; i++) {
+            logger.verbose(`  Row ${i}: [${result[i].join(', ')}]`);
+        }
+
+        return result;
+
+    } catch (error) {
+        logger.error('Failed to invert Jacobian:', error.message);
+        return null;
+    }
+}

@@ -83,18 +83,24 @@ export function initControls(renderer, callback) {
         onChange: (value) => {
             logger.verbose('Dimensions changed to:', value);
 
-            // Reset coordinate system to Cartesian when dimensions change
-            const cartesianSystem = getCartesianSystem(value);
-            renderer.coordinateSystem = cartesianSystem;
+            // Only reset coordinate system if dimensions don't match
+            // (preserves coordinate system during initialization/restore)
+            if (!renderer.coordinateSystem || renderer.coordinateSystem.dimensions !== value) {
+                logger.verbose('Resetting coordinate system to Cartesian for new dimensions');
+                const cartesianSystem = getCartesianSystem(value);
+                renderer.coordinateSystem = cartesianSystem;
 
-            // Update dimension inputs when dimensions change
-            const expressionsControl = manager.get('dimension-inputs');
-            if (expressionsControl) {
-                logger.verbose('Calling updateInputs with dimensions:', value);
-                expressionsControl.setCoordinateSystem(cartesianSystem);
-                expressionsControl.updateInputs(value);
+                // Update dimension inputs when dimensions change
+                const expressionsControl = manager.get('dimension-inputs');
+                if (expressionsControl) {
+                    logger.verbose('Calling updateInputs with dimensions:', value);
+                    expressionsControl.setCoordinateSystem(cartesianSystem);
+                    expressionsControl.updateInputs(value);
+                } else {
+                    logger.error('expressionsControl not found!');
+                }
             } else {
-                logger.error('expressionsControl not found!');
+                logger.verbose('Preserving existing coordinate system:', renderer.coordinateSystem.name);
             }
 
             // Update mapper controls
@@ -960,56 +966,33 @@ export function initControls(renderer, callback) {
     });
 
     // ========================================
-    // Custom Functions Panel
+    // Modal System
     // ========================================
+    // Modal is initialized in main.js and can be accessed via window.appModal
 
-    function showCustomFunctionsPanel() {
-        $('#custom-functions-panel').show();
-    }
-
-    function hideCustomFunctionsPanel() {
-        $('#custom-functions-panel').hide();
-    }
-
-    $('#open-custom-functions').on('click', function() {
-        showCustomFunctionsPanel();
-    });
-
-    // Apply custom functions button
-    $('#apply-custom-functions').on('click', function() {
-        const functionsText = $('#custom-functions-input').val();
-        $('#custom-functions-error').hide();
-        $('#custom-functions-success').hide();
-
-        try {
-            // Parse and validate custom functions
-            window.MathParser.setCustomFunctions(functionsText);
-
-            // Show success message
-            const functionCount = functionsText.trim() ? functionsText.trim().split('\n').filter(line => line.trim() && !line.trim().startsWith('//')).length : 0;
-            $('#custom-functions-success').text(`✓ Successfully loaded ${functionCount} custom function(s)`).show();
-
-            // Save to localStorage
-            localStorage.setItem('customFunctions', functionsText);
-
-            // Trigger re-render
-            debouncedApply();
-        } catch (error) {
-            // Show error message
-            $('#custom-functions-error').text(`Error: ${error.message}`).show();
+    // Menu bar settings button
+    $(document).on('click', '#menu-settings', function() {
+        if (window.appModal) {
+            window.appModal.show();
         }
     });
 
-    // Load custom functions from localStorage
-    const savedFunctions = localStorage.getItem('customFunctions');
-    if (savedFunctions) {
-        $('#custom-functions-input').val(savedFunctions);
-        try {
-            window.MathParser.setCustomFunctions(savedFunctions);
-        } catch (error) {
-            console.error('Error loading saved custom functions:', error);
+    // Menu bar docs button
+    $(document).on('click', '#menu-docs', function() {
+        if (window.appModal) {
+            window.appModal.show('docs');
         }
-    }
+    });
+
+    // Keyboard shortcut: Ctrl+, to open settings modal
+    $(document).on('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && e.key === ',') {
+            e.preventDefault();
+            if (window.appModal) {
+                window.appModal.show();
+            }
+        }
+    });
 
     // Animation section accordion toggle
     $('#animation-section-toggle').on('click', function() {
@@ -1614,16 +1597,7 @@ export function initControls(renderer, callback) {
             hideRenderingPanel();
         }
 
-        // Close custom functions panel
-        const customFunctionsPanel = $('#custom-functions-panel');
-        const customFunctionsButton = $('#open-custom-functions');
-
-        if ($(e.target).is(customFunctionsButton) ||
-            $(e.target).closest('#custom-functions-panel').length > 0) {
-            // Don't close custom functions panel
-        } else if (customFunctionsPanel.is(':visible')) {
-            hideCustomFunctionsPanel();
-        }
+        // Note: Modal handles its own closing on overlay click or Escape key
     });
 
     // ========================================
@@ -1742,7 +1716,7 @@ export function initControls(renderer, callback) {
         window.unicodeAutocomplete.attachToAll('#color-expression');     // Color expressions
         window.unicodeAutocomplete.attachToAll('#custom-color-code');    // Custom color code
         window.unicodeAutocomplete.attachToAll('#custom-integrator-code'); // Custom integrator code
-        window.unicodeAutocomplete.attachToAll('#custom-functions-textarea'); // Custom functions
+        // Note: custom-functions-textarea is handled by CustomFunctionsTab.onActivate()
 
         console.log('Unicode autocomplete enabled for all math inputs');
     }

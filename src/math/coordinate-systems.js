@@ -12,7 +12,7 @@
  * 5. Integration happens in Cartesian space (all existing integrators work)
  */
 
-import { computeSymbolicJacobian } from './jacobian.js';
+import { computeSymbolicJacobian, invertJacobian } from './jacobian.js';
 
 /**
  * Base class for coordinate systems

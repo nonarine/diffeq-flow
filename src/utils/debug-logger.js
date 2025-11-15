@@ -10,11 +10,19 @@ class DebugLogger {
         this.logs = [];
         this.consoleHooked = false;
         this.originalConsole = {};
+        this.outputElement = null; // Can be set to a specific element, defaults to $('#debug-output')
 
         // Silent mode buffering
         this.silenced = false;
         this.silencedBuffer = [];
         this.maxSilencedLogs = 5000; // Buffer more logs during silent mode
+    }
+
+    /**
+     * Set the output element for log display
+     */
+    setOutputElement(element) {
+        this.outputElement = element;
     }
 
     /**
@@ -232,8 +240,9 @@ class DebugLogger {
      * Update the UI with current logs
      */
     updateUI() {
-        const output = $('#debug-output');
-        if (output.length === 0) return;
+        // Use configured output element or fallback to default selector
+        const output = this.outputElement ? $(this.outputElement) : $('#debug-output');
+        if (!output || output.length === 0) return;
 
         output.empty();
 

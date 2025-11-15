@@ -7,6 +7,10 @@ import { initControls, loadPreset } from './ui/controls-v2.js';
 import { logger } from './utils/debug-logger.js';
 import { Animator } from './animation/animator.js';
 import { setCustomFunctions, getCustomFunctions } from './math/parser.js';
+import { initializeModal } from './ui/modal.js';
+import { CustomFunctionsTab } from './ui/tabs/custom-functions-tab.js';
+import { DebugTab } from './ui/tabs/debug-tab.js';
+import { DocsTab } from './ui/tabs/docs-tab.js';
 
 // Expose MathParser API to window for use in UI controls
 window.MathParser = {
@@ -16,175 +20,14 @@ window.MathParser = {
 
 // Initialize when DOM is ready
 $(document).ready(function() {
-    // Step 1: Initialize debug console
-    function initDebugConsole(callback) {
-        let isDebugExpanded = false;
+    // Step 1: Initialize logger
+    // Make logger globally available
+    window.logger = logger;
 
-        $('#debug-header').on('click', function(e) {
-            if (e.target.id !== 'debug-toggle') {
-                isDebugExpanded = !isDebugExpanded;
-                $('#debug-console').toggleClass('collapsed', !isDebugExpanded);
-                $('#debug-expand').text(isDebugExpanded ? '▼' : '▶');
-            }
-        });
+    // Hook console methods to echo to debug console
+    logger.hookConsole();
 
-        $('#debug-toggle').on('change', function() {
-            logger.setEnabled($(this).is(':checked'));
-            logger.info('Debug logging ' + ($(this).is(':checked') ? 'enabled' : 'disabled'));
-        });
-
-        $('#debug-verbosity').on('change', function() {
-            const verbosity = $(this).val();
-            logger.setVerbosity(verbosity);
-            logger.info('Verbosity set to: ' + verbosity);
-
-            // Show/hide buffer status indicator
-            if (verbosity === 'silent') {
-                $('#debug-buffer-status').show();
-                updateBufferStatus();
-            } else {
-                $('#debug-buffer-status').hide();
-            }
-        });
-
-        $('#debug-copy').on('click', function() {
-            const logs = logger.getLogs();
-            let logText = 'N-Dimensional Vector Field Renderer - Debug Log\n';
-            logText += '='.repeat(60) + '\n\n';
-
-            for (const log of logs) {
-                logText += `[${log.timestamp}] [${log.level.toUpperCase()}] ${log.message}`;
-                if (log.data) {
-                    const dataStr = typeof log.data === 'object' ?
-                        JSON.stringify(log.data) :
-                        String(log.data);
-                    logText += ` | Data: ${dataStr}`;
-                }
-                if (log.stack) {
-                    logText += `\nStack Trace:\n${log.stack}`;
-                }
-                logText += '\n';
-            }
-
-            // Copy to clipboard
-            navigator.clipboard.writeText(logText).then(() => {
-                logger.info('Log copied to clipboard (' + logs.length + ' entries)');
-            }).catch(err => {
-                logger.error('Failed to copy log to clipboard', err);
-            });
-        });
-
-        $('#debug-clear').on('click', function() {
-            logger.clear();
-        });
-
-        $('#debug-flush-buffer').on('click', function() {
-            logger.flush();
-            updateBufferStatus();
-        });
-
-        $('#debug-clear-buffer').on('click', function() {
-            logger.clearSilencedBuffer();
-            updateBufferStatus();
-        });
-
-        // Update buffer status display
-        function updateBufferStatus() {
-            const stats = logger.getBufferStats();
-            $('#buffer-size').text(stats.bufferSize);
-            $('#buffer-percent').text(stats.bufferUsagePercent);
-
-            // Update color based on buffer usage
-            if (stats.bufferUsagePercent > 80) {
-                $('#buffer-size').css('color', '#EF5350'); // Red when near full
-            } else if (stats.bufferUsagePercent > 50) {
-                $('#buffer-size').css('color', '#FFA726'); // Orange when half full
-            } else {
-                $('#buffer-size').css('color', '#4CAF50'); // Green when plenty of space
-            }
-        }
-
-        // Update buffer status periodically when in silent mode
-        setInterval(function() {
-            if (logger.isSilenced()) {
-                updateBufferStatus();
-            }
-        }, 1000);
-
-        $('#debug-log-update-shader').on('click', function() {
-            if (window.renderer && typeof window.renderer.logUpdateShader === 'function') {
-                window.renderer.logUpdateShader();
-            } else {
-                console.warn('Renderer not available yet');
-                logger.warn('Renderer not initialized - cannot log update shader');
-            }
-        });
-
-        $('#debug-log-draw-shader').on('click', function() {
-            if (window.renderer && typeof window.renderer.logDrawShader === 'function') {
-                window.renderer.logDrawShader();
-            } else {
-                console.warn('Renderer not available yet');
-                logger.warn('Renderer not initialized - cannot log draw shader');
-            }
-        });
-
-        $('#debug-log-screen-shader').on('click', function() {
-            if (window.renderer && typeof window.renderer.logScreenShader === 'function') {
-                window.renderer.logScreenShader();
-            } else {
-                console.warn('Renderer not available yet');
-                logger.warn('Renderer not initialized - cannot log screen shader');
-            }
-        });
-
-        $('#debug-log-stats-shaders').on('click', function() {
-            if (window.renderer && typeof window.renderer.logStatsShaders === 'function') {
-                window.renderer.logStatsShaders();
-            } else {
-                console.warn('Renderer not available yet');
-                logger.warn('Renderer not initialized - cannot log stats shaders');
-            }
-        });
-
-        $('#debug-buffer-stats').on('click', function() {
-            if (window.renderer && typeof window.renderer.logBufferStats === 'function') {
-                window.renderer.logBufferStats();
-            } else {
-                console.warn('Renderer not available yet');
-                logger.warn('Renderer not initialized - cannot log buffer stats');
-            }
-        });
-
-        $('#debug-enable-stats').on('change', function() {
-            if (window.renderer) {
-                const enabled = $(this).is(':checked');
-                window.renderer.enableDebugStats = enabled;
-                logger.info(`GPU debug stats ${enabled ? 'ENABLED' : 'DISABLED'}`);
-            }
-        });
-
-        // Initialize logger with current DOM values (browser may have cached them)
-        logger.setEnabled($('#debug-toggle').is(':checked'));
-        const initialVerbosity = $('#debug-verbosity').val();
-        logger.setVerbosity(initialVerbosity);
-
-        // Show buffer status if starting in silent mode
-        if (initialVerbosity === 'silent') {
-            $('#debug-buffer-status').show();
-            updateBufferStatus();
-        }
-
-        logger.info('Debug console initialized');
-
-        // Make logger globally available
-        window.logger = logger;
-
-        // Hook console methods to echo to debug console
-        logger.hookConsole();
-
-        callback();
-    }
+    logger.info('Logger initialized');
 
     // Step 2: Initialize renderer and canvas
     function initRenderer(callback) {
@@ -256,6 +99,27 @@ $(document).ready(function() {
             window.logger = logger;
             window.saveSettings = saveSettings; // Make saveSettings available globally
             window.manager = manager; // Make manager available for debugging
+
+            // Initialize modal window and tabs
+            const modal = initializeModal();
+
+            // Register tabs in display order (left to right)
+
+            // Register Debug Console tab
+            const debugTab = new DebugTab(logger);
+            modal.registerTab(debugTab);
+
+            // Register Custom Functions tab
+            const debouncedApply = manager.debouncedApply.bind(manager);
+            const customFunctionsTab = new CustomFunctionsTab(window.MathParser, debouncedApply);
+            modal.registerTab(customFunctionsTab);
+
+            // Register Documentation tab
+            const docsTab = new DocsTab();
+            modal.registerTab(docsTab);
+
+            // Make modal globally available
+            window.appModal = modal;
 
             logger.info('N-Dimensional Vector Field Renderer initialized!');
             logger.info('Available presets: ' + Object.keys(window.presets).join(', '));
@@ -1020,13 +884,11 @@ $(document).ready(function() {
     }
 
     // Run initialization sequence in order
-    initDebugConsole(function() {
-        initAccordion(); // Initialize accordion early (doesn't depend on renderer)
-        initRenderer(function(renderer, canvas) {
-            setupPanZoom(renderer, canvas);
-            setupGridAndCursor(renderer, canvas);
-            setupKeyboardShortcuts(renderer);
-            initUI(renderer, canvas);
-        });
+    initAccordion(); // Initialize accordion early (doesn't depend on renderer)
+    initRenderer(function(renderer, canvas) {
+        setupPanZoom(renderer, canvas);
+        setupGridAndCursor(renderer, canvas);
+        setupKeyboardShortcuts(renderer);
+        initUI(renderer, canvas);
     });
 });

@@ -109,31 +109,6 @@
             color: #2E7D32;
         }
 
-        body.light-theme #debug-console {
-            background: rgba(250, 250, 250, 0.95);
-            border-color: #ccc;
-        }
-
-        body.light-theme #debug-header {
-            border-color: #ddd;
-        }
-
-        body.light-theme #debug-header h3 {
-            color: #2E7D32;
-        }
-
-        body.light-theme #debug-output {
-            background: #fff;
-            border-color: #ddd;
-            color: #212121;
-        }
-
-        body.light-theme .debug-log.info { color: #1976D2; }
-        body.light-theme .debug-log.debug { color: #546E7A; }
-        body.light-theme .debug-log.warn { color: #F57C00; }
-        body.light-theme .debug-log.error { color: #C62828; }
-        body.light-theme .debug-log.verbose { color: #666; }
-
         #canvas {
             position: absolute;
             top: 0;
@@ -305,14 +280,14 @@
 
         #controls {
             position: absolute;
-            top: 50px;
+            top: calc(32px + 25px); /* Menu bar + offset */
             right: 20px;
             background: rgba(30, 30, 30, 0.95);
             border: 1px solid #444;
             border-radius: 8px;
             padding: 12px;
             width: 340px;
-            max-height: calc(90vh - 60px);
+            max-height: calc(90vh - 57px - 20px);
             overflow-y: auto;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
             z-index: 200;
@@ -326,7 +301,7 @@
 
         #zoom-pan-controls {
             position: absolute;
-            top: 50px;
+            top: calc(32px + 25px); /* Menu bar + offset */
             right: 380px;
             background: rgba(30, 30, 30, 0.95);
             border: 1px solid #444;
@@ -410,7 +385,7 @@
 
         #display-options {
             position: absolute;
-            top: 50px;
+            top: calc(32px + 25px); /* Menu bar + offset */
             left: 20px;
             background: rgba(30, 30, 30, 0.95);
             border: 1px solid #444;
@@ -473,12 +448,10 @@
             margin: 10px 0 6px 0;
             color: #64B5F6;
             border-bottom: 1px solid #333;
-            padding: 6px 8px 6px 0;
+            padding: 6px 30px 6px 0;
             cursor: pointer;
             user-select: none;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
+            position: relative;
             transition: background 0.2s;
         }
 
@@ -486,14 +459,26 @@
             background: rgba(100, 181, 246, 0.1);
         }
 
+        #controls h2 .help-icon {
+            position: absolute;
+            right: 18px;
+            top: 50%;
+            transform: translateY(-50%);
+            margin-left: 0;
+        }
+
         #controls h2::after {
             content: '▼';
             font-size: 10px;
             transition: transform 0.2s;
+            position: absolute;
+            right: 4px;
+            top: 50%;
+            transform: translateY(-50%);
         }
 
         #controls h2.collapsed::after {
-            transform: rotate(-90deg);
+            transform: translateY(-50%) rotate(-90deg);
         }
 
         .accordion-section {
@@ -760,9 +745,9 @@
         .floating-panel {
             position: fixed;
             right: 330px;
-            top: 50px;
+            top: calc(32px + 25px); /* Menu bar + offset */
             width: 320px;
-            max-height: calc(90vh - 60px);
+            max-height: calc(90vh - 67px); /* Account for menu bar + offset */
             background: rgba(30, 30, 30, 0.98);
             border: 1px solid #444;
             border-radius: 8px;
@@ -869,13 +854,13 @@
 
         .panel-content {
             padding: 20px;
-            max-height: calc(90vh - 110px);
+            max-height: calc(90vh - 117px); /* Account for menu bar + offset + header */
             overflow-y: auto;
         }
 
         .floating-panel-content {
             padding: 12px;
-            max-height: calc(90vh - 110px);
+            max-height: calc(90vh - 117px); /* Account for menu bar + offset + header */
             overflow-y: auto;
         }
 
@@ -966,102 +951,6 @@
             font-size: 10px;
         }
 
-        #debug-console {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            background: rgba(20, 20, 20, 0.95);
-            border-bottom: 1px solid #444;
-            width: 100%;
-            max-height: 350px;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-            z-index: 1000;
-        }
-
-        #debug-console.collapsed {
-            max-height: 36px;
-        }
-
-        #debug-header {
-            display: flex;
-            align-items: center;
-            padding: 10px;
-            border-bottom: 1px solid #333;
-            cursor: pointer;
-            user-select: none;
-        }
-
-        #debug-console.collapsed #debug-header {
-            border-bottom: none;
-        }
-
-        #debug-header h3 {
-            flex: 1;
-            margin: 0;
-            font-size: 14px;
-            color: #4CAF50;
-        }
-
-        #debug-toggle {
-            margin: 0 10px 0 0;
-        }
-
-        #debug-expand {
-            font-size: 12px;
-            color: #888;
-        }
-
-        #debug-body {
-            display: flex;
-            flex-direction: column;
-            padding: 10px;
-        }
-
-        #debug-console.collapsed #debug-body {
-            display: none;
-        }
-
-        #debug-controls {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 10px;
-        }
-
-        #debug-verbosity {
-            flex: 1;
-        }
-
-        #debug-output {
-            background: #1a1a1a;
-            border: 1px solid #333;
-            border-radius: 4px;
-            padding: 8px;
-            height: 240px;
-            overflow-y: auto;
-            font-family: 'Courier New', monospace;
-            font-size: 10px;
-            color: #e0e0e0;
-            line-height: 1.4;
-        }
-
-        .debug-log {
-            margin: 2px 0;
-            padding: 2px 0;
-            border-bottom: 1px solid #282828;
-        }
-
-        .debug-log.info { color: #64B5F6; }
-        .debug-log.debug { color: #90A4AE; }
-        .debug-log.warn { color: #FFB74D; }
-        .debug-log.error { color: #E57373; }
-        .debug-log.verbose { color: #888; }
-
-        .debug-timestamp {
-            color: #666;
-            margin-right: 8px;
-        }
-
         /* Gradient editor styles */
         .gradient-stops {
             display: flex;
@@ -1111,9 +1000,399 @@
             border: 1px solid #444;
             margin-top: 8px;
         }
+
+        /* Modal Window */
+        #modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 100000;
+            align-items: center;
+            justify-content: center;
+            padding: 10px;
+        }
+
+        #modal-window {
+            background: #1a1a1a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+            width: calc(100% - 20px);
+            height: calc(100% - 20px);
+            max-width: none;
+            max-height: none;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        body.light-theme #modal-window {
+            background: #ffffff;
+            border-color: #ccc;
+            box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3);
+        }
+
+        #modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 16px 20px;
+            background: #252525;
+            border-bottom: 1px solid #444;
+        }
+
+        body.light-theme #modal-header {
+            background: #f5f5f5;
+            border-bottom-color: #ddd;
+        }
+
+        #modal-title {
+            margin: 0;
+            font-size: 16px;
+            font-weight: 500;
+            color: #fff;
+        }
+
+        body.light-theme #modal-title {
+            color: #212121;
+        }
+
+        #modal-close {
+            background: none;
+            border: none;
+            color: #999;
+            font-size: 24px;
+            cursor: pointer;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+        }
+
+        #modal-close:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        body.light-theme #modal-close:hover {
+            background: rgba(0, 0, 0, 0.1);
+            color: #212121;
+        }
+
+        #modal-tab-bar {
+            display: flex;
+            gap: 0;
+            background: #1f1f1f;
+            border-bottom: 1px solid #444;
+            overflow-x: auto;
+        }
+
+        body.light-theme #modal-tab-bar {
+            background: #e8e8e8;
+            border-bottom-color: #ccc;
+        }
+
+        .modal-tab-button {
+            padding: 12px 24px;
+            background: transparent;
+            border: none;
+            color: #999;
+            font-size: 13px;
+            cursor: pointer;
+            white-space: nowrap;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .modal-tab-button:hover {
+            background: rgba(255, 255, 255, 0.05);
+            color: #fff;
+        }
+
+        body.light-theme .modal-tab-button:hover {
+            background: rgba(0, 0, 0, 0.05);
+            color: #212121;
+        }
+
+        .modal-tab-button.active {
+            color: #4CAF50;
+            border-bottom-color: #4CAF50;
+            background: rgba(76, 175, 80, 0.1);
+        }
+
+        body.light-theme .modal-tab-button.active {
+            color: #2E7D32;
+            border-bottom-color: #2E7D32;
+            background: rgba(46, 125, 50, 0.1);
+        }
+
+        #modal-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .modal-tab-content {
+            display: none;
+        }
+
+        .modal-tab-content.active {
+            display: block;
+        }
+
+        /* Documentation Tab Styles */
+        .docs-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .docs-section {
+            margin-bottom: 16px;
+            border: 1px solid #444;
+            border-radius: 6px;
+            background: #1f1f1f;
+            overflow: hidden;
+        }
+
+        body.light-theme .docs-section {
+            background: #f9f9f9;
+            border-color: #ddd;
+        }
+
+        .docs-section-header {
+            padding: 14px 16px;
+            cursor: pointer;
+            user-select: none;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #252525;
+            transition: background 0.2s;
+        }
+
+        body.light-theme .docs-section-header {
+            background: #f0f0f0;
+        }
+
+        .docs-section-header:hover {
+            background: #2a2a2a;
+        }
+
+        body.light-theme .docs-section-header:hover {
+            background: #e8e8e8;
+        }
+
+        .docs-section-header h3 {
+            margin: 0;
+            font-size: 15px;
+            font-weight: 500;
+            color: #4CAF50;
+        }
+
+        body.light-theme .docs-section-header h3 {
+            color: #2E7D32;
+        }
+
+        .docs-toggle {
+            color: #888;
+            font-size: 12px;
+            transition: transform 0.2s;
+        }
+
+        .docs-section.collapsed .docs-toggle {
+            transform: rotate(-90deg);
+        }
+
+        .docs-section-content {
+            padding: 20px 32px;
+            max-height: 5000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            line-height: 1.6;
+        }
+
+        .docs-section.collapsed .docs-section-content {
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+        }
+
+        .docs-section-content p {
+            margin: 0 0 10px 0;
+            color: #ccc;
+            font-size: 12px;
+        }
+
+        body.light-theme .docs-section-content p {
+            color: #444;
+        }
+
+        .docs-section-content h5 {
+            margin: 16px 0 8px 0;
+            font-size: 12px;
+            font-weight: 600;
+            color: #4CAF50;
+            border-bottom: 1px solid #333;
+            padding-bottom: 4px;
+        }
+
+        body.light-theme .docs-section-content h5 {
+            color: #2E7D32;
+            border-bottom-color: #ddd;
+        }
+
+        .docs-section-content h5:first-child {
+            margin-top: 0;
+        }
+
+        .docs-section-content code {
+            background: #2a2a2a;
+            padding: 2px 5px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            color: #4CAF50;
+        }
+
+        body.light-theme .docs-section-content code {
+            background: #e8e8e8;
+            color: #2E7D32;
+        }
+
+        .code-example {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 8px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 11px;
+            line-height: 1.6;
+        }
+
+        body.light-theme .code-example {
+            background: #fff;
+            border-color: #ddd;
+        }
+
+        .code-example strong {
+            color: #888;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* Help Icon Styles */
+        .help-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            margin-left: 6px;
+            font-size: 14px;
+            cursor: pointer;
+            opacity: 0.6;
+            transition: opacity 0.2s;
+            vertical-align: middle;
+        }
+
+        .help-icon:hover {
+            opacity: 1;
+        }
+
+        label .help-icon {
+            margin-left: 4px;
+        }
+
+        /* Menu Bar */
+        #menu-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 32px;
+            background: #1a1a1a;
+            border-bottom: 1px solid #333;
+            display: flex;
+            align-items: center;
+            padding: 0 12px;
+            z-index: 10001;
+            gap: 8px;
+        }
+
+        body.light-theme #menu-bar {
+            background: #f5f5f5;
+            border-bottom-color: #ccc;
+        }
+
+        .menu-item {
+            display: flex;
+            align-items: center;
+            padding: 4px 12px;
+            font-size: 13px;
+            color: #ccc;
+            cursor: pointer;
+            border-radius: 3px;
+            transition: background 0.2s;
+            user-select: none;
+        }
+
+        body.light-theme .menu-item {
+            color: #333;
+        }
+
+        .menu-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+
+        body.light-theme .menu-item:hover {
+            background: rgba(0, 0, 0, 0.08);
+            color: #000;
+        }
+
+        .menu-item.icon {
+            padding: 4px 8px;
+            font-size: 16px;
+        }
+
+        .menu-spacer {
+            flex: 1;
+        }
+
+        /* Adjust canvas and grid to account for menu bar */
+        #canvas {
+            top: 32px;
+            height: calc(100vh - 32px);
+        }
+
+        #grid-canvas {
+            top: 32px;
+            height: calc(100vh - 32px);
+        }
     </style>
 </head>
 <body>
+    <!-- Menu Bar -->
+    <div id="menu-bar">
+        <div class="menu-item" id="menu-settings" title="Advanced Settings (Ctrl+,)">
+            <span style="font-size: 16px; margin-right: 6px;">⚙️</span>
+            <span>Settings</span>
+        </div>
+        <div class="menu-item" id="menu-docs" title="Documentation">
+            <span style="font-size: 16px; margin-right: 6px;">📚</span>
+            <span>Docs</span>
+        </div>
+    </div>
+
     <canvas id="canvas"></canvas>
 
     <div id="controls">
@@ -1155,7 +1434,6 @@
                 <button id="save-preset-btn" class="secondary">Save</button>
                 <button id="delete-preset-btn" class="secondary" style="display: none;">Delete</button>
             </div>
-            <div class="info">Save current settings as a custom preset</div>
         </div>
 
         <div class="control-group">
@@ -1165,18 +1443,16 @@
                 <input type="range" id="dimensions">
                 <button class="slider-btn" data-slider="dimensions" data-action="increase">+</button>
             </div>
-            <div class="info">Number of dimensions in the system</div>
         </div>
 
-        <h2>Vector Field Equations</h2>
+        <h2>Vector Field Equations<span class="help-icon" onclick="window.appModal?.show('docs', 'vector-fields')" title="View documentation">📝</span></h2>
         <div class="accordion-section">
             <div id="dimension-inputs" class="dimension-inputs">
                 <!-- Dynamically generated -->
             </div>
-            <div class="info">Enter math expressions using variables x, y, z, w, u, v</div>
         </div>
 
-        <h2>Integrator</h2>
+        <h2>Integrator<span class="help-icon" onclick="window.appModal?.show('docs', 'integrators')" title="View documentation">📝</span></h2>
         <div class="accordion-section">
             <div class="control-group">
                 <select id="integrator">
@@ -1196,7 +1472,6 @@
                         <option value="custom">Custom (Advanced)</option>
                     </optgroup>
                 </select>
-                <div class="info">Explicit methods: Euler ↔ Implicit Euler, Midpoint ↔ Implicit Midpoint, Heun ↔ Trapezoidal, RK4 ↔ Implicit RK4. Implicit methods are A-stable and allow larger timesteps for stiff systems.</div>
             </div>
 
             <div class="control-group" id="solution-method-group" style="display: none;">
@@ -1207,7 +1482,6 @@
                     <option value="newton">Newton's Method</option>
                     <option value="newton-fd">Newton (Finite Diff)</option>
                 </select>
-                <div class="info">Fixed-point creates interesting chaotic artifacts. Midpoint solver (predictor-corrector) offers a balance between speed and accuracy. Newton's method uses symbolic differentiation (most accurate). Newton (Finite Diff) approximates the Jacobian numerically and may create unique visual artifacts.</div>
             </div>
 
             <div class="control-group">
@@ -1221,7 +1495,6 @@
                     <button class="slider-btn" data-slider="timestep" data-action="reset" title="Reset to 0.01">↺</button>
                     <!-- Animation button will be added by AnimatableTimestepControl -->
                 </div>
-                <div class="info">Fine control: +/- = 0.001, ++/-- = 0.01. Scaled by integrator cost factor. Click 🎬 to enable animation.</div>
             </div>
 
             <div class="control-group" id="implicit-iterations-group" style="display: none;">
@@ -1231,11 +1504,10 @@
                     <input type="range" id="implicit-iterations">
                     <button class="slider-btn" data-slider="implicit-iterations" data-action="increase">+</button>
                 </div>
-                <div class="info">Number of iterations for implicit solver. Higher = more accurate but slower. Newton converges faster than fixed-point.</div>
             </div>
         </div>
 
-        <h2>Domain Transform</h2>
+        <h2>Domain Transform<span class="help-icon" onclick="window.appModal?.show('docs', 'domain-transforms')" title="View documentation">📝</span></h2>
         <div class="accordion-section">
             <div class="control-group">
                 <select id="transform">
@@ -1259,7 +1531,6 @@
                         <option value="custom">Custom (User GLSL)</option>
                     </optgroup>
                 </select>
-                <div class="info">Transform phase space before integration. Creates spatially-varying effective timestep while preserving convergence.</div>
             </div>
 
             <div id="transform-controls">
@@ -1267,7 +1538,7 @@
             </div>
         </div>
 
-        <h2>2D Projection</h2>
+        <h2>2D Projection<span class="help-icon" onclick="window.appModal?.show('docs', 'projection')" title="View documentation">📝</span></h2>
         <div class="accordion-section">
             <div class="control-group">
                 <select id="mapper">
@@ -1279,7 +1550,6 @@
 
             <div class="control-group">
                 <button id="configure-coordinates" class="secondary" style="width: 100%;">Configure Coordinates</button>
-                <div class="info">Define alternate coordinate systems (polar, spherical, etc.)</div>
             </div>
 
             <div id="mapper-controls">
@@ -1287,10 +1557,10 @@
             </div>
         </div>
 
-        <h2>Rendering</h2>
+        <h2>Rendering<span class="help-icon" onclick="window.appModal?.show('docs', 'particle-settings')" title="View documentation">📝</span></h2>
         <div class="accordion-section">
             <div class="control-group">
-                <label>Color Mode:</label>
+                <label>Color Mode:<span class="help-icon" onclick="window.appModal?.show('docs', 'color-modes')" title="View documentation">📝</span></label>
                 <select id="color-mode">
                     <option value="white">Solid White</option>
                     <option value="velocity_magnitude">Velocity Magnitude</option>
@@ -1303,7 +1573,6 @@
 
             <div class="control-group" id="gradient-button-container" style="display: none;">
                 <button id="open-gradient-editor" class="secondary" style="width: 100%;">Edit Gradient</button>
-                <div class="info">Customize color gradient for this mode</div>
             </div>
 
             <div class="control-group" id="velocity-scaling-container" style="display: none;">
@@ -1314,7 +1583,6 @@
                     <option value="average">Average</option>
                     <option value="max">Maximum</option>
                 </select>
-                <div class="info">What velocity to map to full color saturation. Percentiles ignore outliers for better color distribution.</div>
             </div>
 
             <div class="control-group" id="velocity-log-container" style="display: none;">
@@ -1322,14 +1590,12 @@
                     <input type="checkbox" id="velocity-log-scale">
                     Logarithmic Velocity Scale
                 </label>
-                <div class="info">Maps velocity using log scale for better visualization when velocity range is very large</div>
             </div>
 
             <div id="expression-controls" style="display: none;">
                 <div class="control-group">
                     <label>Color Expression:</label>
                     <input type="text" id="color-expression" placeholder="e.g., sin(x*y), length(pos), dx*dy" value="x * y">
-                    <div class="info">Expression that evaluates to [0,1]. Use x,y,z,w for position, dx,dy,dz,dw for velocity</div>
                 </div>
             </div>
 
@@ -1349,7 +1615,6 @@
                     <input type="range" id="fade">
                     <button class="slider-btn" data-slider="fade" data-action="increase">+</button>
                 </div>
-                <div class="info">Logarithmic scale: slower fade preserves trails longer</div>
             </div>
 
             <div class="control-group">
@@ -1371,16 +1636,11 @@
 
             <div class="control-group">
                 <button id="open-rendering-settings" class="secondary" style="width: 100%;">Rendering Effects</button>
-                <div class="info">HDR, tone mapping, and particle intensity settings</div>
             </div>
 
-            <div class="control-group">
-                <button id="open-custom-functions" class="secondary" style="width: 100%;">Custom Functions</button>
-                <div class="info">Define custom mathematical functions in GLSL</div>
-            </div>
         </div>
 
-        <h2>Advanced</h2>
+        <h2>Advanced<span class="help-icon" onclick="window.appModal?.show('docs', 'storage-strategy')" title="View documentation">📝</span></h2>
         <div class="accordion-section">
             <div class="control-group">
                 <label>Storage Strategy:</label>
@@ -1388,15 +1648,14 @@
                     <option value="rgba">RGBA Encoded (Compatible)</option>
                     <option value="float" selected>Float Textures (Default)</option>
                 </select>
-                <div class="info">RGBA for maximum compatibility, Float for best precision. Requires page reload.</div>
-            </div>
+                </div>
         </div>
 
         <div id="error-message"></div>
     </div>
 
     <div id="zoom-pan-controls">
-        <h1>View</h1>
+        <h1>View<span class="help-icon" onclick="window.appModal?.show('docs', 'keyboard-shortcuts')" title="View documentation">📝</span></h1>
 
         <!-- Pan controls in a 3x3 grid -->
         <div class="zoom-pan-grid">
@@ -1419,7 +1678,7 @@
     </div>
 
     <div id="display-options">
-        <h1>Display</h1>
+        <h1>Display<span class="help-icon" onclick="window.appModal?.show('docs', 'display-options')" title="View documentation">📝</span></h1>
 
         <div class="control-group">
             <label>
@@ -1487,8 +1746,7 @@
                 <button id="export-animation-json" style="width: 100%; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
                     💾 Export Settings as Animation JSON
                 </button>
-                <div class="info">Export current settings as animation base template</div>
-            </div>
+                </div>
 
             <hr style="border: none; border-top: 1px solid #333; margin: 16px 0;">
 
@@ -1498,13 +1756,11 @@
             <div class="control-group">
                 <label>Frames:</label>
                 <input type="number" id="animation-frames" value="100" min="1" max="10000" style="width: 100%; padding: 6px; background: #333; border: 1px solid #555; color: #fff; border-radius: 3px;">
-                <div class="info">Total number of frames to capture</div>
             </div>
 
             <div class="control-group">
                 <label>Loops:</label>
                 <input type="number" id="animation-loops" value="1" min="1" max="100" style="width: 100%; padding: 6px; background: #333; border: 1px solid #555; color: #fff; border-radius: 3px;">
-                <div class="info" id="animation-loops-info">Number of complete alpha cycles (0.0 → 1.0 → 0.0)</div>
             </div>
 
             <div class="control-group">
@@ -1512,7 +1768,6 @@
                     <input type="checkbox" id="animation-half-loops" style="margin-right: 8px;">
                     <span>Count as half-loops</span>
                 </label>
-                <div class="info">When enabled, 1 loop = 0.0 → 1.0 (one-way). When disabled, 1 loop = 0.0 → 1.0 → 0.0 (ping-pong)</div>
             </div>
 
             <div class="control-group" style="margin-top: 12px;">
@@ -1535,7 +1790,6 @@
                 <button id="animation-download-btn" style="width: 100%; padding: 6px; background: #42A5F5; color: white; border: none; border-radius: 4px; cursor: pointer;" disabled>
                     💾 Download Animation (ZIP)
                 </button>
-                <div class="info" style="font-size: 9px;">Create MP4: <code style="background: #000; padding: 2px 4px; border-radius: 2px;">./scripts/create-video.sh animation.zip out.mp4 30</code></div>
             </div>
         </div>
     </div>
@@ -1571,51 +1825,10 @@
         </div>
     </div>
 
-    <div id="debug-console" class="collapsed">
-        <div id="debug-header">
-            <input type="checkbox" id="debug-toggle" checked>
-            <h3>Debug Console</h3>
-            <span id="debug-expand">▶</span>
-        </div>
-        <div id="debug-body">
-            <div id="debug-controls">
-                <select id="debug-verbosity">
-                    <option value="info">Info</option>
-                    <option value="debug">Debug</option>
-                    <option value="verbose">Verbose</option>
-                    <option value="warn">Warnings Only</option>
-                    <option value="error">Errors Only</option>
-                    <option value="silent">Silent (Buffer)</option>
-                </select>
-                <button id="debug-log-update-shader" class="secondary" style="padding: 4px 8px; margin: 0;">Log Update</button>
-                <button id="debug-log-draw-shader" class="secondary" style="padding: 4px 8px; margin: 0;">Log Draw</button>
-                <button id="debug-log-screen-shader" class="secondary" style="padding: 4px 8px; margin: 0;">Log Screen</button>
-                <button id="debug-log-stats-shaders" class="secondary" style="padding: 4px 8px; margin: 0;">Log Stats</button>
-                <button id="debug-buffer-stats" class="secondary" style="padding: 4px 8px; margin: 0;">Buffer Stats</button>
-                <button id="debug-copy" class="secondary" style="padding: 4px 8px; margin: 0;">Copy Log</button>
-                <button id="debug-clear" class="secondary" style="padding: 4px 8px; margin: 0;">Clear</button>
-            </div>
-            <div id="debug-buffer-status" style="display: none; padding: 4px 8px; background: #2a2a2a; border-radius: 4px; margin-bottom: 8px; font-size: 11px; color: #888;">
-                <span style="color: #FFA726; font-weight: bold;">SILENT MODE:</span>
-                Buffering <span id="buffer-size" style="color: #4CAF50;">0</span> logs
-                (<span id="buffer-percent">0</span>% of max)
-                <button id="debug-flush-buffer" class="secondary" style="padding: 2px 6px; margin-left: 8px; font-size: 10px;">Flush Buffer</button>
-                <button id="debug-clear-buffer" class="secondary" style="padding: 2px 6px; margin-left: 4px; font-size: 10px;">Clear Buffer</button>
-            </div>
-            <div style="padding: 4px 8px; margin-bottom: 8px;">
-                <label style="display: flex; align-items: center; cursor: pointer; font-size: 11px;" title="Enable particle sampling and detailed logging (expensive GPU readback). Buffer stats for tone mapping are always enabled but optimized.">
-                    <input type="checkbox" id="debug-enable-stats" style="margin-right: 6px;">
-                    <span>Enable Particle Sampling</span>
-                </label>
-            </div>
-            <div id="debug-output"></div>
-        </div>
-    </div>
-
     <!-- Floating gradient panel -->
     <div id="gradient-panel" class="floating-panel" style="display: none;">
         <div class="floating-panel-header">
-            <h3>Gradient Editor</h3>
+            <h3>Gradient Editor<span class="help-icon" onclick="window.appModal?.show('docs', 'color-modes')" title="View documentation">📝</span></h3>
         </div>
         <div class="floating-panel-content">
             <div id="gradient-preset-toggle" style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #444;">
@@ -1623,7 +1836,6 @@
                     <input type="checkbox" id="use-custom-gradient" style="margin-right: 8px;">
                     <span>Apply to preset color modes</span>
                 </label>
-                <div class="info" style="margin-top: 5px;">When disabled, preset modes use built-in colors</div>
             </div>
             <div id="main-gradient-editor"></div>
         </div>
@@ -1632,7 +1844,7 @@
     <!-- Floating rendering settings panel -->
     <div id="rendering-panel" class="floating-panel" style="display: none;">
         <div class="floating-panel-header">
-            <h3>Rendering Effects</h3>
+            <h3>Rendering Effects<span class="help-icon" onclick="window.appModal?.show('docs', 'rendering-effects')" title="View documentation">📝</span></h3>
         </div>
         <div class="floating-panel-content">
             <h4 style="margin: 0 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">HDR Rendering</h4>
@@ -1641,7 +1853,6 @@
                     <input type="checkbox" id="use-hdr" checked>
                     Enable HDR (float framebuffers)
                 </label>
-                <div class="info">High Dynamic Range rendering with tone mapping</div>
             </div>
 
             <div class="control-group">
@@ -1649,7 +1860,6 @@
                     <input type="checkbox" id="use-depth-test">
                     Enable Depth Testing (Plasma Mode)
                 </label>
-                <div class="info">Use Z-buffer to occlude particles by depth. Creates layered density effect in 3D systems.</div>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Render Scale</h4>
@@ -1661,7 +1871,6 @@
                     <button class="slider-btn" data-slider="supersample-factor" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="supersample-factor" data-action="reset" title="Reset to default (1.0x)">↺</button>
                 </div>
-                <div class="info">Render resolution multiplier (0.5x - 4.0x). &lt;1.0x for performance, &gt;1.0x for quality. 2.0x = 4x pixels.</div>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">SMAA Antialiasing</h4>
@@ -1670,7 +1879,6 @@
                     <input type="checkbox" id="smaa-enabled" checked>
                     Enable SMAA (morphological AA)
                 </label>
-                <div class="info">Pattern-based antialiasing. Better edge preservation than FXAA - uses edge detection and pattern recognition.</div>
             </div>
 
             <div class="control-group">
@@ -1681,7 +1889,6 @@
                     <button class="slider-btn" data-slider="smaa-intensity" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="smaa-intensity" data-action="reset" title="Reset to default (0.75)">↺</button>
                 </div>
-                <div class="info">Blend strength (0.0 - 1.0). Controls how much smoothing is applied to detected edges.</div>
             </div>
 
             <div class="control-group">
@@ -1692,7 +1899,6 @@
                     <button class="slider-btn" data-slider="smaa-threshold" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="smaa-threshold" data-action="reset" title="Reset to default (0.10)">↺</button>
                 </div>
-                <div class="info">Edge detection sensitivity (0.0 - 0.5). Lower = more edges detected, higher = only strong edges.</div>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Bilateral Filter (Noise Reduction)</h4>
@@ -1701,7 +1907,6 @@
                     <input type="checkbox" id="bilateral-enabled">
                     Enable Bilateral Filter
                 </label>
-                <div class="info">Edge-preserving blur. Smooths flat/sparse areas while preserving sharp edges and particle trails.</div>
             </div>
 
             <div class="control-group">
@@ -1712,7 +1917,6 @@
                     <button class="slider-btn" data-slider="bilateral-spatial" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="bilateral-spatial" data-action="reset" title="Reset to default (4.0)">↺</button>
                 </div>
-                <div class="info">Blur radius (0.5 - 5.0). Higher = stronger smoothing effect.</div>
             </div>
 
             <div class="control-group">
@@ -1723,7 +1927,6 @@
                     <button class="slider-btn" data-slider="bilateral-intensity" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="bilateral-intensity" data-action="reset" title="Reset to default (0.20)">↺</button>
                 </div>
-                <div class="info">Edge preservation threshold (0.01 - 0.5). Lower = preserve more edges, higher = blur across edges.</div>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Tone Mapping</h4>
@@ -1740,7 +1943,6 @@
                     <option value="hable">Hable Filmic</option>
                     <option value="linear">Linear (No Tone Mapping)</option>
                 </select>
-                <div class="info">Compresses HDR → LDR. Luminance modes preserve color hue/saturation perfectly.</div>
             </div>
 
             <div class="control-group">
@@ -1751,7 +1953,6 @@
                     <button class="slider-btn" data-slider="exposure" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="exposure" data-action="reset" title="Reset to default (1.0)">↺</button>
                 </div>
-                <div class="info">Logarithmic scale (0.01 - 10.0). Use low values (0.05-0.2) for attractor visualization with high gamma.</div>
             </div>
 
             <div class="control-group">
@@ -1762,7 +1963,6 @@
                     <button class="slider-btn" data-slider="gamma" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="gamma" data-action="reset" title="Reset to default (2.2)">↺</button>
                 </div>
-                <div class="info">Logarithmic scale (0.2 - 10.0). Use high values (3.0-10.0) for aggressive shadow lifting in attractors.</div>
             </div>
 
             <div class="control-group">
@@ -1773,7 +1973,6 @@
                     <button class="slider-btn" data-slider="luminance-gamma" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="luminance-gamma" data-action="reset" title="Reset to default (1.0)">↺</button>
                 </div>
-                <div class="info">Logarithmic scale (0.2 - 10.0). Adjusts brightness only, preserving hue. Applied after regular gamma.</div>
             </div>
 
             <div class="control-group" id="white-point-control">
@@ -1784,7 +1983,6 @@
                     <button class="slider-btn" data-slider="white-point" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="white-point" data-action="reset" title="Reset to default (2.0)">↺</button>
                 </div>
-                <div class="info">Brightest value that maps to white. Also used as bloom threshold.</div>
             </div>
 
             <!-- Bloom Effect (Hidden - WIP) -->
@@ -1795,7 +1993,6 @@
                         <input type="checkbox" id="bloom-enabled">
                         Enable Bloom (bright regions glow)
                     </label>
-                    <div class="info">Extracts pixels above white point, blurs them, and adds glow.</div>
                 </div>
 
                 <div class="control-group">
@@ -1806,7 +2003,6 @@
                         <button class="slider-btn" data-slider="bloom-intensity" data-action="increase">+</button>
                         <button class="slider-btn" data-slider="bloom-intensity" data-action="reset" title="Reset to default (0.3)">↺</button>
                     </div>
-                    <div class="info">Bloom layer strength (0.0 - 2.0). Higher = stronger glow.</div>
                 </div>
 
                 <div class="control-group">
@@ -1817,7 +2013,6 @@
                         <button class="slider-btn" data-slider="bloom-radius" data-action="increase">+</button>
                         <button class="slider-btn" data-slider="bloom-radius" data-action="reset" title="Reset to default (1.0)">↺</button>
                     </div>
-                    <div class="info">Blur radius (0.5 - 3.0). Higher = wider glow spread.</div>
                 </div>
 
                 <div class="control-group">
@@ -1828,7 +2023,6 @@
                         <button class="slider-btn" data-slider="bloom-alpha" data-action="increase">+</button>
                         <button class="slider-btn" data-slider="bloom-alpha" data-action="reset" title="Reset to default (1.0)">↺</button>
                     </div>
-                    <div class="info">Bloom transparency (0.0 - 1.0). Lower = more transparent, higher = more opaque.</div>
                 </div>
             </div>
 
@@ -1841,7 +2035,6 @@
                     <button class="slider-btn" data-slider="particle-intensity" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="particle-intensity" data-action="reset" title="Reset to default (1.0)">↺</button>
                 </div>
-                <div class="info">Logarithmic scale (0.001 - 100.0). Brightness multiplier for particles. Use very low values (0.01-0.05) for attractor visualization.</div>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Particle Size</h4>
@@ -1853,7 +2046,6 @@
                     <button class="slider-btn" data-slider="particle-size" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="particle-size" data-action="reset" title="Reset to default (1.0)">↺</button>
                 </div>
-                <div class="info">Logarithmic scale (0.1 - 10.0). Size of rendered particles in pixels.</div>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Particle Render Mode</h4>
@@ -1863,7 +2055,6 @@
                     <option value="points">Points</option>
                     <option value="lines">Lines (Motion Trails)</option>
                 </select>
-                <div class="info">Render particles as points or as lines connecting consecutive positions for motion trails.</div>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Color Saturation</h4>
@@ -1875,7 +2066,6 @@
                     <button class="slider-btn" data-slider="color-saturation" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="color-saturation" data-action="reset" title="Reset to default (1.0)">↺</button>
                 </div>
-                <div class="info">Color saturation (0.0 - 1.0). Reduce for pastel colors ideal for attractor density visualization.</div>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Brightness Desaturation</h4>
@@ -1887,7 +2077,6 @@
                     <button class="slider-btn" data-slider="brightness-desat" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="brightness-desat" data-action="reset" title="Reset to default (0.0)">↺</button>
                 </div>
-                <div class="info">Desaturates bright regions (0.0 - 1.0). Prevents fully saturated colors in dense attractor areas.</div>
             </div>
 
             <div class="control-group">
@@ -1898,57 +2087,13 @@
                     <button class="slider-btn" data-slider="saturation-buildup" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="saturation-buildup" data-action="reset" title="Reset to default (0.0)">↺</button>
                 </div>
-                <div class="info">Desaturates dim regions, saturates bright regions (0.0 - 1.0). Sparse trails look washed out, dense accumulations pop with full color. Higher values = more aggressive effect.</div>
             </div>
         </div>
     </div>
-
-    <!-- Floating custom functions panel -->
-    <div id="custom-functions-panel" class="floating-panel" style="display: none;">
-        <div class="floating-panel-header">
-            <h3>Custom Functions</h3>
-        </div>
-        <div class="floating-panel-content">
-            <div class="info" style="margin-bottom: 16px;">
-                Define custom functions using mathematical syntax. Functions can be used in vector field expressions, color expressions, and mapper functions.
-            </div>
-
-            <h4 style="margin: 0 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Syntax</h4>
-            <div class="info" style="margin-bottom: 16px; font-family: monospace; background: #000; padding: 8px; border-radius: 4px; font-size: 11px;">
-                functionName(arg1, arg2, ...) = expression<br>
-                <br>
-                <span style="color: #888;">Examples:</span><br>
-                <span style="color: #4CAF50;">smoothstep(x, a, b) = ((x-a)/(b-a))^3 * (3 - 2*((x-a)/(b-a)))</span><br>
-                <span style="color: #4CAF50;">lerp(a, b, t) = a * (1-t) + b * t</span><br>
-                <span style="color: #4CAF50;">sqr(x) = x * x</span><br>
-                <span style="color: #4CAF50;">cube(x) = x * x * x</span>
-            </div>
-
-            <h4 style="margin: 0 0 8px 0; padding: 0; font-size: 14px; color: #4CAF50;">Function Definitions</h4>
-            <div class="control-group">
-                <textarea id="custom-functions-input"
-                    rows="12"
-                    style="width: 100%; font-family: 'Courier New', monospace; font-size: 12px; background: #1a1a1a; color: #4CAF50; border: 1px solid #444; border-radius: 4px; padding: 10px; resize: vertical;"
-                    placeholder="Enter custom function definitions (one per line)...&#10;&#10;Example:&#10;smoothstep(x, a, b) = ((x-a)/(b-a))^3 * (3 - 2*((x-a)/(b-a)))"></textarea>
-                <div class="info">One function per line. Use standard math operators (+, -, *, /, ^) and built-in functions (sin, cos, exp, log, sqrt, abs, etc.)</div>
-            </div>
-
-            <div class="control-group" style="margin-top: 12px;">
-                <button id="apply-custom-functions" style="width: 100%; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                    Apply Functions
-                </button>
-            </div>
-
-            <div id="custom-functions-error" style="display: none; margin-top: 12px; padding: 8px; background: rgba(244, 67, 54, 0.1); border: 1px solid #f44336; border-radius: 4px; color: #f44336; font-size: 11px;"></div>
-
-            <div id="custom-functions-success" style="display: none; margin-top: 12px; padding: 8px; background: rgba(76, 175, 80, 0.1); border: 1px solid #4CAF50; border-radius: 4px; color: #4CAF50; font-size: 11px;"></div>
-        </div>
-    </div>
-
     <!-- Floating animation panel -->
     <div id="animation-panel" class="floating-panel" style="display: none; left: 20px; right: auto; z-index: 10000;">
         <div class="floating-panel-header">
-            <h3>Animation</h3>
+            <h3>Animation<span class="help-icon" onclick="window.appModal?.show('docs', 'animation')" title="View documentation">📝</span></h3>
             <button id="animation-panel-lock" style="background: none; border: 1px solid #666; color: #666; padding: 4px 8px; border-radius: 3px; cursor: pointer; font-size: 16px; margin-left: auto;" title="Lock panel open">🔓</button>
         </div>
         <div class="floating-panel-content">
@@ -1965,8 +2110,7 @@
                 <button id="export-animation-json" style="width: 100%; padding: 8px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
                     💾 Export Settings as Animation JSON
                 </button>
-                <div class="info">Export current settings as animation base template</div>
-            </div>
+                </div>
 
             <hr style="border: none; border-top: 1px solid #333; margin: 20px 0;">
 
@@ -1975,13 +2119,11 @@
             <div class="control-group">
                 <label>Frames:</label>
                 <input type="number" id="animation-frames" value="100" min="1" max="10000" style="width: 100%; padding: 6px; background: #333; border: 1px solid #555; color: #fff; border-radius: 3px;">
-                <div class="info">Total number of frames to capture</div>
             </div>
 
             <div class="control-group">
                 <label>Loops:</label>
                 <input type="number" id="animation-loops" value="1" min="1" max="100" style="width: 100%; padding: 6px; background: #333; border: 1px solid #555; color: #fff; border-radius: 3px;">
-                <div class="info" id="animation-loops-info">Number of complete alpha cycles (0.0 → 1.0 → 0.0)</div>
             </div>
 
             <div class="control-group">
@@ -1989,7 +2131,6 @@
                     <input type="checkbox" id="animation-half-loops" style="margin-right: 8px;">
                     <span>Count as half-loops</span>
                 </label>
-                <div class="info">When enabled, 1 loop = 0.0 → 1.0 (one-way). When disabled, 1 loop = 0.0 → 1.0 → 0.0 (ping-pong)</div>
             </div>
 
             <div class="control-group" style="margin-top: 16px;">
@@ -2012,7 +2153,6 @@
                 <button id="animation-download-btn" style="width: 100%; padding: 8px; background: #42A5F5; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 13px;" disabled>
                     💾 Download Animation (ZIP)
                 </button>
-                <div class="info">Create MP4: <code style="background: #000; padding: 2px 4px; border-radius: 2px; font-size: 9px;">./scripts/create-video.sh animation.zip out.mp4 30</code></div>
             </div>
         </div>
     </div>
@@ -2022,6 +2162,8 @@
     <!-- JSZip for bundling animation frames -->
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Marked.js for markdown parsing in documentation -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
     <!-- Coordinate System Modules (loaded before main.js) -->
     <script type="module" src="src/ui/unicode-autocomplete.js"></script>
@@ -2097,5 +2239,21 @@
             console.log(`Loading main.js entry point with version: ${version}`);
         })();
     </script>
+
+    <!-- Modal Window -->
+    <div id="modal-overlay">
+        <div id="modal-window">
+            <div id="modal-header">
+                <h2 id="modal-title">Advanced Settings</h2>
+                <button id="modal-close">&times;</button>
+            </div>
+            <div id="modal-tab-bar">
+                <!-- Tab buttons will be added dynamically -->
+            </div>
+            <div id="modal-content">
+                <!-- Tab content will be rendered here -->
+            </div>
+        </div>
+    </div>
 </body>
 </html>
