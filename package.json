@@ -4,6 +4,9 @@
   "description": "N-Dimensional Vector Field Flow Renderer with WebGL",
   "type": "module",
   "scripts": {
+    "build": "node build.js",
+    "build:watch": "node build.js --watch",
+    "serve:build": "python3 -m http.server 8000 --directory build",
     "render": "node scripts/render-animation.js",
     "serve": "python3 -m http.server 8000",
     "docs": "node scripts/extract-docs.js",
@@ -13,9 +16,9 @@
     "test:smoke": "node test/integration/run-with-server.cjs smoke-test.cjs",
     "test:smoke:polar": "node test/integration/run-with-server.cjs polar-smoke-test.cjs"
   },
-  "dependencies": {},
   "devDependencies": {
     "comment-parser": "^1.4.0",
+    "esbuild": "^0.27.0",
     "puppeteer": "^22.0.0"
   },
   "keywords": [
