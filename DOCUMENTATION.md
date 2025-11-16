@@ -12,7 +12,6 @@ This guide helps you navigate the project's documentation. All docs are organize
 ---|---
 Use the application | [README.md](./README.md)
 Deploy the application | [DEPLOYMENT.md](./DEPLOYMENT.md)
-Understand the codebase | [CLAUDE.md](./CLAUDE.md)
 Create animations | [animations/README.md](./animations/README.md)
 Create videos from frames | [scripts/README.md](./scripts/README.md)
 
@@ -72,14 +71,6 @@ For end users and artists creating visualizations.
 
 ### 🔧 Developer Documentation
 For contributors and maintainers.
-
-#### [CLAUDE.md](./CLAUDE.md) - **PRIMARY TECHNICAL REFERENCE**
-- Complete architecture overview
-- File structure and responsibilities
-- All features explained in detail
-- Recent improvements and refactorings
-- Known issues and workarounds
-- Development workflow
 
 **Audience:** Developers working on the codebase, AI assistants
 
@@ -172,27 +163,21 @@ Contains documentation from previous refactorings:
 ### Animation System
 1. **User Guide:** [animations/README.md](./animations/README.md) - How to create animations
 2. **Technical Spec:** [ANIMATION_FORMAT.md](./ANIMATION_FORMAT.md) - JSON schema
-3. **Implementation:** [CLAUDE.md](./CLAUDE.md#animation-system-2025-11-to-present) - Code architecture
 4. **Video Export:** [scripts/README.md](./scripts/README.md) - Frame to video conversion
 
 ### Control System
 1. **Architecture:** [docs/CONTROLS_ARCHITECTURE.md](./docs/CONTROLS_ARCHITECTURE.md) - Current system design
-2. **Implementation:** [CLAUDE.md](./CLAUDE.md#user-interface) - File structure and responsibilities
 3. **Historical:** [archive/docs/](./archive/docs/) - Previous refactoring docs
 
 ### Integration Methods
 1. **Architecture:** [docs/IMPLICIT_SOLVER_ARCHITECTURE.md](./docs/IMPLICIT_SOLVER_ARCHITECTURE.md) - Solver design
-2. **Implementation:** [CLAUDE.md](./CLAUDE.md#2-pluggable-integrators) - Available methods
 3. **Usage:** [README.md](./README.md#integrators) - User guide
 
 ### Rendering Pipeline
-1. **HDR & Tone Mapping:** [CLAUDE.md](./CLAUDE.md#hdr-pipeline--tone-mapping) - Implementation details
-2. **Usage Patterns:** [CLAUDE.md](./CLAUDE.md#typical-usage-patterns) - Best practices for attractors
 3. **User Guide:** [README.md](./README.md#rendering) - Basic settings
 
 ### Deployment
 1. **Setup:** [DEPLOYMENT.md](./DEPLOYMENT.md) - Server configuration
-2. **Development:** [CLAUDE.md](./CLAUDE.md#development-workflow) - Workflow notes
 
 ---
 
@@ -203,7 +188,6 @@ Contains documentation from previous refactorings:
 When making changes, update these files:
 
 **For Code Changes:**
-- ✅ Always update [CLAUDE.md](./CLAUDE.md) - Primary technical reference
 - ✅ Update [docs/CONTROLS_ARCHITECTURE.md](./docs/CONTROLS_ARCHITECTURE.md) if changing control system
 - ✅ Update [docs/IMPLICIT_SOLVER_ARCHITECTURE.md](./docs/IMPLICIT_SOLVER_ARCHITECTURE.md) if changing solvers
 
@@ -217,7 +201,6 @@ When making changes, update these files:
 
 ### Documentation Priorities
 
-1. **CLAUDE.md** - Always keep current (primary reference)
 2. **README.md** - Update for user-visible changes
 3. **Specialized docs** - Update when relevant systems change
 4. **Archive old docs** - Move superseded docs to archive/ with explanation
@@ -226,7 +209,6 @@ When making changes, update these files:
 
 Some information appears in multiple places by design:
 
-- **CLAUDE.md** - Complete technical reference (for developers)
 - **README.md** - Simplified user guide (for end users)
 - **animations/README.md** - User-friendly animation guide
 - **ANIMATION_FORMAT.md** - Technical animation spec
@@ -238,11 +220,6 @@ This serves different audiences and use cases. Keep them in sync but don't conso
 ## Recent Documentation Updates
 
 ### 2025-11-13
-- ✅ Updated CLAUDE.md with Parameter Control refactoring
-- ✅ Updated CLAUDE.md with Animation System improvements
-- ✅ Updated CLAUDE.md with Domain Transforms
-- ✅ Updated CLAUDE.md with Accordion utilities
-- ✅ Updated CLAUDE.md with AnimatableTimestepControl
 - ✅ Created this DOCUMENTATION.md guide
 
 ### Known Documentation Debt
@@ -257,7 +234,6 @@ This serves different audiences and use cases. Keep them in sync but don't conso
 When adding features:
 
 1. **Code first, document later** - Get the code working
-2. **Update CLAUDE.md** - Add to appropriate section
 3. **Update user docs** - If user-visible, update README.md
 4. **Update specialized docs** - If changing architecture, update relevant doc
 5. **Archive old docs** - If replacing old system, move old docs to archive/
@@ -274,7 +250,6 @@ When writing documentation:
 ## Questions?
 
 - **"Where do I start?"** → Read [README.md](./README.md)
-- **"How does X work?"** → Check [CLAUDE.md](./CLAUDE.md)
 - **"How do I deploy this?"** → Read [DEPLOYMENT.md](./DEPLOYMENT.md)
 - **"How do I make animations?"** → Read [animations/README.md](./animations/README.md)
 - **"What's the animation format?"** → Read [ANIMATION_FORMAT.md](./ANIMATION_FORMAT.md)

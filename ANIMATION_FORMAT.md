@@ -38,7 +38,7 @@ Frames per second (default: 30)
 ### `baseSettings` (object, required)
 Complete renderer settings object. These are the starting values, which keyframes can override.
 
-See the main CLAUDE.md for the complete settings structure. Common fields:
+Common fields:
 
 ```json
 "baseSettings": {
@@ -332,6 +332,5 @@ ffmpeg -framerate 30 -i ./renders/lorenz-4k/frame_%06d.png \
 
 ## See Also
 
-- `CLAUDE.md` - Complete settings reference
 - `animations/` - Example animation files
 - `scripts/render-animation.js` - Puppeteer renderer source

@@ -86,13 +86,13 @@ package-lock.json
 
 # Lerna
 lerna-debug.log
-
 # System Files
 .DS_Store
 Thumbs.db
 
 .claude/
 CLAUDE.md
+scripts/remove-claude-md-refs.sh
 
 state.json
 
