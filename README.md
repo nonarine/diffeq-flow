@@ -221,7 +221,6 @@ dw/dt = z
 - Phase portraits with nullclines
 
 **Documentation:**
-- Technical details: See [CLAUDE.md](./CLAUDE.md)
 - Animation guide: See [animations/README.md](./animations/README.md)
 - All docs: See [DOCUMENTATION.md](./DOCUMENTATION.md)
 
