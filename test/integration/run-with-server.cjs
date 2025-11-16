@@ -1,6 +1,9 @@
 /**
- * Run smoke test with local HTTP server
- * Starts a server, runs the test, then cleans up
+ * Generic test runner with local HTTP server
+ * Starts a server, runs the specified test, then cleans up
+ *
+ * Usage: node run-with-server.cjs <test-file.cjs>
+ * Example: node run-with-server.cjs smoke-test.cjs
  */
 
 const { spawn } = require('child_process');
@@ -54,6 +57,10 @@ function waitForServer(port, timeout = 10000) {
  * Main function
  */
 async function main() {
+    // Get test file from command line argument
+    const testFile = process.argv[2] || 'smoke-test.cjs';
+    const testPath = path.join(__dirname, testFile);
+
     const projectRoot = path.resolve(__dirname, '../..');
     console.log(`${colors.cyan}${colors.bright}Starting local HTTP server on port ${PORT}...${colors.reset}`);
     console.log(`${colors.cyan}Serving from: ${projectRoot}${colors.reset}`);
@@ -73,11 +80,11 @@ async function main() {
         await waitForServer(PORT);
         console.log(`${colors.green}✓ Server ready${colors.reset}\n`);
 
-        // Run smoke test
-        console.log(`${colors.cyan}${colors.bright}Running smoke test...${colors.reset}\n`);
+        // Run test
+        console.log(`${colors.cyan}${colors.bright}Running ${testFile}...${colors.reset}\n`);
 
-        const testProcess = spawn('node', ['test/integration/smoke-test.cjs'], {
-            cwd: path.resolve(__dirname, '../..'),
+        const testProcess = spawn('node', [testPath], {
+            cwd: projectRoot,
             stdio: 'inherit',
             env: {
                 ...process.env,

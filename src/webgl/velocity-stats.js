@@ -86,11 +86,10 @@ ${velocityComponents}
     return result;
 }
 
-// Velocity field in Cartesian coordinates
+// Velocity field for statistics (native-space integration)
 ${vecType} get_velocity(${vecType} pos_cartesian) {
     ${vecType} pos_native = transformToNative(pos_cartesian);
-    ${vecType} vel_native = get_velocity_native(pos_native);
-    return transformVelocityToCartesian(vel_native, pos_cartesian);
+    return get_velocity_native(pos_native);
 }
 ` : `
 // User-defined velocity field
@@ -129,7 +128,7 @@ uniform float u_alpha;
 
 varying vec2 v_texcoord;
 
-${hasCoordinateSystem ? coordinateSystemCode.forwardTransform + '\n' + coordinateSystemCode.velocityTransform : ''}
+${hasCoordinateSystem ? coordinateSystemCode.forwardTransform : ''}
 
 ${velocityFunction}
 

@@ -302,7 +302,24 @@ export class Animator {
         try {
             // Apply base settings
             logger.info('Applying base settings...');
-            this.manager.setSettings(this.script.baseSettings);
+
+            // Apply settings (exclude coordinateSystem - will apply it after)
+            const settingsWithoutCoordSystem = { ...this.script.baseSettings };
+            delete settingsWithoutCoordSystem.coordinateSystem;
+            this.manager.setSettings(settingsWithoutCoordSystem);
+
+            // Apply coordinate system AFTER other settings (so dimension change doesn't reset it)
+            if (this.script.baseSettings.coordinateSystem) {
+                const { CoordinateSystem } = await import('../math/coordinate-systems.js');
+                const coordSystem = CoordinateSystem.fromJSON(this.script.baseSettings.coordinateSystem);
+                this.renderer.coordinateSystem = coordSystem;
+                logger.info(`Set coordinate system: ${coordSystem.name}`);
+
+                // Trigger shader recompilation with the coordinate system
+                this.renderer.compileShaders();
+                logger.info('Shaders recompiled with coordinate system');
+            }
+
             await this.waitFrame();
 
             // Render each frame

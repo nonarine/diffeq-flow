@@ -33,38 +33,35 @@ import { resizeAccordion } from './accordion-utils.js';
 export function initControls(renderer, callback) {
     // Create the control manager
     const manager = new ControlManager({
+        renderer: renderer,  // Pass renderer for coordinate system handling
         storageKey: 'vectorFieldSettings',
         debounceTime: 300,
         onApply: (settings) => {
-            try {
-                // Transform implicitIterations into integratorParams
-                if (settings.implicitIterations !== undefined) {
-                    settings.integratorParams = { iterations: settings.implicitIterations };
-                }
-
-                // Apply settings directly to renderer
-                renderer.updateConfig(settings);
-
-                // Save to localStorage (including bbox for pan/zoom state and coordinate system)
-                const settingsToSave = manager.getSettings();
-                if (renderer && renderer.bbox) {
-                    settingsToSave.bbox = {
-                        min: [...renderer.bbox.min],
-                        max: [...renderer.bbox.max]
-                    };
-                }
-                if (renderer && renderer.coordinateSystem) {
-                    settingsToSave.coordinateSystem = renderer.coordinateSystem.toJSON();
-                }
-                localStorage.setItem('vectorFieldSettings', JSON.stringify(settingsToSave));
-
-                // Clear any error messages
-                hideError();
-            } catch (error) {
-                // Show error but keep visualization running with last good config
-                showError(error.message);
-                logger.error('Failed to apply settings', error);
+            // Transform implicitIterations into integratorParams
+            if (settings.implicitIterations !== undefined) {
+                settings.integratorParams = { iterations: settings.implicitIterations };
             }
+
+            // Apply settings directly to renderer
+            // Allow temporary error states (e.g. dimension/coordinate system mismatch)
+            // Shader compilation will fail gracefully and user can fix it
+            renderer.updateConfig(settings);
+
+            // Save to localStorage (including bbox for pan/zoom state and coordinate system)
+            const settingsToSave = manager.getSettings();
+            if (renderer && renderer.bbox) {
+                settingsToSave.bbox = {
+                    min: [...renderer.bbox.min],
+                    max: [...renderer.bbox.max]
+                };
+            }
+            if (renderer && renderer.coordinateSystem) {
+                settingsToSave.coordinateSystem = renderer.coordinateSystem.toJSON();
+            }
+            localStorage.setItem('vectorFieldSettings', JSON.stringify(settingsToSave));
+
+            // Clear any error messages
+            hideError();
         }
     });
 
@@ -83,21 +80,17 @@ export function initControls(renderer, callback) {
         onChange: (value) => {
             logger.verbose('Dimensions changed to:', value);
 
-            // Only reset coordinate system if dimensions don't match
-            // (preserves coordinate system during initialization/restore)
-            if (!renderer.coordinateSystem || renderer.coordinateSystem.dimensions !== value) {
-                logger.verbose('Resetting coordinate system to Cartesian for new dimensions');
-                const cartesianSystem = getCartesianSystem(value);
-                renderer.coordinateSystem = cartesianSystem;
-
-                // Update dimension inputs when dimensions change
-                const expressionsControl = manager.get('dimension-inputs');
-                if (expressionsControl) {
-                    logger.verbose('Calling updateInputs with dimensions:', value);
-                    expressionsControl.setCoordinateSystem(cartesianSystem);
+            // Update dimension inputs when dimensions change
+            const expressionsControl = manager.get('dimension-inputs');
+            if (expressionsControl && renderer.coordinateSystem) {
+                logger.verbose('Updating dimension inputs with dimensions:', value);
+                // Don't reset coordinate system - just update the UI
+                // If dimensions mismatch, shader compilation will fail gracefully
+                if (renderer.coordinateSystem.dimensions === value) {
+                    expressionsControl.setCoordinateSystem(renderer.coordinateSystem);
                     expressionsControl.updateInputs(value);
                 } else {
-                    logger.error('expressionsControl not found!');
+                    logger.warn(`Coordinate system dimension mismatch: ${renderer.coordinateSystem.dimensions}D coordinate system with ${value}D expressions - update coordinate system or expressions to match`);
                 }
             } else {
                 logger.verbose('Preserving existing coordinate system:', renderer.coordinateSystem.name);
@@ -1127,9 +1120,11 @@ export function initControls(renderer, callback) {
             if (animationStepCounter >= animationStepsPerIncrement) {
                 animationStepCounter = 0;
 
-                // If freeze mode: render final accumulated frame to display
+                // If freeze mode: accumulate final step, display the buffer, THEN clear for next cycle
                 if (freezeScreen && window.renderer) {
-                    window.renderer.render(true); // Display the accumulated N steps
+                    window.renderer.render(false); // Accumulate step N without displaying
+                    window.renderer.downsampleToCanvas(); // Display the accumulated N steps
+                    window.renderer.clearRenderBuffer(true); // Clear without restarting main loop
                 }
 
                 // Calculate elapsed time for this alpha cycle
@@ -1254,12 +1249,8 @@ export function initControls(renderer, callback) {
                         window.renderer.resetParticles();
                     }
 
-                    // Check if we should clear screen (for next accumulation cycle)
-                    if (freezeScreen) {
-                        window.renderer.clearRenderBuffer();
-                    }
-
                     // If NOT freeze mode: render normally with display
+                    // (freeze mode already rendered and cleared earlier)
                     if (!freezeScreen) {
                         window.renderer.render(true);
                     }

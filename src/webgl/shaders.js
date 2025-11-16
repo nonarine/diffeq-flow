@@ -108,9 +108,10 @@ export function generateUpdateFragmentShader(dimensions, velocityExpressions, in
     // Add coordinate system functions if provided
     const hasCoordinateSystem = coordinateSystemCode && coordinateSystemCode.forwardTransform;
     const coordinateSystemFunctions = hasCoordinateSystem ? `
-// Coordinate system transformation functions
+// Coordinate system transformation functions (native-space integration)
 ${coordinateSystemCode.forwardTransform}
-${coordinateSystemCode.velocityTransform}
+${coordinateSystemCode.inverseTransform}
+// Note: velocityTransform not needed with native-space integration
 ` : '';
 
     // Add transform functions if provided
@@ -129,20 +130,15 @@ ${transformCode.jacobian}
 // User-defined velocity field in native coordinates (${coordinateSystemCode.name || 'custom'})
 ${vecType} get_velocity_native(${vecType} pos_native) {
     ${vecType} result;
+    // Extract native coordinates for use in expressions
+    float ${coordinateSystemCode.nativeVars ? coordinateSystemCode.nativeVars.map((v, i) => `${v} = pos_native.${swizzles[i]}`).join(', ') : swizzles.slice(0, dimensions).map((s, i) => `${s} = pos_native.${s}`).join(', ')};
 ${velocityComponents}
     return result;
 }
 
-// Velocity field in Cartesian coordinates (for integration)
-${vecType} get_velocity(${vecType} pos_cartesian) {
-    // Transform position to native coordinates
-    ${vecType} pos_native = transformToNative(pos_cartesian);
-
-    // Evaluate velocity in native coordinates
-    ${vecType} vel_native = get_velocity_native(pos_native);
-
-    // Transform velocity back to Cartesian using Jacobian
-    return transformVelocityToCartesian(vel_native, pos_cartesian);
+// Velocity function in Cartesian (redirects to native, for use by integrator)
+${vecType} get_velocity(${vecType} pos_native) {
+    return get_velocity_native(pos_native);
 }
 ` : hasTransform ? `
 // Original velocity field in world coordinates
@@ -265,7 +261,15 @@ void main() {
 
     // Integrate to get new position
     ${vecType} new_pos;
-    ${hasTransform ? `
+    ${hasCoordinateSystem ? `
+    // NATIVE-SPACE INTEGRATION:
+    // 1. Transform position to native coordinates
+    // 2. Integrate in native space (using velocity defined in native coords)
+    // 3. Transform result back to Cartesian
+    ${vecType} pos_native = transformToNative(pos);
+    ${vecType} new_pos_native = integrate(pos_native, u_h);
+    new_pos = transformToCartesian(new_pos_native);
+    ` : hasTransform ? `
     // Transform to y-space, integrate, then transform back to x-space
     ${vecType} pos_transformed = transform_forward(pos);
     ${vecType} new_pos_transformed = integrate(pos_transformed, u_h);
@@ -352,14 +356,16 @@ void main() {
  * Generate particle rendering vertex shader
  */
 export function generateDrawVertexShader(dimensions, mapperCode, velocityExpressions, strategy, lineMode = false, coordinateSystemCode = null) {
+    const hasCoordinateSystem = coordinateSystemCode && coordinateSystemCode.forwardTransform;
+
     const positionUniforms = Array.from({ length: dimensions }, (_, i) =>
         `uniform sampler2D u_pos_${i};`
     ).join('\n');
 
-    // Add previous position uniforms for line mode
-    const prevPositionUniforms = lineMode ? Array.from({ length: dimensions }, (_, i) =>
+    // Previous position uniforms (always included)
+    const prevPositionUniforms = Array.from({ length: dimensions }, (_, i) =>
         `uniform sampler2D u_prev_pos_${i};`
-    ).join('\n') : '';
+    ).join('\n');
 
     const vecType = `vec${dimensions}`;
 
@@ -369,12 +375,12 @@ export function generateDrawVertexShader(dimensions, mapperCode, velocityExpress
         `    result.${swizzles[i]} = ${expr};`
     ).join('\n');
 
-    // Add coordinate system functions if provided
-    const hasCoordinateSystem = coordinateSystemCode && coordinateSystemCode.forwardTransform;
+    // Add coordinate system functions if provided (hasCoordinateSystem already declared at function start)
     const coordinateSystemFunctions = hasCoordinateSystem ? `
 // Coordinate system transformation functions
 ${coordinateSystemCode.forwardTransform}
-${coordinateSystemCode.velocityTransform}
+${coordinateSystemCode.inverseTransform}
+// Note: inverseTransform needed for computing Cartesian velocity via finite differences
 ` : '';
 
     // Velocity function with coordinate system support
@@ -386,11 +392,10 @@ ${velocityComponents}
     return result;
 }
 
-// Velocity field in Cartesian coordinates
+// Velocity field for visualization (no Cartesian transform needed with native-space integration)
 ${vecType} get_velocity(${vecType} pos_cartesian) {
     ${vecType} pos_native = transformToNative(pos_cartesian);
-    ${vecType} vel_native = get_velocity_native(pos_native);
-    return transformVelocityToCartesian(vel_native, pos_cartesian);
+    return get_velocity_native(pos_native);
 }
 ` : `
 // User-defined velocity field
@@ -506,7 +511,28 @@ void main() {
     `}
 
     // Calculate velocity for coloring
-    ${vecType} velocity = get_velocity(pos);
+    ${vecType} velocity;
+    ${hasCoordinateSystem ? `
+    // For coordinate systems: compute Cartesian velocity from position difference
+    // Read previous position (already in Cartesian space from update shader)
+    ${vecType} prev_pos;
+    ${Array.from({ length: dimensions }, (_, i) => {
+        const coord = ['x', 'y', 'z', 'w'][i];
+        if (i === 0) {
+            return `prev_pos.${coord} = denormalizeFromViewport(decodeFloat(texture2D(u_prev_pos_${i}, texcoord)), u_min.x, u_max.x);`;
+        } else if (i === 1) {
+            return `prev_pos.${coord} = denormalizeFromViewport(decodeFloat(texture2D(u_prev_pos_${i}, texcoord)), u_min.y, u_max.y);`;
+        } else {
+            return `prev_pos.${coord} = denormalizeFromViewport(decodeFloat(texture2D(u_prev_pos_${i}, texcoord)), -10.0, 10.0);`;
+        }
+    }).join('\n    ')}
+
+    // Cartesian velocity from finite difference
+    velocity = pos - prev_pos;
+    ` : `
+    // For Cartesian systems: compute velocity directly
+    velocity = get_velocity(pos);
+    `}
 
     // Pass N-dimensional position and full velocity to fragment shader
     v_pos = pos;

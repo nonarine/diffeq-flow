@@ -492,19 +492,23 @@ export class Renderer {
             let coordinateSystemCode = null;
             if (!isCartesian) {
                 const cartesianVars = ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, this.dimensions);
+                const nativeVars = this.coordinateSystem.getVariableNames();
+
                 coordinateSystemCode = {
                     name: this.coordinateSystem.name,
+                    nativeVars: nativeVars,
                     forwardTransform: this.coordinateSystem.generateForwardTransformGLSL(cartesianVars, (expr, vars) => {
                         return parseExpression(expr, vars.length, vars);
                     }),
-                    velocityTransform: this.coordinateSystem.generateVelocityTransformGLSL(cartesianVars, (expr, vars) => {
+                    inverseTransform: this.coordinateSystem.generateInverseTransformGLSL(nativeVars, (expr, vars) => {
                         return parseExpression(expr, vars.length, vars);
                     })
+                    // velocityTransform removed - not needed with native-space integration
                 };
                 logger.verbose('Generated coordinate system code', {
                     name: coordinateSystemCode.name,
                     forward: coordinateSystemCode.forwardTransform,
-                    velocity: coordinateSystemCode.velocityTransform
+                    inverse: coordinateSystemCode.inverseTransform
                 });
             }
 
@@ -892,10 +896,8 @@ export class Renderer {
         // Bind position textures (age is in alpha channel of u_pos_0)
         this.textureManager.bindReadTextures(program);
 
-        // Bind previous position textures if in line mode
-        if (this.particleRenderMode === 'lines') {
-            this.textureManager.bindPrevTextures(program);
-        }
+        // Bind previous position textures (always needed for velocity computation)
+        this.textureManager.bindPrevTextures(program);
 
         // Set uniforms
         gl.uniform1f(gl.getUniformLocation(program, 'u_particles_res'), this.particleSystem.getResolution());
@@ -1590,15 +1592,17 @@ export class Renderer {
      * Clear only the render buffer (remove trails but keep particles)
      * Useful for animation frames where you want to reset the canvas
      * but keep particles at their current positions
+     * @param {boolean} skipAutoRestart - Skip auto-restart of main render loop. Normally after clearing the buffer (e.g., user clicking Reset Particles after hitting frame limit), we auto-restart rendering as a convenience. Set to true during animation playback to prevent the main loop from interfering with the animation loop's manual render calls.
      */
-    clearRenderBuffer() {
+    clearRenderBuffer(skipAutoRestart = false) {
         this.framebufferManager.clearAll(0, 0, 0, 1);
 
         // Reset frame counter since screen was cleared
         this.totalFrames = 0;
 
         // Restart rendering if it was stopped (e.g., from frame limit)
-        if (!this.isRunning) {
+        // Skip restart during animation playback to prevent interference
+        if (!this.isRunning && !skipAutoRestart) {
             logger.info('Restarting render loop after render buffer clear');
             this.start();
         }
@@ -2129,7 +2133,9 @@ export class Renderer {
                     const error = this.compileShaders();
                     if (error) {
                         logger.error('Recompilation failed', error);
-                        throw new Error(error);
+                        // Don't throw - allow temporary error states (e.g., dimension/coordinate mismatch)
+                        logger.warn('Shader compilation failed - visualization will not render until error is resolved');
+                        return; // Skip clearing screen
                     }
                     this.frame = 0; // Reset frame counter
                     logger.info('Clearing screen after recompilation...');
@@ -2138,7 +2144,8 @@ export class Renderer {
                 } catch (e) {
                     logger.error('EXCEPTION during shader recompilation:', e);
                     logger.error('Stack trace:', e.stack);
-                    throw e;
+                    // Don't throw - allow temporary error states
+                    logger.warn('Shader compilation exception - visualization will not render until error is resolved');
                 }
             }
         } else {
@@ -2391,11 +2398,15 @@ export class Renderer {
             return;
         }
 
+        console.log('=== DRAW VERTEX SHADER ===');
+        console.log(this.shaderSource.drawVertex);
+        console.log('=== END VERTEX SHADER ===');
+        console.log('');
         console.log('=== DRAW FRAGMENT SHADER (Color Mode) ===');
         console.log(this.shaderSource.drawFragment);
-        console.log('=== END SHADER ===');
+        console.log('=== END FRAGMENT SHADER ===');
 
-        logger.info('Draw shader logged to browser console');
+        logger.info('Draw shaders (vertex + fragment) logged to browser console');
     }
 
     /**

@@ -46,10 +46,10 @@ export class DebugTab extends Tab {
                     <option value="error">Errors Only</option>
                     <option value="silent">Silent (Buffer)</option>
                 </select>
-                <button id="debug-log-update-shader" class="secondary" style="padding: 4px 8px;">Log Update Shader</button>
-                <button id="debug-log-draw-shader" class="secondary" style="padding: 4px 8px;">Log Draw Shader</button>
-                <button id="debug-log-screen-shader" class="secondary" style="padding: 4px 8px;">Log Screen Shader</button>
-                <button id="debug-log-stats-shaders" class="secondary" style="padding: 4px 8px;">Log Stats Shaders</button>
+                <button id="debug-log-update-shader" class="secondary" style="padding: 4px 8px;" title="Particle integration shader (updates positions each frame)">Update Shader</button>
+                <button id="debug-log-draw-shader" class="secondary" style="padding: 4px 8px;" title="Particle rendering shaders (vertex + fragment for color/display)">Draw Shaders</button>
+                <button id="debug-log-screen-shader" class="secondary" style="padding: 4px 8px;" title="Screen fade shader (trail decay)">Fade Shader</button>
+                <button id="debug-log-stats-shaders" class="secondary" style="padding: 4px 8px;" title="Velocity statistics shader (max velocity tracking)">Velocity Stats</button>
                 <button id="debug-buffer-stats" class="secondary" style="padding: 4px 8px;">Buffer Stats</button>
                 <button id="debug-copy" class="secondary" style="padding: 4px 8px;">Copy Log</button>
                 <button id="debug-clear" class="secondary" style="padding: 4px 8px;">Clear</button>

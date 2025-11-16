@@ -6,13 +6,16 @@
   "scripts": {
     "render": "node scripts/render-animation.js",
     "serve": "python3 -m http.server 8000",
+    "docs": "node scripts/extract-docs.js",
     "test": "node test/run-all.cjs",
-    "test:unit": "node test/unit/animator-interpolation.cjs && node test/unit/parser.cjs && node test/unit/coordinate-systems.cjs",
-    "test:integration": "node test/integration/run-with-server.cjs",
-    "test:smoke": "node test/integration/run-with-server.cjs"
+    "test:unit": "node test/unit/animator-interpolation.cjs && node test/unit/parser.cjs && node test/unit/coordinate-systems.cjs && node test/unit/coordinate-inverse-transforms.cjs",
+    "test:integration": "node test/integration/run-with-server.cjs smoke-test.cjs",
+    "test:smoke": "node test/integration/run-with-server.cjs smoke-test.cjs",
+    "test:smoke:polar": "node test/integration/run-with-server.cjs polar-smoke-test.cjs"
   },
   "dependencies": {},
   "devDependencies": {
+    "comment-parser": "^1.4.0",
     "puppeteer": "^22.0.0"
   },
   "keywords": [

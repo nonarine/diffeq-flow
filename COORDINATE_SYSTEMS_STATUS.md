@@ -25,6 +25,131 @@ Implementing support for alternate coordinate systems (polar, spherical, cylindr
 
 ---
 
+## Mathematical Correctness: The Inverse Jacobian Requirement
+
+### The Problem
+
+When transforming velocities between coordinate systems, we must use the **inverse Jacobian**, not the forward Jacobian.
+
+**Why?** Because of the chain rule:
+
+### Chain Rule Derivation
+
+Given:
+- **Forward transform:** `x_native = F(x_cartesian)` (e.g., `r = √(x²+y²)`, `θ = atan2(y,x)`)
+- **Velocity in native coordinates:** `v_native = dx_native/dt`
+- **Velocity in Cartesian coordinates:** `v_cartesian = dx_cartesian/dt`
+
+By the **chain rule**:
+```
+v_native = d(x_native)/dt = d(F(x_cartesian))/dt
+         = J_forward * dx_cartesian/dt
+         = J_forward * v_cartesian
+```
+
+where `J_forward = ∂F/∂x_cartesian` is the **forward Jacobian matrix**.
+
+Solving for `v_cartesian`:
+```
+v_cartesian = J_forward^(-1) * v_native
+```
+
+**Therefore, we need the INVERSE Jacobian!**
+
+### Example: Polar Coordinates
+
+**Forward transforms:**
+```
+r = √(x² + y²)
+θ = atan2(y, x)
+```
+
+**Forward Jacobian:** `J_forward = ∂(r,θ)/∂(x,y)`
+```
+J_forward = [[∂r/∂x,  ∂r/∂y ],   [[x/r,      y/r     ],
+             [∂θ/∂x,  ∂θ/∂y ]] =  [-y/r²,    x/r²    ]]
+```
+
+**Inverse Jacobian:** `J_inverse = J_forward^(-1)`
+```
+J_inverse = [[cos(θ),  -r*sin(θ)],
+             [sin(θ),   r*cos(θ) ]]
+```
+
+**Velocity transform:**
+```
+[vx]   [[cos(θ),  -r*sin(θ)]   [vr]
+[vy] = [sin(θ),   r*cos(θ) ]] * [vθ]
+```
+
+### Verification: Pure Angular Motion
+
+**Test case:** At `(x=1, y=0)` = `(r=1, θ=0)`, with `dr/dt=0`, `dθ/dt=1` (pure counterclockwise rotation).
+
+**Expected:** Velocity should be tangent to the circle, pointing in `+y` direction: `v_cartesian = (0, 1)`.
+
+**Using inverse Jacobian:**
+```
+At θ=0, r=1: J_inverse = [[1,  0],
+                          [0,  1]]
+
+v_cartesian = [[1,  0],  * [0]  = [0]  ✓ CORRECT
+               [0,  1]]    [1]    [1]
+```
+
+**Using forward Jacobian (WRONG):**
+```
+At x=1, y=0: J_forward = [[1,   0],
+                          [0,   1]]
+
+v_cartesian = [[1,  0],  * [0]  = [0]  ✗ WRONG!
+               [0,  1]]    [1]    [1]
+```
+
+Wait, that gives the same result! Let's try a different point:
+
+**Test case:** At `(x=0, y=2)` = `(r=2, θ=π/2)`, with `dr/dt=0`, `dθ/dt=1`.
+
+**Expected:** Velocity should point in `-x` direction: `v_cartesian = (-2, 0)`.
+
+**Using inverse Jacobian (CORRECT):**
+```
+At θ=π/2, r=2: J_inverse = [[0,  -2],
+                            [1,   0]]
+
+v_cartesian = [[0,  -2],  * [0]  = [-2]  ✓ CORRECT
+               [1,   0]]    [1]    [ 0]
+```
+
+**Using forward Jacobian (WRONG):**
+```
+At x=0, y=2: J_forward = [[0,    1],
+                          [-1/4, 0]]
+
+v_cartesian = [[0,    1],  * [0]  = [ 1]  ✗ WRONG!
+               [-1/4, 0]]    [1]    [ 0]
+```
+
+The forward Jacobian produces velocity in the `+x` direction instead of `-x`—completely wrong!
+
+### The Fix (2025-11-15)
+
+**File:** `src/math/coordinate-systems.js:93`
+
+**Change:** Modified `generateVelocityTransformGLSL()` to:
+1. Compute forward Jacobian: `J_forward = ∂(native)/∂(cartesian)`
+2. **Invert it:** `J_inverse = invertJacobian(J_forward)`
+3. Use `J_inverse` for velocity transformation
+
+**Error handling:**
+- If Jacobian computation fails → fallback to identity transform with warning
+- If Jacobian inversion fails → fallback to identity transform with warning
+- Both fallbacks are mathematically incorrect but prevent crashes
+
+**Testing:** Numerical validation added in `test/unit/coordinate-jacobian-numerical.cjs`
+
+---
+
 ## ✅ Completed Components
 
 ### 1. Unicode Autocomplete System

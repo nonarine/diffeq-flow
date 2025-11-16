@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Coordinate Transform Test</title>
+    <script src="https://cdn.jsdelivr.net/npm/nerdamer@latest/all.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+</head>
+<body>
+    <canvas id="test-canvas" width="256" height="256"></canvas>
+    <script type="module">
+        import { CoordinateSystem, PRESET_COORDINATE_SYSTEMS } from '../../src/math/coordinate-systems.js';
+        import { parseExpression } from '../../src/math/parser.js';
+        window.CoordinateSystem = CoordinateSystem;
+        window.PRESET_COORDINATE_SYSTEMS = PRESET_COORDINATE_SYSTEMS;
+        window.parseExpression = parseExpression;
+        window.modulesLoaded = true;
+    </script>
+</body>
+</html>

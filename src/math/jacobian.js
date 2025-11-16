@@ -22,9 +22,9 @@ function optimizePowerExpressions(expr) {
         const n = parseInt(exp);
         if (n === 0) return '1';
         if (n === 1) return base;
-        if (n <= 4) {
+        // if (n <= 4) {
             return Array(n).fill(base).join('*');
-        }
+        // }
         return match; // Keep pow for larger exponents
     });
 
@@ -58,6 +58,9 @@ function optimizePowerExpressions(expr) {
  * @returns {string[][]|null} - 2D array of symbolic derivative strings, or null if failed
  */
 export function computeSymbolicJacobian(expressions, dimensions) {
+
+    logger.verbosity = 'verbose';
+
     logger.info('=== JACOBIAN COMPUTATION START ===');
     logger.info('Timestamp:', new Date().toISOString());
     logger.info('Nerdamer loaded:', !!window.nerdamer);
@@ -65,7 +68,7 @@ export function computeSymbolicJacobian(expressions, dimensions) {
     logger.info('Nerdamer is function:', typeof window.nerdamer === 'function');
     logger.info('Nerdamer.diff exists:', window.nerdamer && typeof window.nerdamer.diff === 'function');
     logger.info('Nerdamer.clear exists:', window.nerdamer && typeof window.nerdamer.clear === 'function');
-    logger.info('Input expressions:', expressions);
+    logger.info('Input expressions:', expressions.toString());
     logger.info('Dimensions:', dimensions);
 
     if (!window.nerdamer) {
@@ -109,12 +112,27 @@ export function computeSymbolicJacobian(expressions, dimensions) {
             logger.warn('Consistency test failed:', e.message);
         }
 
+        // WORKAROUND: Nerdamer doesn't support atan2(y, x) differentiation
+        // Replace atan2(A, B) with atan(A/B) for differentiation
+        // The derivatives are mathematically identical:
+        //   d/dB[atan2(A,B)] = -A/(A²+B²) = d/dB[atan(A/B)]
+        //   d/dA[atan2(A,B)] = B/(A²+B²) = d/dA[atan(A/B)]
+        // Multi-chart approach handles singularities: Chart 2 swaps arguments so
+        // atan2(y,x) becomes atan2(x,y) → atan(x/y), moving singularity from x=0 to y=0
+        const expressionsForDiff = expressions.map(expr => {
+            const replaced = expr.replace(/atan2\s*\(\s*([^,]+)\s*,\s*([^)]+)\s*\)/g, 'atan(($1)/($2))');
+            if (replaced !== expr) {
+                logger.verbose(`Replaced atan2 for differentiation: "${expr}" → "${replaced}"`);
+            }
+            return replaced;
+        });
+
         const jacobian = [];
 
         // For each output dimension i
         for (let i = 0; i < dimensions; i++) {
             const row = [];
-            const expr = expressions[i];
+            const expr = expressionsForDiff[i]; // Use preprocessed expression
             logger.verbose(`Row ${i}: differentiating expression "${expr}"`);
 
             // For each input variable j
@@ -128,15 +146,17 @@ export function computeSymbolicJacobian(expressions, dimensions) {
                     const derivative = window.nerdamer.diff(window.nerdamer(expr), variable).toString();
                     logger.verbose(`  Raw derivative: ${derivative}`);
 
-                    // Simplify the result
-                    let simplified = window.nerdamer(derivative).toString();
-                    logger.verbose(`  Simplified: ${simplified}`);
+                    // Simplify the result to cancel common factors BEFORE inversion
+                    // This helps Nerdamer produce cleaner inverse matrices
+                    // expand() first to distribute terms, then simplify to cancel
+                    // let simplified = window.nerdamer(`simplify(expand(${derivative}))`).toString();
+                    // logger.verbose(`  Simplified: ${simplified}`);
 
                     // Optimize: replace pow(x, n) with x*x*... for small integer exponents
-                    simplified = optimizePowerExpressions(simplified);
-                    logger.verbose(`  Optimized: ${simplified}`);
+                    let optimized = optimizePowerExpressions(window.nerdamer(`simplify(${derivative})`).toString());
+                    logger.verbose(`  Optimized: ${optimized}`);
 
-                    row.push(simplified);
+                    row.push(optimized);
                 } catch (error) {
                     logger.warn(`Failed to differentiate expression "${expr}" w.r.t. ${variable}: ${error.message}`);
                     // Default to zero if differentiation fails
@@ -152,6 +172,23 @@ export function computeSymbolicJacobian(expressions, dimensions) {
         for (let i = 0; i < jacobian.length; i++) {
             logger.info(`  Row ${i}: [${jacobian[i].join(', ')}]`);
         }
+
+        // Simplify the forward Jacobian BEFORE inversion to help with complex sqrt terms
+        // logger.verbose('Simplifying forward Jacobian before inversion...');
+        // const simplifiedJacobian = jacobian.map((row, i) => {
+        //     return row.map((element, j) => {
+        //         try {
+        //             const simplified = window.nerdamer(`simplify(${element})`).toString();
+        //             if (simplified !== element) {
+        //                 logger.verbose(`  J[${i},${j}]: "${element}" → "${simplified}"`);
+        //             }
+        //             return simplified;
+        //         } catch (e) {
+        //             logger.warn(`Failed to simplify J[${i},${j}]: ${e.message}`);
+        //             return element;
+        //         }
+        //     });
+        // });
 
         return jacobian;
 
@@ -226,20 +263,23 @@ export function invertJacobian(jacobian) {
     }
 
     try {
-        // Convert to Nerdamer matrix
-        const matrixStr = `[${jacobian.map(row => `[${row.join(',')}]`).join(',')}]`;
-        logger.verbose('Inverting Jacobian matrix:', matrixStr);
+        // Use Nerdamer's matrix inversion for all sizes
+        // matrix() takes rows as separate arguments: matrix([a,b],[c,d]), not matrix([[a,b],[c,d]])
+        const matrixArgs = jacobian.map(row => `[${row.join(',')}]`).join(',');
+        logger.verbose('Inverting Jacobian matrix:', `matrix(${matrixArgs})`);
 
-        const nerdMatrix = window.nerdamer(`matrix(${matrixStr})`);
-        const inverted = window.nerdamer(`invert(${nerdMatrix})`);
+        // Invert the matrix using Nerdamer's invert function (once!)
+        window.nerdamer.setVar('J_temp', `matrix(${matrixArgs})`);
+        window.nerdamer.setVar('J_inv', 'invert(J_temp)');
 
-        // Extract result as array
+        // Extract result as array using matget() for each element
         const result = [];
         for (let i = 0; i < n; i++) {
             const row = [];
             for (let j = 0; j < n; j++) {
-                // Nerdamer uses 1-based indexing for matrix elements
-                const element = window.nerdamer(`${inverted}[${i+1}][${j+1}]`).toString();
+                // Use matget to access matrix element (0-based indexing)
+                const element = window.nerdamer(`matget(J_inv, ${i}, ${j})`).toString();
+                // Don't simplify - it introduces imaginary numbers and timeouts
                 const optimized = optimizePowerExpressions(element);
                 row.push(optimized);
             }

@@ -2,6 +2,8 @@
  * Base classes for UI controls with automatic save/restore
  */
 
+import { CoordinateSystem } from '../math/coordinate-systems.js';
+
 /**
  * Base Control class
  * All controls must implement getValue() and setValue()
@@ -819,6 +821,7 @@ export class ControlManager {
         this.onApply = options.onApply || null; // Called when settings should be applied
         this.debounceTime = options.debounceTime || 300;
         this.applyTimeout = null;
+        this.renderer = options.renderer || null; // Renderer instance for coordinate system handling
     }
 
     /**
@@ -884,6 +887,29 @@ export class ControlManager {
      * Apply settings to all controls
      */
     setSettings(settings) {
+        // Handle coordinate system first (if present in settings and dimensions match)
+        if (settings.coordinateSystem && settings.dimensions) {
+            try {
+                const coordSystemData = settings.coordinateSystem;
+                const coordinateSystem = CoordinateSystem.fromJSON(coordSystemData);
+
+                // Validate that coordinate system dimensions match settings dimensions
+                if (coordinateSystem.dimensions === settings.dimensions) {
+                    if (this.renderer) {
+                        this.renderer.coordinateSystem = coordinateSystem;
+                    }
+
+                    // Update dimension inputs UI to reflect coordinate variables
+                    const expressionsControl = this.get('dimension-inputs');
+                    if (expressionsControl && expressionsControl.setCoordinateSystem) {
+                        expressionsControl.setCoordinateSystem(coordinateSystem, false);
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to restore coordinate system from settings:', error);
+            }
+        }
+
         // First, restore all values
         for (const control of this.controls.values()) {
             control.restoreFromSettings(settings);

@@ -1,0 +1,15 @@
+{
+  "source": {
+    "includePattern": ".+\\.js$",
+    "excludePattern": "(node_modules|docs|test)"
+  },
+  "opts": {
+    "recurse": true,
+    "private": false
+  },
+  "plugins": [],
+  "templates": {
+    "cleverLinks": false,
+    "monospaceLinks": false
+  }
+}
