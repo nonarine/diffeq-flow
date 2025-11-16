@@ -2,7 +2,7 @@
 
 _Auto-generated from inline JSDoc documentation_
 
-_Generated: 2025-11-16T01:47:29.617Z_
+_Generated: 2025-11-16T18:27:17.036Z_
 
 ---
 
@@ -520,17 +520,17 @@ Convert logarithmic value to linear slider position [0, 100]
 Animatable Slider Control
 Extends SliderControl with animation bounds that interpolate with alpha
 
-#### `getValue()`
+#### `Error()`
 
 Enable/disable animation for this control
 
-#### `getValue()`
+#### `Error()`
 
 Set animation bounds
 
-#### `Error()`
+#### `setValue()`
 
-Update value based on current alpha (0.0 to 1.0)
+Restore animation state from settings
 
 #### `setValue()`
 
@@ -553,11 +553,11 @@ Initialize all controls (create DOM elements)
 
 Attach event listeners to all controls
 
-#### `setValue()`
+#### `Error()`
 
 Apply settings to all controls
 
-#### `setValue()`
+#### `Error()`
 
 Get a control by ID
 
@@ -565,9 +565,13 @@ Get a control by ID
 
 Get current settings from all controls
 
-#### `Error()`
+#### `reset()`
 
-Apply settings to all controls
+Clear settings from localStorage
+
+#### `reset()`
+
+Debounced apply function
 
 #### `reset()`
 
@@ -578,17 +582,21 @@ Immediate apply (no debounce)
 
 #### `states()`
 
+Update white point visibility based on operator
+
+#### `states()`
+
 Update expression controls visibility
 
 #### `states()`
 
 Update gradient button visibility
 
-#### `states()`
+#### `updateConfig()`
 
 Update velocity scaling controls visibility
 
-#### `states()`
+#### `updateConfig()`
 
 Load settings from URL parameter or localStorage
 
@@ -604,29 +612,21 @@ Encode settings to base64 URL string
 
 Share settings via URL
 
-#### `updateConfig()`
+#### `localStorage()`
 
 Show error message
 
-#### `updateConfig()`
+#### `localStorage()`
 
 Hide error message
 
-#### `updateConfig()`
+#### `localStorage()`
 
 Load preset examples
 
 #### `getSettings()`
 
 Load a specific preset
-
-#### `getSettings()`
-
-Export loadPreset for global access
-
-#### `getSettings()`
-
-Custom preset management
 
 
 ### coordinate-editor.js
@@ -1229,6 +1229,10 @@ Reads the framebuffer pixels and computes min/max/avg values
 
 #### `FloatStrategy()`
 
+Log update shader (contains integrator and Jacobian)
+
+#### `FloatStrategy()`
+
 Log draw shader (contains color computations)
 
 #### `FloatStrategy()`
@@ -1238,6 +1242,18 @@ Log screen shader (contains tone mapping)
 #### `FloatStrategy()`
 
 Log diagnostic stats shaders (velocity and brightness)
+
+#### `FloatStrategy(screenX, screenY)`
+
+Read pixel values at screen coordinates
+Returns both HDR and LDR values without copying entire framebuffer
+
+**Parameters:**
+
+- `screenX` *number* - - Screen X coordinate (canvas pixels)
+- `screenY` *number* - - Screen Y coordinate (canvas pixels)
+
+**Returns:** *Object* - hdr: [r, g, b], ldr: [r, g, b] } or null if out of bounds
 
 
 ### shaders.js
@@ -1285,7 +1301,7 @@ Two-pass separable Gaussian blur with bilinear optimization
 - `horizontal` *boolean* - - True for horizontal pass, false for vertical
 - `radius` *number* - - Blur radius (1.0 = standard, higher = wider blur)
 
-#### `getProgramInfoLog()`
+#### `deleteProgram()`
 
 Generate bloom combine fragment shader
 Combines base HDR with bloom layer

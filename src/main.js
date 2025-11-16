@@ -520,7 +520,27 @@ $(document).ready(function() {
         // Update cursor position display
         function updateCursorDisplay() {
             const world = screenToWorld(cursorX, cursorY);
-            cursorDiv.text(`x: ${world.x.toFixed(3)}, y: ${world.y.toFixed(3)}`);
+
+            // Read pixel values at cursor position
+            const rect = canvas.getBoundingClientRect();
+            const canvasX = cursorX - rect.left;
+            const canvasY = cursorY - rect.top;
+            const pixelData = renderer.readPixelAt(canvasX, canvasY);
+
+            let displayText = `x: ${world.x.toFixed(3)}, y: ${world.y.toFixed(3)}`;
+
+            if (pixelData) {
+                if (pixelData.hdr) {
+                    const [r, g, b] = pixelData.hdr;
+                    displayText += `\nHDR: (${r.toFixed(3)}, ${g.toFixed(3)}, ${b.toFixed(3)})`;
+                }
+                if (pixelData.ldr) {
+                    const [r, g, b] = pixelData.ldr;
+                    displayText += `\nLDR: (${r.toFixed(3)}, ${g.toFixed(3)}, ${b.toFixed(3)})`;
+                }
+            }
+
+            cursorDiv.html(displayText.replace(/\n/g, '<br>'));
         }
 
         // Track mouse position

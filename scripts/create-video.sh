@@ -1,27 +1,29 @@
 #!/bin/bash
 
-# Create MP4 video from animation ZIP file
+# Create MP4 video from animation ZIP file(s)
 # Usage: ./scripts/create-video.sh animation.zip output.mp4 [fps]
+#
+# Supports multi-part ZIPs: If animation-timestamp.1.zip, animation-timestamp.2.zip exist,
+# you can pass animation-timestamp.zip (or animation-timestamp) and it will find all parts.
 
 if [ $# -lt 2 ]; then
     echo "Usage: $0 <animation.zip> <output.mp4> [fps]"
     echo ""
     echo "Examples:"
-    echo "  $0 animation.zip output.mp4          # 30 fps (default)"
-    echo "  $0 animation.zip output.mp4 60       # 60 fps"
+    echo "  $0 animation.zip output.mp4              # 30 fps (default)"
+    echo "  $0 animation.zip output.mp4 60           # 60 fps"
+    echo "  $0 animation-timestamp output.mp4        # Auto-detect .zip or multi-part"
+    echo ""
+    echo "Multi-part ZIPs:"
+    echo "  Large animations are split into animation-timestamp.1.zip, .2.zip, etc."
+    echo "  Pass the base name (with or without .zip) to automatically extract all parts."
     echo ""
     exit 1
 fi
 
-ZIP_FILE="$1"
+INPUT_ARG="$1"
 OUTPUT_FILE="$2"
 FPS="${3:-30}"  # Default to 30 fps
-
-# Check if ZIP file exists
-if [ ! -f "$ZIP_FILE" ]; then
-    echo "Error: ZIP file '$ZIP_FILE' not found"
-    exit 1
-fi
 
 # Check if ffmpeg is installed
 if ! command -v ffmpeg &> /dev/null; then
@@ -31,12 +33,63 @@ if ! command -v ffmpeg &> /dev/null; then
     exit 1
 fi
 
+# Determine base filename and directory
+INPUT_DIR=$(dirname "$INPUT_ARG")
+INPUT_BASE=$(basename "$INPUT_ARG" .zip)
+
+# Find all matching ZIP files (single or multi-part)
+ZIP_FILES=()
+
+# Check for single ZIP file first
+if [ -f "${INPUT_DIR}/${INPUT_BASE}.zip" ]; then
+    # Check if multi-part files also exist
+    if [ -f "${INPUT_DIR}/${INPUT_BASE}.1.zip" ]; then
+        echo "Found both ${INPUT_BASE}.zip and ${INPUT_BASE}.1.zip"
+        echo "Treating as multi-part (ignoring ${INPUT_BASE}.zip, using .1, .2, .3, etc.)"
+        # Find all numbered parts
+        for part_file in "${INPUT_DIR}/${INPUT_BASE}".*.zip; do
+            if [ -f "$part_file" ]; then
+                ZIP_FILES+=("$part_file")
+            fi
+        done
+    else
+        # Single ZIP file
+        ZIP_FILES=("${INPUT_DIR}/${INPUT_BASE}.zip")
+    fi
+else
+    # Look for multi-part files only
+    for part_file in "${INPUT_DIR}/${INPUT_BASE}".*.zip; do
+        if [ -f "$part_file" ]; then
+            ZIP_FILES+=("$part_file")
+        fi
+    done
+fi
+
+# Check if any ZIP files were found
+if [ ${#ZIP_FILES[@]} -eq 0 ]; then
+    echo "Error: No ZIP files found matching '$INPUT_ARG'"
+    echo "Looked for: ${INPUT_DIR}/${INPUT_BASE}.zip or ${INPUT_DIR}/${INPUT_BASE}.*.zip"
+    exit 1
+fi
+
+# Sort the files to ensure correct order
+IFS=$'\n' ZIP_FILES=($(sort <<<"${ZIP_FILES[*]}"))
+unset IFS
+
+echo "Found ${#ZIP_FILES[@]} ZIP file(s):"
+for zf in "${ZIP_FILES[@]}"; do
+    echo "  - $(basename "$zf")"
+done
+
 # Create temporary directory
 TEMP_DIR=$(mktemp -d)
 echo "Extracting frames to $TEMP_DIR..."
 
-# Extract ZIP
-unzip -q "$ZIP_FILE" -d "$TEMP_DIR"
+# Extract all ZIP files to the same directory
+for ZIP_FILE in "${ZIP_FILES[@]}"; do
+    echo "Extracting $(basename "$ZIP_FILE")..."
+    unzip -q "$ZIP_FILE" -d "$TEMP_DIR"
+done
 
 # Find the frames directory (handle both flat and nested structure)
 if [ -d "$TEMP_DIR/frames" ]; then

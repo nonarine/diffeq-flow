@@ -214,7 +214,7 @@
 
         #step-time-counter {
             position: absolute;
-            bottom: 48px;
+            bottom: 100px;
             right: 10px;
             background: rgba(30, 30, 30, 0.9);
             border: 1px solid #444;
@@ -1977,6 +1977,26 @@
                     <input type="range" id="luminance-gamma">
                     <button class="slider-btn" data-slider="luminance-gamma" data-action="increase">+</button>
                     <button class="slider-btn" data-slider="luminance-gamma" data-action="reset" title="Reset to default (1.0)">↺</button>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>Highlight Compression: <span class="range-value" id="highlight-compression-value">0.0</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="highlight-compression" data-action="decrease">-</button>
+                    <input type="range" id="highlight-compression">
+                    <button class="slider-btn" data-slider="highlight-compression" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="highlight-compression" data-action="reset" title="Reset to default (0.0)">↺</button>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>Compression Threshold: <span class="range-value" id="compression-threshold-value">1.0</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="compression-threshold" data-action="decrease">-</button>
+                    <input type="range" id="compression-threshold">
+                    <button class="slider-btn" data-slider="compression-threshold" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="compression-threshold" data-action="reset" title="Reset to default (1.0)">↺</button>
                 </div>
             </div>
 

@@ -189,14 +189,9 @@ export class AnimatableSliderControl extends SliderControl {
 
         handlers.forEach(({ handle, bound }) => {
             let isDragging = false;
-            let startX = 0;
-            let startLeft = 0;
 
             handle.on('mousedown', (e) => {
                 isDragging = true;
-                startX = e.pageX;
-                startLeft = parseFloat(handle.css('left')) || 0;
-
                 handle.addClass('dragging');
                 $('body').css('user-select', 'none');
                 e.preventDefault();
@@ -205,10 +200,12 @@ export class AnimatableSliderControl extends SliderControl {
             $(document).on('mousemove', (e) => {
                 if (!isDragging) return;
 
+                // Get mouse position relative to track element
+                const mousePos = this.getMousePositionInElement(e, track);
                 const trackWidth = track.width();
-                const deltaX = e.pageX - startX;
-                const deltaPercent = (deltaX / trackWidth) * 100;
-                let newPercent = startLeft + deltaPercent;
+
+                // Calculate percentage position (0-100)
+                let newPercent = (mousePos.x / trackWidth) * 100;
 
                 // Clamp to 0-100
                 newPercent = Math.max(0, Math.min(100, newPercent));

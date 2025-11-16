@@ -392,13 +392,28 @@ export function initControls(renderer, callback) {
         displayFormat: v => v.toFixed(2)
     }));
 
-    const whitePointControl = manager.register(new SliderControl('white-point', 2.0, {
+    const highlightCompressionControl = manager.register(new LogSliderControl('highlight-compression', 0.0, {
+        settingsKey: 'highlightCompression',
+        minValue: 0.0,
+        maxValue: 10.0,
+        displayId: 'highlight-compression-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    const compressionThresholdControl = manager.register(new LogSliderControl('compression-threshold', 1.0, {
+        settingsKey: 'compressionThreshold',
+        minValue: 0.0001,
+        maxValue: 100000.0,
+        displayId: 'compression-threshold-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    const whitePointControl = manager.register(new LogSliderControl('white-point', 2.0, {
         settingsKey: 'whitePoint',
-        min: 1.0,
-        max: 10.0,
-        step: 0.1,
+        minValue: 1.0,
+        maxValue: 1000.0,
         displayId: 'white-point-value',
-        displayFormat: v => v.toFixed(1)
+        displayFormat: v => v.toFixed(2)
     }));
 
     const particleIntensityControl = manager.register(new LogSliderControl('particle-intensity', 1.0, {
@@ -552,7 +567,7 @@ export function initControls(renderer, callback) {
     if (animAlphaContainer.length) {
         const controlHTML = `
             <div class="control-group">
-                <label>Animation Alpha (a): <span class="range-value" id="animation-alpha-value">0.00</span></label>
+                <label>Animation Alpha (a): <span class="range-value" id="animation-alpha-value">0.00%</span></label>
                 <div class="slider-control">
                     <button class="slider-btn" data-slider="animation-alpha" data-action="decrease">-</button>
                     <input type="range" id="animation-alpha">
@@ -590,7 +605,7 @@ export function initControls(renderer, callback) {
     const animationAlphaControl = manager.register(new PercentSliderControl('animation-alpha', 0.0, {
         settingsKey: 'animationAlpha',
         displayId: 'animation-alpha-value',
-        displayFormat: v => v.toFixed(2),
+        displayFormat: v => `${(v * 100).toFixed(2)}%`,
         onChange: (value) => {
             // Update all animatable controls based on alpha
             manager.controls.forEach((control) => {
@@ -1483,33 +1498,58 @@ export function initControls(renderer, callback) {
         btn.text('⏳ Creating ZIP...');
 
         try {
-            // Create ZIP file using JSZip
-            const zip = new JSZip();
-            const framesFolder = zip.folder('frames');
+            const MAX_FRAMES_PER_ZIP = 300;
+            const totalFrames = capturedFrames.length;
+            const numParts = Math.ceil(totalFrames / MAX_FRAMES_PER_ZIP);
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
 
-            // Add frames to ZIP
-            for (let i = 0; i < capturedFrames.length; i++) {
-                const paddedIndex = String(i).padStart(5, '0');
-                framesFolder.file(`frame_${paddedIndex}.png`, capturedFrames[i]);
+            logger.info(`Splitting ${totalFrames} frames into ${numParts} ZIP file(s)`);
+
+            // Create and download each ZIP part
+            for (let part = 0; part < numParts; part++) {
+                const startIdx = part * MAX_FRAMES_PER_ZIP;
+                const endIdx = Math.min((part + 1) * MAX_FRAMES_PER_ZIP, totalFrames);
+
+                btn.text(`⏳ Creating ZIP ${part + 1}/${numParts}...`);
+
+                // Create ZIP file using JSZip
+                const zip = new JSZip();
+                const framesFolder = zip.folder('frames');
+
+                // Add frames to this ZIP part
+                for (let i = startIdx; i < endIdx; i++) {
+                    const paddedIndex = String(i).padStart(5, '0');
+                    framesFolder.file(`frame_${paddedIndex}.png`, capturedFrames[i]);
+                }
+
+                // Generate ZIP file
+                const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+                // Create download link
+                const url = URL.createObjectURL(zipBlob);
+                const link = document.createElement('a');
+                const partSuffix = numParts > 1 ? `.${part + 1}` : '';
+                link.download = `animation-${timestamp}${partSuffix}.zip`;
+                link.href = url;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+
+                // Clean up
+                URL.revokeObjectURL(url);
+
+                logger.info(`Part ${part + 1}/${numParts} downloaded: frames ${startIdx}-${endIdx - 1}`);
+
+                // Small delay between downloads to avoid browser issues
+                if (part < numParts - 1) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
             }
 
-            // Generate ZIP file
-            const zipBlob = await zip.generateAsync({ type: 'blob' });
-
-            // Create download link
-            const url = URL.createObjectURL(zipBlob);
-            const link = document.createElement('a');
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-            link.download = `animation-${timestamp}.zip`;
-            link.href = url;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-
-            // Clean up
-            URL.revokeObjectURL(url);
-
-            logger.info(`Animation downloaded: ${capturedFrames.length} frames in ZIP`);
+            logger.info(`Animation download complete: ${totalFrames} frames in ${numParts} ZIP file(s)`);
+            if (numParts > 1) {
+                alert(`Animation split into ${numParts} ZIP files. Use create-video.sh with the base filename (without .1, .2, etc) to reconstruct.`);
+            }
         } catch (error) {
             logger.error('Failed to create ZIP:', error);
             alert('Failed to create ZIP file: ' + error.message);

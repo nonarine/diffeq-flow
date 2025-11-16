@@ -118,6 +118,8 @@ export class Renderer {
         this.exposure = config.exposure !== undefined ? config.exposure : 1.0;
         this.gamma = config.gamma !== undefined ? config.gamma : 2.2;
         this.luminanceGamma = config.luminanceGamma !== undefined ? config.luminanceGamma : 1.0;
+        this.highlightCompression = config.highlightCompression !== undefined ? config.highlightCompression : 0.0;
+        this.compressionThreshold = config.compressionThreshold !== undefined ? config.compressionThreshold : 1.0;
         this.whitePoint = config.whitePoint !== undefined ? config.whitePoint : 2.0;
         this.particleIntensity = config.particleIntensity !== undefined ? config.particleIntensity : 1.0;
         this.particleSize = config.particleSize !== undefined ? config.particleSize : 1.0;
@@ -1182,6 +1184,8 @@ export class Renderer {
         gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_exposure'), this.exposure);
         gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_gamma'), this.gamma);
         gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_whitePoint'), this.whitePoint);
+        gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_highlight_compression'), this.highlightCompression);
+        gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_compression_threshold'), this.compressionThreshold);
         gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_brightness_desat'), this.brightnessDesaturation);
         gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_brightness_sat'), this.brightnessSaturation);
         gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_hdr_max_brightness'), stats.maxBrightness);
@@ -1984,6 +1988,16 @@ export class Renderer {
             this.luminanceGamma = config.luminanceGamma;
             needsRecompile = true; // Luminance gamma is baked into shader
         }
+        if (config.highlightCompression !== undefined) {
+            logger.verbose(`Highlight Compression: ${this.highlightCompression} → ${config.highlightCompression}`);
+            this.highlightCompression = config.highlightCompression;
+            // No recompile needed - just a uniform
+        }
+        if (config.compressionThreshold !== undefined) {
+            logger.verbose(`Compression Threshold: ${this.compressionThreshold} → ${config.compressionThreshold}`);
+            this.compressionThreshold = config.compressionThreshold;
+            // No recompile needed - just a uniform
+        }
         if (config.whitePoint !== undefined) {
             logger.verbose(`White point: ${this.whitePoint} → ${config.whitePoint}`);
             this.whitePoint = config.whitePoint;
@@ -2460,5 +2474,65 @@ export class Renderer {
         }
 
         logger.info('Stats shaders logged to browser console');
+    }
+
+    /**
+     * Read pixel values at screen coordinates
+     * Returns both HDR and LDR values without copying entire framebuffer
+     * @param {number} screenX - Screen X coordinate (canvas pixels)
+     * @param {number} screenY - Screen Y coordinate (canvas pixels)
+     * @returns {Object} { hdr: [r, g, b], ldr: [r, g, b] } or null if out of bounds
+     */
+    readPixelAt(screenX, screenY) {
+        const gl = this.gl;
+
+        // Convert to framebuffer coordinates (may be different from canvas if using devicePixelRatio)
+        const fbX = Math.floor(screenX * (this.renderWidth / this.canvas.width));
+        const fbY = Math.floor(screenY * (this.renderHeight / this.canvas.height));
+
+        // Flip Y (WebGL uses bottom-left origin)
+        const glY = this.renderHeight - fbY - 1;
+
+        // Check bounds
+        if (fbX < 0 || fbX >= this.renderWidth || glY < 0 || glY >= this.renderHeight) {
+            return null;
+        }
+
+        const result = { hdr: null, ldr: null };
+
+        // Read HDR value from current HDR framebuffer
+        if (this.useHDR && this.framebufferManager) {
+            const hdrTexture = this.framebufferManager.getCurrentTexture();
+            const hdrFramebuffer = this.framebufferManager.framebuffers[this.framebufferManager.currentIndex];
+
+            gl.bindFramebuffer(gl.FRAMEBUFFER, hdrFramebuffer);
+
+            // Read 1x1 pixel
+            if (this.framebufferManager.hdrType === gl.FLOAT) {
+                // Full float
+                const pixels = new Float32Array(4);
+                gl.readPixels(fbX, glY, 1, 1, gl.RGBA, gl.FLOAT, pixels);
+                result.hdr = [pixels[0], pixels[1], pixels[2]];
+            } else {
+                // Half float or LDR fallback
+                const pixels = new Uint8Array(4);
+                gl.readPixels(fbX, glY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+                result.hdr = [pixels[0] / 255, pixels[1] / 255, pixels[2] / 255];
+            }
+        }
+
+        // Read LDR value from tone-mapped texture
+        if (this.ldrFramebuffer && this.ldrTexture) {
+            gl.bindFramebuffer(gl.FRAMEBUFFER, this.ldrFramebuffer);
+
+            const pixels = new Uint8Array(4);
+            gl.readPixels(fbX, glY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+            result.ldr = [pixels[0] / 255, pixels[1] / 255, pixels[2] / 255];
+        }
+
+        // Restore default framebuffer binding
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+        return result;
     }
 }

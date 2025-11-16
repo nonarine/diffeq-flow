@@ -730,8 +730,37 @@ uniform float u_brightness_desat;
 uniform float u_brightness_sat;
 uniform float u_hdr_max_brightness;
 uniform float u_hdr_avg_brightness;
+uniform float u_highlight_compression;
+uniform float u_compression_threshold;
 
 varying vec2 v_texcoord;
+
+// Logarithmic highlight compression (pre-tone mapping)
+// Only compresses values above threshold to help tone mapper cover full dynamic range
+// Preserves hue by compressing luminance only, then scaling RGB to match
+vec3 compressHighlights(vec3 color, float strength, float threshold) {
+    if (strength < 0.0001) return color; // Disabled
+
+    // Calculate luminance (Rec. 709)
+    float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+
+    // Avoid division by zero
+    if (luma < 0.0001) return color;
+
+    // Compress luminance only
+    float compressedLuma;
+    if (luma <= threshold) {
+        compressedLuma = luma; // Below threshold: unchanged
+    } else {
+        // Above threshold: compress the excess
+        float excess = luma - threshold;
+        float compressed = log(1.0 + excess * strength) / strength;
+        compressedLuma = threshold + compressed;
+    }
+
+    // Scale RGB to match compressed luminance (preserves hue and saturation)
+    return color * (compressedLuma / luma);
+}
 
 ${tonemapCode}
 
@@ -805,8 +834,12 @@ void main() {
     // Apply luminance gamma in HDR space (hue-preserving brightness adjustment)
     vec3 hdrGammaCorrected = applyLuminanceGamma(gammaCorrected);
 
+    // Apply highlight compression to compress bright values before tone mapping
+    // This helps the tone mapper cover the full dynamic range more effectively
+    vec3 compressed = compressHighlights(hdrGammaCorrected, u_highlight_compression, u_compression_threshold);
+
     // Apply tone mapping operator to compress HDR values into LDR range
-    vec3 ldrColor = tonemap(hdrGammaCorrected);
+    vec3 ldrColor = tonemap(compressed);
 
     gl_FragColor = vec4(ldrColor, 1.0);
 }

@@ -49,6 +49,22 @@ export class Control {
     }
 
     /**
+     * Get mouse position relative to an element
+     * Converts page coordinates to element-local coordinates
+     * @param {MouseEvent} event - The mouse event
+     * @param {jQuery|HTMLElement} element - The element to get coordinates relative to
+     * @returns {{x: number, y: number}} - Position relative to element's top-left corner
+     */
+    getMousePositionInElement(event, element) {
+        const $element = $(element);
+        const offset = $element.offset();
+        return {
+            x: event.pageX - offset.left,
+            y: event.pageY - offset.top
+        };
+    }
+
+    /**
      * Handle button action (increment/decrement)
      * Can be overridden by subclasses for custom behavior
      * @param {string} action - 'increase', 'decrease', 'increase-large', 'decrease-large', 'reset'
