@@ -224,4 +224,8 @@ dw/dt = z
 - Animation guide: See [animations/README.md](./animations/README.md)
 - All docs: See [DOCUMENTATION.md](./DOCUMENTATION.md)
 
+## Credits
+
+Most of the code in this project was written with [Claude Code](https://claude.ai/code), an AI-powered development tool. The ideas, architecture decisions, mathematical insights, and extensive debugging came from the author.
+
 Enjoy exploring the beauty of dynamical systems!
