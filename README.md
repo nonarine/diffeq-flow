@@ -1,27 +1,46 @@
 # N-Dimensional Vector Field Flow Renderer
 
-A WebGL-based visualization tool for exploring n-dimensional dynamical systems through particle flow rendering. Built with vanilla JavaScript (no build tools required), inspired by [fieldplay](https://github.com/anvaka/fieldplay) but extended to support arbitrary dimensions and pluggable integrators/mappers.
+A WebGL-based visualization tool for exploring n-dimensional dynamical systems through particle flow rendering. Built with vanilla JavaScript with optional build system, inspired by [fieldplay](https://github.com/anvaka/fieldplay) but extended to support arbitrary dimensions, non-Cartesian coordinate systems, implicit integrators, and HDR rendering with tone mapping.
 
-Written with claude code mainly because I wanted to play with strange attractors that appear from from integrator instability, so excuse the mess... and this is a toy, so software provided as is, etc etc
+Written with Claude Code mainly because I wanted to play with strange attractors that appear from integrator instability and explore chaotic systems in non-Cartesian coordinates. This is a toy project, so software provided as is, etc etc
 
 ## Features
 
 - **N-Dimensional Vector Fields**: Support for 2D, 3D, 4D, 5D, 6D systems
+- **Non-Cartesian Coordinate Systems**: Polar, cylindrical, spherical, and custom coordinate systems
 - **Math Expression Parser**: Write vector fields using familiar math syntax (no GLSL required)
-- **Multiple Integrators**: Euler, Runge-Kutta 2, Runge-Kutta 4, with support for custom integrators
-- **Flexible 2D Projection**: Multiple methods to visualize high-dimensional systems on 2D screens
-- **GPU-Accelerated**: All particle position updates computed on GPU via WebGL
-- **Interactive**: Pan, zoom, and adjust parameters in real-time
+- **Explicit & Implicit Integrators**: Euler, RK2, RK4, Implicit Euler, Implicit Midpoint, Trapezoidal, Implicit RK4
+  - Multiple solver methods: Fixed-Point, Midpoint, Newton's Method (symbolic & finite difference)
+- **Domain Transforms**: Logarithmic, exponential, tanh, and more for spatially-varying timesteps
+- **HDR Rendering**: High dynamic range particle rendering with multiple tone mapping operators
+  - ACES, Reinhard, Uncharted 2, Luminance Extended, and more
+- **Color Modes**: Velocity magnitude, angle, combined, expression-based, custom gradients
+- **Flexible 2D Projection**: Select dimensions, linear projection, or custom GLSL mappers
+- **GPU-Accelerated**: All particle updates computed on GPU via WebGL (100k+ particles at 60 FPS)
+- **Interactive**: Pan, zoom, and adjust parameters in real-time with auto-apply
+- **Animation System**: Interpolate parameters over time, export frames to video
 
 ## Quick Start
 
+### Development (No Build)
 1. Clone this repository
-2. Run with:
-  - ```python3 -m http.server 8080```
-  - or generate ssh credentials and run with ```python3 https-server.py [port]```
-  - or do ```npm install``` and ```npm run build``` and ```npm run server:build```
-3. Modify the vector field equations in the UI
-4. Changes apply automatically after 300ms (auto-apply with debouncing)
+2. Serve the files:
+   ```bash
+   python3 -m http.server 8000
+   # or for HTTPS (required for some features):
+   python3 https-server.py [port]
+   ```
+3. Open `http://localhost:8000` in your browser
+4. Modify vector field equations in the UI
+5. Changes apply automatically after 300ms (auto-apply with debouncing)
+
+### Production Build
+1. Install dependencies: `npm install`
+2. Build minified bundle: `npm run build`
+3. Serve build directory: `npm run serve:build`
+4. Open `http://localhost:8000`
+
+The build bundles all JavaScript into a single minified file (`build/app.min.js`) with source maps.
 
 ## Usage
 
@@ -59,9 +78,25 @@ dz/dt = x*y - 2.67*z
 
 Choose how particle positions are updated:
 
+**Explicit Methods** (fast, simple):
 - **Euler**: Simplest, 1st order accurate
-- **RK2 (Midpoint)**: 2nd order accurate
-- **RK4**: 4th order accurate (default, good balance)
+- **Explicit Midpoint (RK2)**: 2nd order accurate
+- **Heun (Explicit Trapezoidal)**: 2nd order accurate
+- **RK4**: 4th order accurate (default for smooth systems)
+
+**Implicit Methods** (A-stable, excellent for stiff/chaotic systems):
+- **Implicit Euler**: 1st order, very stable
+- **Implicit Midpoint**: 2nd order, A-stable
+- **Trapezoidal**: 2nd order, A-stable
+- **Implicit RK4**: 4th order, excellent stability
+
+**Solver Methods** (for implicit integrators):
+- **Fixed-Point Iteration**: Simple, creates interesting artifacts
+- **Midpoint Solver**: Faster convergence
+- **Newton's Method (Symbolic)**: Quadratic convergence via Nerdamer
+- **Newton's Method (Finite Diff)**: Numerical Jacobian approximation
+
+All integrators are normalized by cost factor for fair visual comparison.
 
 ### 2D Projection Mappers
 
@@ -87,8 +122,21 @@ For dimensions > 2, choose how to project to 2D:
 
 ## Presets
 
-Try built-in examples from the preset list.
-[add descriptions...]
+Built-in examples showcase different system types:
+
+- **Simple Rotation (2D)**: Basic circular motion with velocity angle coloring
+- **Vortex (2D)**: Spiral attractor with custom bbox
+- **Van der Pol Oscillator (2D)**: Classic limit cycle system
+- **Fluid Transport with Stirring (2D)**: Chaotic mixing flow
+- **Strange Attractor (2D Chaotic)**: Chaotic limit cycle from implicit Euler instability
+  - Demonstrates HDR rendering with tone mapping, bilateral filtering, 2x supersampling
+  - Uses large timestep (0.472) with fixed-point iteration to create beautiful strange attractor
+- **Lorenz Attractor (3D)**: Iconic butterfly-shaped chaotic attractor
+- **Rössler Attractor (3D)**: Simpler chaotic system with single loop
+- **4D Hypersphere Rotation**: Two-plane rotation in 4D space
+- **Double Pendulum (4D Chaotic)**: Chaotic mechanical system with custom projection
+
+Try loading a preset and tweaking parameters to explore variations!
 
 ## Technical Architecture
 
@@ -105,9 +153,19 @@ Particle positions are stored in textures (one texture per dimension). On each f
 
 This approach allows updating 100,000+ particles at 60 FPS.
 
-### Float Packing
+### Coordinate Storage
 
-Since WebGL doesn't guarantee floating point texture support, we encode each position value into RGBA bytes (32 bits). This provides high precision across all devices, including mobile.
+Two strategies for storing particle positions:
+
+- **Float Textures** (default): Direct float storage using `OES_texture_float` extension
+  - No encoding overhead, ~23 bits mantissa precision (IEEE 754 single precision)
+  - Widely supported on modern devices
+- **RGBA Encoding** (fallback): 32-bit fixed-point encoding in RGBA bytes
+  - Maximum compatibility without WebGL extensions
+  - Small encoding/decoding overhead in shaders
+  - Both strategies produce visually identical results
+
+The system automatically uses float textures when available and falls back to RGBA encoding if needed.
 
 ### Expression Parsing
 
@@ -116,30 +174,57 @@ User expressions are tokenized, parsed into an AST, and compiled to GLSL code. T
 ## Project Structure
 
 ```
-index.html                 # Main HTML page with UI
+index.html                      # Main HTML page with UI
+build.js                        # esbuild bundler configuration
 src/
-  main.js                  # Entry point, initialization, pan/zoom
+  main.js                       # Entry point, initialization
   math/
-    parser.js              # Math expression → GLSL compiler
-    integrators.js         # Numerical integration methods
-    mappers.js             # 2D projection strategies
+    parser.js                   # Math expression → GLSL compiler
+    integrators.js              # Explicit & implicit integration methods
+    mappers.js                  # 2D projection strategies
+    colors.js                   # Color mode definitions
+    gradients.js                # Gradient generation & GLSL code
+    transforms.js               # Domain transforms
+    tonemapping.js              # Tone mapping operators
+    coordinate-systems.js       # Non-Cartesian coordinate systems
   webgl/
-    renderer.js            # Main WebGL renderer
-    shaders.js             # Shader generation and compilation
-    textures.js            # Texture ping-pong manager
+    renderer.js                 # Main WebGL renderer (2300+ lines)
+    shaders.js                  # Dynamic shader generation
+    textures.js                 # Texture ping-pong manager
+    framebuffer.js              # HDR render target management
+    bloom.js                    # Bloom effect (WIP)
+    coordinate-strategy.js      # Base class for storage strategies
+    strategies/
+      float-strategy.js         # Float texture storage (default)
+      rgba-strategy.js          # RGBA encoding (fallback)
   particles/
-    system.js              # Particle data management
+    system.js                   # Particle initialization & management
   ui/
-    controls.js            # UI event handlers
+    control-base.js             # Base control classes & ControlManager
+    controls-v2.js              # Production control system (500 lines)
+    custom-controls.js          # Complex control implementations
+    parameter-control.js        # Generic parameter controls
+    animatable-slider.js        # Animation bounds UI
+    gradient-editor.js          # Interactive gradient editor
+    coordinate-editor.js        # Coordinate system editor
   utils/
-    float-packing.js       # Float ↔ RGBA encoding
+    float-packing.js            # Float ↔ RGBA encoding (legacy)
+    debug-logger.js             # Multi-level logging
+docs/                           # Feature documentation
+animations/                     # Animation export directory
 ```
 
 ## Browser Compatibility
 
-Requires WebGL support. Tested on:
-- Chrome 90+
+Requires WebGL 1.0 with extensions:
+- `OES_texture_float` (recommended, for float textures)
+- `WEBGL_color_buffer_float` or `EXT_color_buffer_half_float` (for HDR rendering)
+
+Tested on:
+- Chrome 90+ (recommended)
 - Firefox 88+
+
+Falls back gracefully when extensions are unavailable.
 
 ## Inspiration
 
@@ -191,36 +276,65 @@ dw/dt = z
 
 ## Tips
 
-- Start with 2D systems to get familiar with the controls
-- Use RK4 integrator for most systems
-- Adjust time step if particles move too fast or too slow
-- Increase fade speed to see longer particle trails
-- Try different particle counts to balance quality and performance
-- Use console to load presets: `loadPreset('3d_lorenz')`
+**Getting Started:**
+- Start with 2D systems and presets to get familiar with the controls
+- Try velocity angle color mode for beautiful flow visualization
+- Use RK4 integrator for smooth, accurate systems
+
+**Exploring Strange Attractors:**
+- Use implicit Euler with fixed-point iteration and large timesteps (0.3-0.6)
+- Set iteration count to 1-3 for interesting chaotic artifacts
+- Increase particle count (500k-1M) and fade opacity (0.999+) for dense attractors
+
+**Performance:**
+- Reduce particle count or supersampling for better FPS
+- Disable bilateral filtering for speed
+- Use RK2 instead of RK4 for faster updates
+
+**Visual Quality:**
+- Enable 2x supersampling for smooth edges
+- Use bilateral filtering to reduce noise in dense regions
+- Experiment with tone mapping operators for different aesthetics
+- Adjust color saturation and brightness desaturation for highlight control
+
+**Non-Cartesian Coordinates:**
+- Try polar coordinates for radial flows
+- Use spherical coordinates for 3D rotational systems
+- Custom coordinate systems let you explore exotic geometries
 
 ## Recent Enhancements
 
-**Implemented Features:**
-- ✅ Custom integrators via UI (GLSL and custom expressions)
-- ✅ Export/import configurations (localStorage persistence, shareable URLs, user presets)
-- ✅ Video recording (animation system with frame capture, see `animations/README.md`)
-- ✅ Color modes (velocity magnitude, direction, combined, expression-based, gradient editor)
-- ✅ Implicit integrators with multiple solver methods (Fixed-Point, Midpoint, Newton's Method)
-- ✅ Domain transforms (logarithmic, exponential, tanh, etc.)
-- ✅ HDR rendering with tone mapping (ACES, Reinhard, Uncharted 2, etc.)
-- ✅ Animation system with parameter interpolation (see `ANIMATION_FORMAT.md`)
-- ✅ Custom mathematical functions in GLSL
+**Major Features (2024-2025):**
+- ✅ **Non-Cartesian Coordinate Systems**: Polar, cylindrical, spherical, custom
+- ✅ **Implicit Integrators**: Full parity with explicit methods + multiple solver strategies
+- ✅ **HDR Rendering Pipeline**: Float framebuffers, tone mapping, bloom
+- ✅ **Advanced Rendering**: Bilateral filtering, SMAA, supersampling
+- ✅ **Animation System**: Parameter interpolation, frame capture, video export
+- ✅ **Domain Transforms**: Spatially-varying timesteps for multi-scale systems
+- ✅ **Color System**: Velocity-based coloring, custom gradients, expression modes
+- ✅ **Build System**: esbuild bundler for production deployment
+- ✅ **Control System Refactor**: Composable architecture, automatic save/restore
+- ✅ **Custom Presets**: Save/load/export user configurations to JSON
+
+**Architecture Improvements:**
+- Strategy pattern for coordinate storage (Float vs RGBA)
+- Modular control system with ControlManager
+- Data-driven parameter controls
+- HDR tone mapping with 7+ operators
+- Adaptive velocity tracking for color scaling
 
 **Future Possibilities:**
-- More projection methods (PCA, t-SNE, UMAP)
+- Advanced projection methods (PCA, t-SNE)
 - Poincaré sections for periodic orbits
 - Bifurcation diagrams
-- Real-time Lyapunov exponent visualization
+- Lyapunov exponent visualization
 - Phase portraits with nullclines
+- WebGPU backend for better performance
 
 **Documentation:**
-- Animation guide: See [animations/README.md](./animations/README.md)
-- All docs: See [DOCUMENTATION.md](./DOCUMENTATION.md)
+- Feature docs: See [docs/](./docs/)
+- Animation guide: [animations/README.md](./animations/README.md)
+- All documentation: [DOCUMENTATION.md](./DOCUMENTATION.md)
 
 ## Credits
 
