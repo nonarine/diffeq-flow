@@ -87,16 +87,8 @@ For dimensions > 2, choose how to project to 2D:
 
 ## Presets
 
-Try built-in examples from the browser console:
-
-```javascript
-loadPreset('2d_rotation')       // Simple rotation
-loadPreset('2d_vortex')          // Vortex flow
-loadPreset('2d_vanderpol')       // Van der Pol oscillator
-loadPreset('3d_lorenz')          // Lorenz attractor
-loadPreset('3d_rossler')         // Rössler attractor
-loadPreset('4d_hypersphere')     // 4D rotation
-```
+Try built-in examples from the preset list.
+[add descriptions...]
 
 ## Technical Architecture
 
@@ -148,10 +140,6 @@ src/
 Requires WebGL support. Tested on:
 - Chrome 90+
 - Firefox 88+
-- Edge 90+
-- Safari 14+
-
-Mobile browsers also supported.
 
 ## Inspiration
 
