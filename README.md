@@ -2,6 +2,8 @@
 
 A WebGL-based visualization tool for exploring n-dimensional dynamical systems through particle flow rendering. Built with vanilla JavaScript (no build tools required), inspired by [fieldplay](https://github.com/anvaka/fieldplay) but extended to support arbitrary dimensions and pluggable integrators/mappers.
 
+Written with claude code mainly because I wanted to play with strange attractors that appear from from integrator instability, so excuse the mess... and this is a toy, so software provided as is, etc etc
+
 ## Features
 
 - **N-Dimensional Vector Fields**: Support for 2D, 3D, 4D, 5D, 6D systems
@@ -10,7 +12,6 @@ A WebGL-based visualization tool for exploring n-dimensional dynamical systems t
 - **Flexible 2D Projection**: Multiple methods to visualize high-dimensional systems on 2D screens
 - **GPU-Accelerated**: All particle position updates computed on GPU via WebGL
 - **Interactive**: Pan, zoom, and adjust parameters in real-time
-- **No Build Step**: Just open `index.html` in a modern browser
 
 ## Quick Start
 
@@ -160,7 +161,15 @@ This project was inspired by:
 
 ## License
 
-MIT License - feel free to use, modify, and distribute.
+MIT License -
+Copyright 2025
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the “Software”), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED “AS IS”, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
 
 ## Examples
 
