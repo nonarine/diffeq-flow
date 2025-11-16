@@ -15,11 +15,12 @@ A WebGL-based visualization tool for exploring n-dimensional dynamical systems t
 ## Quick Start
 
 1. Clone this repository
-2. Open `index.html` in a modern browser (Chrome, Firefox, Edge recommended)
+2. Run with:
+  - ```python3 -m http.server 8080```
+  - or generate ssh credentials and run with ```python3 https-server.py [port]```
+  - or do ```npm install``` and ```npm run build``` and ```npm run server:build```
 3. Modify the vector field equations in the UI
 4. Changes apply automatically after 300ms (auto-apply with debouncing)
-
-That's it! No npm install, no build process.
 
 ## Usage
 

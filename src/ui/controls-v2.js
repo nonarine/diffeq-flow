@@ -232,7 +232,7 @@ export function initControls(renderer, callback) {
 
     // === Color mode controls ===
 
-    const colorModeControl = manager.register(new SelectControl('color-mode', 'white', {
+    const colorModeControl = manager.register(new SelectControl('color-mode', 'velocity_angle', {
         settingsKey: 'colorMode',
         onChange: (value) => {
             updateExpressionControls(value);
@@ -2033,12 +2033,14 @@ function loadPresets() {
             dimensions: 2,
             expressions: ['-y', 'x'],
             integratorType: 'rk2',
+            colorMode: 'velocity_angle',
             name: 'Simple Rotation'
         },
         '2d_vortex': {
             dimensions: 2,
             expressions: ['-y + x*(1 - x*x - y*y)', 'x + y*(1 - x*x - y*y)'],
             integratorType: 'rk4',
+            colorMode: 'velocity_angle',
             bbox: {
                 min: [-3, -3],
                 max: [3, 3]
@@ -2049,22 +2051,26 @@ function loadPresets() {
             dimensions: 2,
             expressions: ['y', '(1 - x*x)*y - x'],
             integratorType: 'rk4',
+            colorMode: 'velocity_angle',
             name: 'Van der Pol Oscillator'
         },
         '3d_lorenz': {
             dimensions: 3,
             expressions: ['10*(y - x)', 'x*(28 - z) - y', 'x*y - 2.67*z'],
             integratorType: 'rk4',
+            colorMode: 'velocity_angle',
             name: 'Lorenz Attractor'
         },
         '3d_rossler': {
             dimensions: 3,
             expressions: ['-y - z', 'x + 0.2*y', '0.2 + z*(x - 5.7)'],
+            colorMode: 'velocity_angle',
             name: 'Rössler Attractor'
         },
         '4d_hypersphere': {
             dimensions: 4,
             expressions: ['-y', 'x', '-w', 'z'],
+            colorMode: 'velocity_angle',
             name: '4D Hypersphere Rotation'
         },
         '2d_fluid_stirring': {
@@ -2073,6 +2079,7 @@ function loadPresets() {
                 '-y + sin(x)*cos(y)*3.0 - 0.1*x',
                 'x + cos(x)*sin(y)*3.0 - 0.1*y'
             ],
+            colorMode: 'velocity_angle',
             name: 'Fluid Transport with Stirring'
         },
         '4d_double_pendulum': {
@@ -2085,12 +2092,54 @@ function loadPresets() {
             ],
             name: 'Double Pendulum (Chaotic)',
             timestep: 0.005,
+            colorMode: 'velocity_angle',
             mapperType: 'custom',
             mapperParams: {
                 horizontalExpr: 'sin(x) + sin(y)',
                 verticalExpr: '-cos(x) - cos(y)',
                 depthExpr: ''
             }
+        },
+        '2d_strange_attractor': {
+            dimensions: 2,
+            expressions: [
+                '-y + x*(1 - x*x*x*x - y*y*y*y)',
+                'x + y*(1 - x*x*x*x - y*y*y*y)'
+            ],
+            bbox: {
+                min: [-3.5719104227544065, -1.7259582784950003],
+                max: [3.5719104227544065, 1.7259582784950003]
+            },
+            integratorType: 'implicit-euler',
+            solutionMethod: 'fixed-point',
+            timestep: 0.472,
+            implicitIterations: 3,
+            particleCount: 880100,
+            fadeOpacity: 0.9999,
+            colorMode: 'velocity_angle',
+            // Rendering settings
+            supersampleFactor: 2,
+            smaaEnabled: false,
+            'smaa-intensity': 1,
+            'smaa-threshold': 1,
+            bilateralEnabled: true,
+            bilateralSpatialSigma: 5,
+            bilateralIntensitySigma: 0.01,
+            // Tone mapping
+            tonemapOperator: 'luminance_extended',
+            exposure: 0.010232929922807544,
+            gamma: 0.7803178779033633,
+            luminanceGamma: 1.2188608780748513,
+            highlightCompression: 9.999999999999993,
+            compressionThreshold: 100000.00000000001,
+            whitePoint: 3.443499307633384,
+            particleIntensity: 47.31512589614813,
+            particleSize: 0.10000000000000002,
+            particleRenderMode: 'points',
+            colorSaturation: 0.429,
+            brightnessDesaturation: 0.685,
+            brightnessSaturation: 0.13,
+            name: 'Strange Attractor (Chaotic Limit Cycle)'
         }
     };
 }
@@ -2159,8 +2208,24 @@ function loadPreset(name, manager) {
         transformParamsControl.updateControls();
     }
 
-    // Apply changes immediately to renderer (no debounce for preset loading)
-    manager.apply();
+    // Get settings from controls and merge bbox if present in preset
+    const settings = manager.getSettings();
+
+    // Add bbox to settings if present in preset
+    if (preset.bbox) {
+        settings.bbox = preset.bbox;
+        logger.info(`Preset bbox: min=${preset.bbox.min}, max=${preset.bbox.max}`);
+    }
+
+    // Transform implicitIterations into integratorParams (same as in onApply)
+    if (settings.implicitIterations !== undefined) {
+        settings.integratorParams = { iterations: settings.implicitIterations };
+    }
+
+    // Apply all settings at once (including bbox) to renderer
+    if (window.renderer) {
+        window.renderer.updateConfig(settings);
+    }
 
     logger.info(`Preset ${preset.name || name} loaded successfully`);
 }

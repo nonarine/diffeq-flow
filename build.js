@@ -50,10 +50,19 @@ esbuild.build({
   fs.writeFileSync(buildIndexPath, html);
   console.log('✓ index.html created in build/');
 
+  // Copy docs directory
+  const docsPath = path.join(__dirname, 'docs');
+  const buildDocsPath = path.join(buildDir, 'docs');
+  if (fs.existsSync(docsPath)) {
+    fs.cpSync(docsPath, buildDocsPath, { recursive: true });
+    console.log('✓ docs/ copied to build/');
+  }
+
   console.log('\n✅ Build complete! Output in build/ directory');
   console.log('   - build/app.min.js (bundled & minified)');
   console.log('   - build/app.min.js.map (source maps)');
   console.log('   - build/index.html (updated references)');
+  console.log('   - build/docs/ (documentation)');
 
 }).catch((error) => {
   console.error('❌ Build failed:', error);
