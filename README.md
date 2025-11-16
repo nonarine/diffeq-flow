@@ -22,6 +22,8 @@ Written with Claude Code mainly because I wanted to play with strange attractors
 
 ## Quick Start
 
+### Static page at https://nonarine.github.io/
+
 ### Development (No Build)
 1. Clone this repository
 2. Serve the files:
