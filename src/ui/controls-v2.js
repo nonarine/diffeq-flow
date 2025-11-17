@@ -1137,9 +1137,7 @@ export function initControls(renderer, callback) {
 
                 // If freeze mode: accumulate final step, display the buffer, THEN clear for next cycle
                 if (freezeScreen && window.renderer) {
-                    window.renderer.render(false); // Accumulate step N without displaying
-                    window.renderer.downsampleToCanvas(); // Display the accumulated N steps
-                    window.renderer.clearRenderBuffer(true); // Clear without restarting main loop
+                    window.renderer.render(true);
                 }
 
                 // Calculate elapsed time for this alpha cycle
@@ -1268,6 +1266,10 @@ export function initControls(renderer, callback) {
                     // (freeze mode already rendered and cleared earlier)
                     if (!freezeScreen) {
                         window.renderer.render(true);
+                    }
+
+                    if(freezeScreen) {
+                        window.renderer.clearRenderBuffer(true); // Clear without restarting main loop
                     }
 
                     // Capture frame if in frame capture mode

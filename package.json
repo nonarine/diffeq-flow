@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node build.js",
     "build:watch": "node build.js --watch",
+    "build:deploy": "cp -r build/* nonarine.github.io/; cd nonarine.github.io; git commit -am \".\"; git push",
     "serve:build": "python3 -m http.server 8000 --directory build",
     "render": "node scripts/render-animation.js",
     "serve": "python3 -m http.server 8000",
