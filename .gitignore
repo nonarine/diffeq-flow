@@ -104,3 +104,6 @@ nonarine.github.io/
 
 # Self-signed SSL certificates (for local HTTPS development)
 *.pem
+
+# local git ssh keys
+ssh/
