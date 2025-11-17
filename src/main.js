@@ -373,6 +373,25 @@ $(document).ready(function() {
             });
             debouncedSave();
         });
+
+        // Mobile compact view controls
+        $('#mobile-zoom-in').on('click', () => zoomToCenter(0.9)); // Zoom in
+        $('#mobile-zoom-out').on('click', () => zoomToCenter(1.11)); // Zoom out
+        $('#mobile-center').on('click', function() {
+            // Center view at origin (same as pan-reset)
+            const currentBBox = renderer.bbox;
+            const currentWidth = currentBBox.max[0] - currentBBox.min[0];
+            const currentHeight = currentBBox.max[1] - currentBBox.min[1];
+
+            renderer.updateConfig({
+                bbox: {
+                    min: [-currentWidth / 2, -currentHeight / 2],
+                    max: [currentWidth / 2, currentHeight / 2]
+                },
+                reinitializeParticles: false
+            });
+            debouncedSave();
+        });
     }
 
     // Step 5: Setup grid and cursor display
@@ -656,6 +675,17 @@ $(document).ready(function() {
     // Step 6: Setup keyboard shortcuts
     function setupKeyboardShortcuts(renderer) {
         document.addEventListener('keydown', (e) => {
+            // Close mobile panels: Press 'Escape' key
+            if (e.key === 'Escape') {
+                // Check if mobile panel manager exists and has an open panel
+                if (window.mobilePanelManager && window.mobilePanelManager.getCurrentPanel()) {
+                    e.preventDefault();
+                    window.mobilePanelManager.hideAllPanels();
+                    logger.verbose('Mobile panel closed via Escape key');
+                    return;
+                }
+            }
+
             // Clear screen: Press 'C' key (with no modifiers to avoid conflicts)
             if (e.key === 'c' && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
                 // Don't trigger if user is typing in an input field

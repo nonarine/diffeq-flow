@@ -1776,6 +1776,112 @@ export function initControls(renderer, callback) {
         return settings;
     }
 
+    // ========================================
+    // Mobile Panel Manager
+    // ========================================
+    function initMobilePanelManager() {
+        const panels = {
+            'controls': $('#controls'),
+            'view': $('#zoom-pan-controls'),
+            'display': $('#display-options')
+        };
+
+        let currentPanel = null;
+
+        function showPanel(panelName) {
+            // Hide any currently open panel
+            if (currentPanel) {
+                hidePanel(currentPanel);
+            }
+
+            const panel = panels[panelName];
+            if (!panel) return;
+
+            // Add mobile overlay class and show close button
+            panel.addClass('mobile-overlay active');
+            panel.find('.mobile-overlay-close').show();
+
+            // Mark menu button as active
+            $(`#mobile-menu-${panelName}`).addClass('active');
+
+            currentPanel = panelName;
+        }
+
+        function hidePanel(panelName) {
+            const panel = panels[panelName];
+            if (!panel) return;
+
+            // Remove mobile overlay class and hide close button
+            panel.removeClass('mobile-overlay active');
+            panel.find('.mobile-overlay-close').hide();
+
+            // Remove active state from menu button
+            $(`#mobile-menu-${panelName}`).removeClass('active');
+
+            if (currentPanel === panelName) {
+                currentPanel = null;
+            }
+        }
+
+        function hideAllPanels() {
+            Object.keys(panels).forEach(hidePanel);
+        }
+
+        // Wire up mobile menu buttons
+        $('#mobile-menu-controls').on('click', function() {
+            if (currentPanel === 'controls') {
+                hidePanel('controls');
+            } else {
+                showPanel('controls');
+            }
+        });
+
+        $('#mobile-menu-view').on('click', function() {
+            if (currentPanel === 'view') {
+                hidePanel('view');
+            } else {
+                showPanel('view');
+            }
+        });
+
+        $('#mobile-menu-display').on('click', function() {
+            if (currentPanel === 'display') {
+                hidePanel('display');
+            } else {
+                showPanel('display');
+            }
+        });
+
+        // Wire up close buttons in panels
+        $('.mobile-overlay-close').on('click', function() {
+            const panel = $(this).closest('[id]');
+            const panelId = panel.attr('id');
+
+            // Map panel IDs to panel names
+            const panelMap = {
+                'controls': 'controls',
+                'zoom-pan-controls': 'view',
+                'display-options': 'display'
+            };
+
+            const panelName = panelMap[panelId];
+            if (panelName) {
+                hidePanel(panelName);
+            }
+        });
+
+        // Export for external access
+        return {
+            showPanel,
+            hidePanel,
+            hideAllPanels,
+            getCurrentPanel: () => currentPanel
+        };
+    }
+
+    // Initialize mobile panel manager
+    window.mobilePanelManager = initMobilePanelManager();
+
     // Call initialization callback
     if (callback) {
         callback({
@@ -1787,10 +1893,13 @@ export function initControls(renderer, callback) {
 
     // Restore bbox if present in saved settings
     if (savedSettings && savedSettings.bbox) {
+        const canvas = renderer?.gl?.canvas;
+        const expandedBBox = expandBBoxForAspectRatio(savedSettings.bbox, canvas);
         renderer.updateConfig({
-            bbox: savedSettings.bbox,
+            bbox: expandedBBox,
             reinitializeParticles: false
         });
+        logger.verbose('Restored bbox expanded for aspect ratio');
     }
 
     // Return manager for external access
@@ -1800,6 +1909,40 @@ export function initControls(renderer, callback) {
 // ========================================
 // Helper Functions
 // ========================================
+
+/**
+ * Expand bbox to fit canvas aspect ratio (ensure WHOLE bbox is visible)
+ * @param {Object} bbox - Original bbox with min/max arrays
+ * @param {HTMLCanvasElement} canvas - Canvas element
+ * @returns {Object} Expanded bbox that fits aspect ratio
+ */
+function expandBBoxForAspectRatio(bbox, canvas) {
+    if (!canvas) return bbox;
+
+    const canvasAspect = canvas.width / canvas.height;
+    const bboxWidth = bbox.max[0] - bbox.min[0];
+    const bboxHeight = bbox.max[1] - bbox.min[1];
+    const bboxAspect = bboxWidth / bboxHeight;
+
+    const centerX = (bbox.min[0] + bbox.max[0]) / 2;
+    const centerY = (bbox.min[1] + bbox.max[1]) / 2;
+
+    let newWidth = bboxWidth;
+    let newHeight = bboxHeight;
+
+    if (canvasAspect > bboxAspect) {
+        // Canvas is wider than bbox - expand width to match aspect ratio
+        newWidth = bboxHeight * canvasAspect;
+    } else {
+        // Canvas is taller than bbox - expand height to match aspect ratio
+        newHeight = bboxWidth / canvasAspect;
+    }
+
+    return {
+        min: [centerX - newWidth / 2, centerY - newHeight / 2],
+        max: [centerX + newWidth / 2, centerY + newHeight / 2]
+    };
+}
 
 /**
  * Update white point visibility based on operator
@@ -2215,8 +2358,21 @@ function loadPreset(name, manager) {
 
     // Add bbox to settings if present in preset
     if (preset.bbox) {
-        settings.bbox = preset.bbox;
-        logger.info(`Preset bbox: min=${preset.bbox.min}, max=${preset.bbox.max}`);
+        // Expand bbox to fit canvas aspect ratio (ensure WHOLE bbox is visible)
+        const canvas = window.renderer?.gl?.canvas;
+        const expandedBBox = expandBBoxForAspectRatio(preset.bbox, canvas);
+        settings.bbox = expandedBBox;
+
+        const bboxWidth = preset.bbox.max[0] - preset.bbox.min[0];
+        const bboxHeight = preset.bbox.max[1] - preset.bbox.min[1];
+        const newWidth = expandedBBox.max[0] - expandedBBox.min[0];
+        const newHeight = expandedBBox.max[1] - expandedBBox.min[1];
+
+        if (canvas) {
+            logger.info(`Preset bbox expanded from [${bboxWidth.toFixed(2)} x ${bboxHeight.toFixed(2)}] to [${newWidth.toFixed(2)} x ${newHeight.toFixed(2)}] for aspect ratio ${(canvas.width / canvas.height).toFixed(2)}`);
+        } else {
+            logger.info(`Preset bbox: min=${preset.bbox.min}, max=${preset.bbox.max}`);
+        }
     }
 
     // Transform implicitIterations into integratorParams (same as in onApply)
