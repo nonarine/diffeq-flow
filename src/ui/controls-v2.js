@@ -855,6 +855,16 @@ export function initControls(renderer, callback) {
         const sliderId = $(this).data('slider');
         const action = $(this).data('action');
 
+        // Handle mobile timestep buttons by delegating to main timestep control
+        if (sliderId === 'mobile-timestep') {
+            const timestepControl = manager.get('timestep');
+            if (timestepControl && timestepControl.handleButtonAction) {
+                timestepControl.handleButtonAction(action);
+                // Mobile slider will auto-sync via the change listener
+            }
+            return;
+        }
+
         // Try to get the registered control
         const control = manager.get(sliderId);
         if (control && control.handleButtonAction) {
@@ -1661,6 +1671,19 @@ export function initControls(renderer, callback) {
     // Then load and apply saved settings
     const savedSettings = loadSettingsFromURLOrStorage();
 
+    // Set mobile-specific defaults if no saved settings exist
+    const isMobile = window.innerWidth <= 768;
+    if (isMobile && (!savedSettings || (savedSettings.frameLimitEnabled === undefined && savedSettings.frameLimit === undefined))) {
+        // On mobile, enable frame limit and set to 500 frames by default (only if not already saved)
+        frameLimitEnabledControl.setValue(true);
+        frameLimitControl.setValue(500);
+        if (window.renderer) {
+            window.renderer.frameLimitEnabled = true;
+            window.renderer.frameLimit = 500;
+        }
+        logger.info('Mobile detected: frame limit enabled at 500 frames');
+    }
+
     if (savedSettings) {
         // Restore coordinate system if present and dimensions match
         if (savedSettings.coordinateSystem && savedSettings.dimensions) {
@@ -1910,6 +1933,49 @@ export function initControls(renderer, callback) {
 
     // Initialize mobile panel manager
     window.mobilePanelManager = initMobilePanelManager();
+
+    // ========================================
+    // Mobile Timestep Slider Sync
+    // ========================================
+    const $mobileTimestep = $('#mobile-timestep');
+    const $mobileTimestepValue = $('#mobile-timestep-value');
+
+    // Sync mobile slider with main timestep control
+    function syncMobileTimestep() {
+        const value = timestepControl.getValue();
+        // Use log scale for mobile slider (same as AnimatableTimestepControl)
+        const logValue = Math.log10(value);
+        $mobileTimestep.val(logValue);
+        $mobileTimestepValue.text(value.toFixed(4));
+    }
+
+    // Listen to main timestep changes
+    $('#timestep').on('input change', syncMobileTimestep);
+
+    // Update main timestep when mobile slider changes
+    $mobileTimestep.on('input', function() {
+        const logValue = parseFloat($(this).val());
+        const value = Math.pow(10, logValue);
+
+        // Update the main timestep control's DOM element directly
+        const timestepElement = $('#timestep');
+        timestepElement.val(value);
+
+        // Update both displays
+        timestepControl.updateDisplay(value);
+        $mobileTimestepValue.text(value.toFixed(4));
+
+        // Call onChange callback if it exists
+        if (timestepControl.onChange) {
+            timestepControl.onChange(value);
+        }
+
+        // Trigger the debounced apply (same as main control does)
+        manager.debouncedApply();
+    });
+
+    // Initialize mobile slider with current value
+    syncMobileTimestep();
 
     // Call initialization callback
     if (callback) {

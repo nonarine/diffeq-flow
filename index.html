@@ -278,6 +278,33 @@
             display: inline-block;
         }
 
+        /* Mobile timestep slider (hidden on desktop) */
+        #mobile-timestep-slider {
+            display: none; /* Old standalone element - no longer used */
+        }
+
+        /* Mobile timestep inline (inside fps-counter, hidden on desktop) */
+        .mobile-timestep-inline {
+            display: none;
+        }
+
+        .mobile-timestep-inline .mobile-timestep-label {
+            font-size: 11px;
+            white-space: nowrap;
+            margin-bottom: 2px;
+            color: #FF9800;
+        }
+
+        body.light-theme .mobile-timestep-inline .mobile-timestep-label {
+            color: #F57C00;
+        }
+
+        .mobile-timestep-inline input[type="range"] {
+            width: 80px;
+            height: 4px;
+        }
+
+
         #controls {
             position: absolute;
             top: calc(32px + 25px); /* Menu bar + offset */
@@ -1656,9 +1683,11 @@
 
         /* Mobile Layout - Tablet and below */
         @media screen and (max-width: 768px) {
-            /* Show mobile menu bar */
+            /* Show mobile menu bar - position below fps counter */
             #mobile-menu-bar {
                 display: flex;
+                top: 125px; /* Below fps-counter with some spacing */
+                transform: none; /* Remove vertical centering */
             }
 
             /* Show compact mobile view controls */
@@ -1717,16 +1746,140 @@
             /* Compact FPS counter for mobile */
             #fps-counter {
                 top: 40px;
+                left: 8px;
                 right: 8px;
+                width: auto;
                 bottom: auto;
                 font-size: 11px;
-                padding: 4px 8px;
-                background: rgba(30, 30, 30, 0.7);
-                opacity: 0.8;
+                padding: 6px 8px;
+                background: rgba(30, 30, 30, 0.85);
+                opacity: 1;
             }
 
             body.light-theme #fps-counter {
-                background: rgba(255, 255, 255, 0.7);
+                background: rgba(255, 255, 255, 0.85);
+            }
+
+            #fps-counter .fps-display {
+                margin-bottom: 4px;
+                text-align: right;
+            }
+
+            /* Show mobile timestep inline inside fps-counter */
+            .mobile-timestep-inline {
+                display: flex;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 4px;
+                position: relative;
+                padding-right: 8px;
+            }
+
+            .mobile-timestep-inline .mobile-timestep-controls {
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                width: 100%;
+            }
+
+            .mobile-timestep-inline .slider-btn {
+                padding: 2px 6px;
+                font-size: 12px;
+                min-width: 24px;
+                height: 24px;
+                background: rgba(255, 255, 255, 0.1);
+                border: 1px solid #555;
+                border-radius: 3px;
+                color: #fff;
+                cursor: pointer;
+                flex-shrink: 0;
+            }
+
+            .mobile-timestep-inline .slider-btn:active {
+                background: rgba(255, 255, 255, 0.2);
+            }
+
+            body.light-theme .mobile-timestep-inline .slider-btn {
+                background: rgba(0, 0, 0, 0.05);
+                border-color: #bbb;
+                color: #333;
+            }
+
+            body.light-theme .mobile-timestep-inline .slider-btn:active {
+                background: rgba(0, 0, 0, 0.1);
+            }
+
+            .mobile-timestep-inline input[type="range"] {
+                flex: 1;
+                min-width: 0;
+            }
+
+            /* Adjust frame limit controls for mobile layout - split evenly */
+            #fps-counter .frame-limit-controls {
+                display: grid;
+                grid-template-columns: 1fr 8px auto auto;
+                grid-template-rows: auto auto;
+                gap: 0;
+                font-size: 11px;
+                align-items: start;
+                column-gap: 4px;
+            }
+
+            /* Mobile timestep takes first column, both rows */
+            #fps-counter .mobile-timestep-inline {
+                grid-column: 1;
+                grid-row: 1 / 3;
+            }
+
+            /* Divider between sections */
+            #fps-counter .mobile-timestep-inline::after {
+                content: '';
+                position: absolute;
+                right: -4px;
+                top: 0;
+                bottom: 0;
+                width: 1px;
+                background: #444;
+            }
+
+            body.light-theme #fps-counter .mobile-timestep-inline::after {
+                background: #ccc;
+            }
+
+            /* Frame limit label in third column */
+            #fps-counter .frame-limit-controls > label {
+                grid-column: 3;
+                grid-row: 1;
+                display: flex;
+                align-items: center;
+                gap: 4px;
+                margin-bottom: 4px;
+                white-space: nowrap;
+            }
+
+            #fps-counter .frame-limit-controls input[type="checkbox"] {
+                margin: 0;
+            }
+
+            /* Frame limit value display - fourth column */
+            #fps-counter .frame-limit-controls > .range-value {
+                grid-column: 4;
+                grid-row: 1;
+                align-self: center;
+                min-width: 30px;
+                font-weight: bold;
+                color: #4CAF50;
+            }
+
+            body.light-theme #fps-counter .frame-limit-controls > .range-value {
+                color: #2E7D32;
+            }
+
+            /* Frame limit slider spans columns 3-4 */
+            #fps-counter .frame-limit-controls > input[type="range"] {
+                grid-column: 3 / 5;
+                grid-row: 2;
+                width: 100%;
             }
 
             /* Floating panels become full-screen modals on mobile */
@@ -2271,9 +2424,20 @@
     </div>
 
     <div id="step-time-counter" style="display: none;">Step: --ms</div>
+
     <div id="fps-counter">
         <div class="fps-display">FPS: --</div>
         <div class="frame-limit-controls">
+            <!-- Mobile timestep slider (shown on mobile only) -->
+            <div class="mobile-timestep-inline">
+                <div class="mobile-timestep-label">Time Step: <span id="mobile-timestep-value">0.01</span></div>
+                <div class="mobile-timestep-controls">
+                    <button class="slider-btn" data-slider="mobile-timestep" data-action="decrease">-</button>
+                    <input type="range" id="mobile-timestep" min="-3" max="0.4" step="0.01" value="-2">
+                    <button class="slider-btn" data-slider="mobile-timestep" data-action="increase">+</button>
+                </div>
+            </div>
+            <!-- Frame limit controls -->
             <label>
                 <input type="checkbox" id="frame-limit-enabled">
                 Stop at:
