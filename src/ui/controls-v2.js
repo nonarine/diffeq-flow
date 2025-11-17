@@ -973,6 +973,21 @@ export function initControls(renderer, callback) {
         showRenderingPanel();
     });
 
+    // Wire up floating panel close buttons (for mobile)
+    $('#gradient-panel .floating-panel-close').on('click', function() {
+        hideGradientPanel();
+    });
+
+    $('#rendering-panel .floating-panel-close').on('click', function() {
+        // If opened via mobile menu, use mobile panel manager
+        if (window.mobilePanelManager && window.mobilePanelManager.getCurrentPanel() === 'rendering') {
+            window.mobilePanelManager.hidePanel('rendering');
+        } else {
+            // Otherwise use regular hide function
+            hideRenderingPanel();
+        }
+    });
+
     // ========================================
     // Modal System
     // ========================================
@@ -1622,8 +1637,11 @@ export function initControls(renderer, callback) {
         // Close rendering panel
         const renderingPanel = $('#rendering-panel');
         const renderingButton = $('#open-rendering-settings');
+        const mobileRenderingButton = $('#mobile-menu-rendering');
 
         if ($(e.target).is(renderingButton) ||
+            $(e.target).is(mobileRenderingButton) ||
+            $(e.target).closest('#mobile-menu-rendering').length > 0 ||
             $(e.target).closest('#rendering-panel').length > 0) {
             // Don't close rendering panel
         } else if (renderingPanel.is(':visible')) {
@@ -1782,8 +1800,7 @@ export function initControls(renderer, callback) {
     function initMobilePanelManager() {
         const panels = {
             'controls': $('#controls'),
-            'view': $('#zoom-pan-controls'),
-            'display': $('#display-options')
+            'rendering': $('#rendering-panel')
         };
 
         let currentPanel = null;
@@ -1795,11 +1812,28 @@ export function initControls(renderer, callback) {
             }
 
             const panel = panels[panelName];
-            if (!panel) return;
+            if (!panel) {
+                logger.warn(`Mobile panel not found: ${panelName}`);
+                return;
+            }
 
-            // Add mobile overlay class and show close button
-            panel.addClass('mobile-overlay active');
-            panel.find('.mobile-overlay-close').show();
+            // For floating panels (rendering), just show them
+            // For main panels (controls), add mobile overlay class
+            if (panelName === 'rendering') {
+                panel.show();
+                // Update white point visibility based on current operator
+                try {
+                    const operator = manager.get('tonemap-operator');
+                    if (operator) {
+                        updateWhitePointVisibility(operator.getValue());
+                    }
+                } catch (e) {
+                    logger.warn('Could not update white point visibility:', e);
+                }
+            } else {
+                panel.addClass('mobile-overlay active');
+                panel.find('.mobile-overlay-close').show();
+            }
 
             // Mark menu button as active
             $(`#mobile-menu-${panelName}`).addClass('active');
@@ -1811,9 +1845,14 @@ export function initControls(renderer, callback) {
             const panel = panels[panelName];
             if (!panel) return;
 
-            // Remove mobile overlay class and hide close button
-            panel.removeClass('mobile-overlay active');
-            panel.find('.mobile-overlay-close').hide();
+            // For floating panels, just hide them
+            // For main panels, remove mobile overlay class
+            if (panelName === 'rendering') {
+                panel.hide();
+            } else {
+                panel.removeClass('mobile-overlay active');
+                panel.find('.mobile-overlay-close').hide();
+            }
 
             // Remove active state from menu button
             $(`#mobile-menu-${panelName}`).removeClass('active');
@@ -1836,19 +1875,11 @@ export function initControls(renderer, callback) {
             }
         });
 
-        $('#mobile-menu-view').on('click', function() {
-            if (currentPanel === 'view') {
-                hidePanel('view');
+        $('#mobile-menu-rendering').on('click', function() {
+            if (currentPanel === 'rendering') {
+                hidePanel('rendering');
             } else {
-                showPanel('view');
-            }
-        });
-
-        $('#mobile-menu-display').on('click', function() {
-            if (currentPanel === 'display') {
-                hidePanel('display');
-            } else {
-                showPanel('display');
+                showPanel('rendering');
             }
         });
 
@@ -1859,9 +1890,7 @@ export function initControls(renderer, callback) {
 
             // Map panel IDs to panel names
             const panelMap = {
-                'controls': 'controls',
-                'zoom-pan-controls': 'view',
-                'display-options': 'display'
+                'controls': 'controls'
             };
 
             const panelName = panelMap[panelId];

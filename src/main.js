@@ -675,13 +675,22 @@ $(document).ready(function() {
     // Step 6: Setup keyboard shortcuts
     function setupKeyboardShortcuts(renderer) {
         document.addEventListener('keydown', (e) => {
-            // Close mobile panels: Press 'Escape' key
+            // Close mobile panels or floating panels: Press 'Escape' key
             if (e.key === 'Escape') {
                 // Check if mobile panel manager exists and has an open panel
                 if (window.mobilePanelManager && window.mobilePanelManager.getCurrentPanel()) {
                     e.preventDefault();
                     window.mobilePanelManager.hideAllPanels();
                     logger.verbose('Mobile panel closed via Escape key');
+                    return;
+                }
+
+                // Check if any floating panels are open
+                const openFloatingPanels = $('.floating-panel:visible');
+                if (openFloatingPanels.length > 0) {
+                    e.preventDefault();
+                    openFloatingPanels.hide();
+                    logger.verbose('Floating panel closed via Escape key');
                     return;
                 }
             }

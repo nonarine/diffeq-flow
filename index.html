@@ -1544,6 +1544,51 @@
             background: #c0c0c0;
         }
 
+        /* Floating Panel Close Button */
+        .floating-panel-close {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: #333;
+            color: #e0e0e0;
+            border: 1px solid #555;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            font-size: 24px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10003;
+            transition: background 0.2s, transform 0.1s;
+        }
+
+        .floating-panel-close:hover {
+            background: #444;
+            transform: scale(1.1);
+        }
+
+        .floating-panel-close:active {
+            background: #222;
+            transform: scale(0.95);
+        }
+
+        body.light-theme .floating-panel-close {
+            background: #e0e0e0;
+            color: #333;
+            border-color: #bbb;
+        }
+
+        body.light-theme .floating-panel-close:hover {
+            background: #d0d0d0;
+        }
+
+        body.light-theme .floating-panel-close:active {
+            background: #c0c0c0;
+        }
+
         /* Compact Mobile View Controls (hidden on desktop) */
         #mobile-view-controls {
             display: none; /* Hidden by default, shown in media query */
@@ -1685,9 +1730,7 @@
             }
 
             /* Floating panels become full-screen modals on mobile */
-            #gradient-panel.mobile-active,
-            #rendering-settings-panel.mobile-active,
-            #coordinate-editor-panel.mobile-active {
+            .floating-panel {
                 position: fixed;
                 top: 0;
                 left: 0;
@@ -1698,7 +1741,14 @@
                 max-width: 100%;
                 max-height: 100vh;
                 border-radius: 0;
-                z-index: 10002;
+                z-index: 10002 !important; /* Above mobile menu bar (z-index: 10000) */
+                overflow-y: auto;
+                padding-top: 60px; /* Space for close button */
+            }
+
+            /* Show floating panel close buttons on mobile */
+            .floating-panel .floating-panel-close {
+                display: flex !important;
             }
 
             /* Reduce font sizes slightly on mobile */
@@ -1785,14 +1835,8 @@
         <button class="mobile-menu-btn" id="mobile-menu-controls" title="Main Controls" aria-label="Main Controls">
             <span style="font-size: 20px;">⚙️</span>
         </button>
-        <button class="mobile-menu-btn" id="mobile-menu-view" title="View Controls" aria-label="View Controls">
-            <span style="font-size: 20px;">🔍</span>
-        </button>
-        <button class="mobile-menu-btn" id="mobile-menu-display" title="Display Options" aria-label="Display Options">
-            <span style="font-size: 20px;">🎨</span>
-        </button>
-        <button class="mobile-menu-btn" id="mobile-menu-animation" title="Animation" aria-label="Animation" style="display: none;">
-            <span style="font-size: 20px;">▶️</span>
+        <button class="mobile-menu-btn" id="mobile-menu-rendering" title="Rendering Effects" aria-label="Rendering Effects">
+            <span style="font-size: 20px;">✨</span>
         </button>
     </div>
 
@@ -2241,6 +2285,7 @@
 
     <!-- Floating gradient panel -->
     <div id="gradient-panel" class="floating-panel" style="display: none;">
+        <button class="floating-panel-close" style="display: none;">&times;</button>
         <div class="floating-panel-header">
             <h3>Gradient Editor<span class="help-icon" onclick="window.appModal?.show('docs', 'color-modes')" title="View documentation">📝</span></h3>
         </div>
@@ -2257,6 +2302,7 @@
 
     <!-- Floating rendering settings panel -->
     <div id="rendering-panel" class="floating-panel" style="display: none;">
+        <button class="floating-panel-close" style="display: none;">&times;</button>
         <div class="floating-panel-header">
             <h3>Rendering Effects<span class="help-icon" onclick="window.appModal?.show('docs', 'rendering-effects')" title="View documentation">📝</span></h3>
         </div>

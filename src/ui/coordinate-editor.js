@@ -398,11 +398,11 @@ export function showCoordinateEditor(dimensions, initialSystem, onApply) {
     if (!panel.length) {
         $('body').append(`
             <div id="coordinate-editor-panel" class="floating-panel" style="display: none;">
-                <div class="panel-header">
+                <button class="floating-panel-close" style="display: none;">&times;</button>
+                <div class="floating-panel-header">
                     <h3>Coordinate System</h3>
-                    <button class="panel-close">&times;</button>
                 </div>
-                <div id="coordinate-editor-container" class="panel-content">
+                <div id="coordinate-editor-container" class="floating-panel-content">
                 </div>
             </div>
         `);
@@ -430,7 +430,7 @@ export function showCoordinateEditor(dimensions, initialSystem, onApply) {
     );
 
     // Close button
-    $('.panel-close', panel).off('click').on('click', function() {
+    $('.floating-panel-close', panel).off('click').on('click', function() {
         panel.hide();
     });
 
