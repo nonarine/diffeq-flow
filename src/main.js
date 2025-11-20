@@ -11,12 +11,16 @@ import { initializeModal } from './ui/modal.js';
 import { CustomFunctionsTab } from './ui/tabs/custom-functions-tab.js';
 import { DebugTab } from './ui/tabs/debug-tab.js';
 import { DocsTab } from './ui/tabs/docs-tab.js';
+import { registerControlElements } from './ui/web-components/index.js';
 
 // Expose MathParser API to window for use in UI controls
 window.MathParser = {
     setCustomFunctions,
     getCustomFunctions
 };
+
+// Register Web Components
+registerControlElements();
 
 // Initialize when DOM is ready
 $(document).ready(function() {

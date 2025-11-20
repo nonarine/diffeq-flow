@@ -2046,12 +2046,23 @@
         </div>
 
         <div class="control-group">
-            <label>Dimensions: <span class="range-value" id="dim-value">2</span></label>
-            <div class="slider-control">
-                <button class="slider-btn" data-slider="dimensions" data-action="decrease">-</button>
-                <input type="range" id="dimensions">
-                <button class="slider-btn" data-slider="dimensions" data-action="increase">+</button>
-            </div>
+            <linear-slider
+                id="dimensions"
+                label="Dimensions"
+                default="2"
+                min="2"
+                max="6"
+                step="1"
+                display-format="0">
+                <label>
+                    <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                </label>
+                <div class="slider-control">
+                    <button class="slider-btn" decrease>-</button>
+                    <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                    <button class="slider-btn" increase>+</button>
+                </div>
+            </linear-slider>
         </div>
 
         <h2>Vector Field Equations<span class="help-icon" onclick="window.appModal?.show('docs', 'vector-fields')" title="View documentation">📝</span></h2>
@@ -2107,12 +2118,23 @@
             </div>
 
             <div class="control-group" id="implicit-iterations-group" style="display: none;">
-                <label>Solver Iterations: <span class="range-value" id="implicit-iterations-value">4</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="implicit-iterations" data-action="decrease">-</button>
-                    <input type="range" id="implicit-iterations">
-                    <button class="slider-btn" data-slider="implicit-iterations" data-action="increase">+</button>
-                </div>
+                <linear-slider
+                    id="implicit-iterations"
+                    label="Solver Iterations"
+                    default="4"
+                    min="1"
+                    max="10"
+                    step="1"
+                    display-format="0">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                        <button class="slider-btn" increase>+</button>
+                    </div>
+                </linear-slider>
             </div>
         </div>
 
@@ -2209,12 +2231,24 @@
             </div>
 
             <div class="control-group">
-                <label>Particle Count: <span class="range-value" id="particles-value">1000</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="particles" data-action="decrease">-</button>
-                    <input type="range" id="particles">
-                    <button class="slider-btn" data-slider="particles" data-action="increase">+</button>
-                </div>
+                <linear-slider
+                    id="particles"
+                    label="Particle Count"
+                    default="1000"
+                    min="100"
+                    max="5000000"
+                    step="10000"
+                    settings-key="particleCount"
+                    display-format="0">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                        <button class="slider-btn" increase>+</button>
+                    </div>
+                </linear-slider>
             </div>
 
             <div class="control-group">
@@ -2227,12 +2261,23 @@
             </div>
 
             <div class="control-group">
-                <label>Drop Probability: <span class="range-value" id="drop-value">0.000</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="drop" data-action="decrease">-</button>
-                    <input type="range" id="drop">
-                    <button class="slider-btn" data-slider="drop" data-action="increase">+</button>
-                </div>
+                <linear-slider
+                    id="drop"
+                    label="Drop Probability"
+                    default="0.0"
+                    min="0"
+                    max="0.1"
+                    step="0.001"
+                    display-format="4">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                        <button class="slider-btn" increase>+</button>
+                    </div>
+                </linear-slider>
             </div>
 
             <div class="control-group">
@@ -2442,8 +2487,16 @@
                 <input type="checkbox" id="frame-limit-enabled">
                 Stop at:
             </label>
-            <input type="range" id="frame-limit" min="0" max="100" step="1" value="30">
-            <span class="range-value" id="frame-limit-value">1k</span>
+            <log-slider
+                id="frame-limit"
+                label=""
+                default="1000"
+                min-value="100"
+                max-value="100000"
+                display-format="0">
+                <input type="range" min="0" max="100" step="1" value="30">
+                <span class="range-value" bind-text="value">{{value}}</span>
+            </log-slider>
         </div>
     </div>
 
@@ -2488,13 +2541,24 @@
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Render Scale</h4>
             <div class="control-group">
-                <label>Resolution Scale: <span class="range-value" id="supersample-factor-value">1.0x</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="supersample-factor" data-action="decrease">-</button>
-                    <input type="range" id="supersample-factor">
-                    <button class="slider-btn" data-slider="supersample-factor" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="supersample-factor" data-action="reset" title="Reset to default (1.0x)">↺</button>
-                </div>
+                <linear-slider
+                    id="supersample-factor"
+                    label="Resolution Scale"
+                    default="1.0"
+                    min="0.5"
+                    max="4.0"
+                    step="0.5"
+                    display-format="1">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}x</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (1.0x)">↺</button>
+                    </div>
+                </linear-slider>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">SMAA Antialiasing</h4>
@@ -2506,23 +2570,45 @@
             </div>
 
             <div class="control-group">
-                <label>SMAA Intensity: <span class="range-value" id="smaa-intensity-value">0.75</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="smaa-intensity" data-action="decrease">-</button>
-                    <input type="range" id="smaa-intensity">
-                    <button class="slider-btn" data-slider="smaa-intensity" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="smaa-intensity" data-action="reset" title="Reset to default (0.75)">↺</button>
-                </div>
+                <percent-slider
+                    id="smaa-intensity"
+                    label="SMAA Intensity"
+                    default="0.75"
+                    min="0"
+                    max="100"
+                    step="1"
+                    display-format="2">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (0.75)">↺</button>
+                    </div>
+                </percent-slider>
             </div>
 
             <div class="control-group">
-                <label>SMAA Threshold: <span class="range-value" id="smaa-threshold-value">0.10</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="smaa-threshold" data-action="decrease">-</button>
-                    <input type="range" id="smaa-threshold">
-                    <button class="slider-btn" data-slider="smaa-threshold" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="smaa-threshold" data-action="reset" title="Reset to default (0.10)">↺</button>
-                </div>
+                <percent-slider
+                    id="smaa-threshold"
+                    label="SMAA Threshold"
+                    default="0.10"
+                    min="0"
+                    max="100"
+                    step="1"
+                    display-format="2">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (0.10)">↺</button>
+                    </div>
+                </percent-slider>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Bilateral Filter (Noise Reduction)</h4>
@@ -2534,23 +2620,47 @@
             </div>
 
             <div class="control-group">
-                <label>Spatial Sigma: <span class="range-value" id="bilateral-spatial-value">4.0</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="bilateral-spatial" data-action="decrease">-</button>
-                    <input type="range" id="bilateral-spatial">
-                    <button class="slider-btn" data-slider="bilateral-spatial" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="bilateral-spatial" data-action="reset" title="Reset to default (4.0)">↺</button>
-                </div>
+                <linear-slider
+                    id="bilateral-spatial"
+                    label="Spatial Sigma"
+                    default="4.0"
+                    min="10"
+                    max="100"
+                    step="1"
+                    transform="20"
+                    display-format="1">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (4.0)">↺</button>
+                    </div>
+                </linear-slider>
             </div>
 
             <div class="control-group">
-                <label>Intensity Sigma: <span class="range-value" id="bilateral-intensity-value">0.20</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="bilateral-intensity" data-action="decrease">-</button>
-                    <input type="range" id="bilateral-intensity">
-                    <button class="slider-btn" data-slider="bilateral-intensity" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="bilateral-intensity" data-action="reset" title="Reset to default (0.20)">↺</button>
-                </div>
+                <linear-slider
+                    id="bilateral-intensity"
+                    label="Intensity Sigma"
+                    default="0.20"
+                    min="1"
+                    max="50"
+                    step="0.1"
+                    transform="100"
+                    display-format="2">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (0.20)">↺</button>
+                    </div>
+                </linear-slider>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Tone Mapping</h4>
@@ -2570,63 +2680,123 @@
             </div>
 
             <div class="control-group">
-                <label>Exposure: <span class="range-value" id="exposure-value">1.00</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="exposure" data-action="decrease">-</button>
-                    <input type="range" id="exposure">
-                    <button class="slider-btn" data-slider="exposure" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="exposure" data-action="reset" title="Reset to default (1.0)">↺</button>
-                </div>
+                <log-slider
+                    id="exposure"
+                    label="Exposure"
+                    default="1.0"
+                    min-value="0.0001"
+                    max-value="10.0"
+                    display-format="4">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="0" max="100" step="0.1">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (1.0)">↺</button>
+                    </div>
+                </log-slider>
             </div>
 
             <div class="control-group">
-                <label>Gamma: <span class="range-value" id="gamma-value">2.2</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="gamma" data-action="decrease">-</button>
-                    <input type="range" id="gamma">
-                    <button class="slider-btn" data-slider="gamma" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="gamma" data-action="reset" title="Reset to default (2.2)">↺</button>
-                </div>
+                <log-slider
+                    id="gamma"
+                    label="Gamma"
+                    default="2.2"
+                    min-value="0.2"
+                    max-value="10.0"
+                    display-format="2">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="0" max="100" step="0.1">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (2.2)">↺</button>
+                    </div>
+                </log-slider>
             </div>
 
             <div class="control-group">
-                <label>Luminance Gamma: <span class="range-value" id="luminance-gamma-value">1.0</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="luminance-gamma" data-action="decrease">-</button>
-                    <input type="range" id="luminance-gamma">
-                    <button class="slider-btn" data-slider="luminance-gamma" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="luminance-gamma" data-action="reset" title="Reset to default (1.0)">↺</button>
-                </div>
+                <log-slider
+                    id="luminance-gamma"
+                    label="Luminance Gamma"
+                    default="1.0"
+                    min-value="0.2"
+                    max-value="10.0"
+                    display-format="2">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="0" max="100" step="0.1">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (1.0)">↺</button>
+                    </div>
+                </log-slider>
             </div>
 
             <div class="control-group">
-                <label>Highlight Compression: <span class="range-value" id="highlight-compression-value">0.0</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="highlight-compression" data-action="decrease">-</button>
-                    <input type="range" id="highlight-compression">
-                    <button class="slider-btn" data-slider="highlight-compression" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="highlight-compression" data-action="reset" title="Reset to default (0.0)">↺</button>
-                </div>
+                <log-slider
+                    id="highlight-compression"
+                    label="Highlight Compression"
+                    default="0.01"
+                    min-value="0.001"
+                    max-value="10.0"
+                    display-format="3">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="0" max="100" step="0.1">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (0.0)">↺</button>
+                    </div>
+                </log-slider>
             </div>
 
             <div class="control-group">
-                <label>Compression Threshold: <span class="range-value" id="compression-threshold-value">1.0</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="compression-threshold" data-action="decrease">-</button>
-                    <input type="range" id="compression-threshold">
-                    <button class="slider-btn" data-slider="compression-threshold" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="compression-threshold" data-action="reset" title="Reset to default (1.0)">↺</button>
-                </div>
+                <log-slider
+                    id="compression-threshold"
+                    label="Compression Threshold"
+                    default="1.0"
+                    min-value="0.0001"
+                    max-value="100000.0"
+                    display-format="2">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="0" max="100" step="0.1">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (1.0)">↺</button>
+                    </div>
+                </log-slider>
             </div>
 
             <div class="control-group" id="white-point-control">
-                <label>White Point: <span class="range-value" id="white-point-value">2.0</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="white-point" data-action="decrease">-</button>
-                    <input type="range" id="white-point">
-                    <button class="slider-btn" data-slider="white-point" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="white-point" data-action="reset" title="Reset to default (2.0)">↺</button>
-                </div>
+                <log-slider
+                    id="white-point"
+                    label="White Point"
+                    default="2.0"
+                    min-value="1.0"
+                    max-value="1000.0"
+                    display-format="2">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="0" max="100" step="0.1">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (2.0)">↺</button>
+                    </div>
+                </log-slider>
             </div>
 
             <!-- Bloom Effect (Hidden - WIP) -->
@@ -2640,56 +2810,109 @@
                 </div>
 
                 <div class="control-group">
-                    <label>Bloom Intensity: <span class="range-value" id="bloom-intensity-value">0.30</span></label>
-                    <div class="slider-control">
-                        <button class="slider-btn" data-slider="bloom-intensity" data-action="decrease">-</button>
-                        <input type="range" id="bloom-intensity">
-                        <button class="slider-btn" data-slider="bloom-intensity" data-action="increase">+</button>
-                        <button class="slider-btn" data-slider="bloom-intensity" data-action="reset" title="Reset to default (0.3)">↺</button>
-                    </div>
+                    <percent-slider
+                        id="bloom-intensity"
+                        label="Bloom Intensity"
+                        default="0.30"
+                        min="0"
+                        max="200"
+                        step="1"
+                        display-format="2">
+                        <label>
+                            <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                        </label>
+                        <div class="slider-control">
+                            <button class="slider-btn" decrease>-</button>
+                            <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                            <button class="slider-btn" increase>+</button>
+                            <button class="slider-btn" reset title="Reset to default (0.30)">↺</button>
+                        </div>
+                    </percent-slider>
                 </div>
 
                 <div class="control-group">
-                    <label>Bloom Radius: <span class="range-value" id="bloom-radius-value">1.0</span></label>
-                    <div class="slider-control">
-                        <button class="slider-btn" data-slider="bloom-radius" data-action="decrease">-</button>
-                        <input type="range" id="bloom-radius">
-                        <button class="slider-btn" data-slider="bloom-radius" data-action="increase">+</button>
-                        <button class="slider-btn" data-slider="bloom-radius" data-action="reset" title="Reset to default (1.0)">↺</button>
-                    </div>
+                    <linear-slider
+                        id="bloom-radius"
+                        label="Bloom Radius"
+                        default="1.0"
+                        min="0.5"
+                        max="3.0"
+                        step="0.1"
+                        display-format="1">
+                        <label>
+                            <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                        </label>
+                        <div class="slider-control">
+                            <button class="slider-btn" decrease>-</button>
+                            <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                            <button class="slider-btn" increase>+</button>
+                            <button class="slider-btn" reset title="Reset to default (1.0)">↺</button>
+                        </div>
+                    </linear-slider>
                 </div>
 
                 <div class="control-group">
-                    <label>Bloom Alpha: <span class="range-value" id="bloom-alpha-value">1.00</span></label>
-                    <div class="slider-control">
-                        <button class="slider-btn" data-slider="bloom-alpha" data-action="decrease">-</button>
-                        <input type="range" id="bloom-alpha">
-                        <button class="slider-btn" data-slider="bloom-alpha" data-action="increase">+</button>
-                        <button class="slider-btn" data-slider="bloom-alpha" data-action="reset" title="Reset to default (1.0)">↺</button>
-                    </div>
+                    <percent-slider
+                        id="bloom-alpha"
+                        label="Bloom Alpha"
+                        default="1.0"
+                        min="0"
+                        max="100"
+                        step="1"
+                        display-format="2">
+                        <label>
+                            <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                        </label>
+                        <div class="slider-control">
+                            <button class="slider-btn" decrease>-</button>
+                            <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                            <button class="slider-btn" increase>+</button>
+                            <button class="slider-btn" reset title="Reset to default (1.0)">↺</button>
+                        </div>
+                    </percent-slider>
                 </div>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Particle Intensity</h4>
             <div class="control-group">
-                <label>Intensity: <span class="range-value" id="particle-intensity-value">1.0</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="particle-intensity" data-action="decrease">-</button>
-                    <input type="range" id="particle-intensity">
-                    <button class="slider-btn" data-slider="particle-intensity" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="particle-intensity" data-action="reset" title="Reset to default (1.0)">↺</button>
-                </div>
+                <log-slider
+                    id="particle-intensity"
+                    label="Intensity"
+                    default="1.0"
+                    min-value="0.001"
+                    max-value="100.0"
+                    display-format="3">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="0" max="100" step="0.1">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (1.0)">↺</button>
+                    </div>
+                </log-slider>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Particle Size</h4>
             <div class="control-group">
-                <label>Size: <span class="range-value" id="particle-size-value">1.0</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="particle-size" data-action="decrease">-</button>
-                    <input type="range" id="particle-size">
-                    <button class="slider-btn" data-slider="particle-size" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="particle-size" data-action="reset" title="Reset to default (1.0)">↺</button>
-                </div>
+                <log-slider
+                    id="particle-size"
+                    label="Size"
+                    default="1.0"
+                    min-value="0.1"
+                    max-value="10.0"
+                    display-format="1">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="0" max="100" step="0.1">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (1.0)">↺</button>
+                    </div>
+                </log-slider>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Particle Render Mode</h4>
@@ -2703,34 +2926,70 @@
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Color Saturation</h4>
             <div class="control-group">
-                <label>Saturation: <span class="range-value" id="color-saturation-value">1.00</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="color-saturation" data-action="decrease">-</button>
-                    <input type="range" id="color-saturation">
-                    <button class="slider-btn" data-slider="color-saturation" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="color-saturation" data-action="reset" title="Reset to default (1.0)">↺</button>
-                </div>
+                <percent-slider
+                    id="color-saturation"
+                    label="Saturation"
+                    default="1.0"
+                    min="0"
+                    max="100"
+                    step="1"
+                    settings-key="colorSaturation"
+                    display-format="2">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (1.0)">↺</button>
+                    </div>
+                </percent-slider>
             </div>
 
             <h4 style="margin: 16px 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">Brightness Desaturation</h4>
             <div class="control-group">
-                <label>Bright Desat: <span class="range-value" id="brightness-desat-value">0.00</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="brightness-desat" data-action="decrease">-</button>
-                    <input type="range" id="brightness-desat">
-                    <button class="slider-btn" data-slider="brightness-desat" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="brightness-desat" data-action="reset" title="Reset to default (0.0)">↺</button>
-                </div>
+                <percent-slider
+                    id="brightness-desat"
+                    label="Bright Desat"
+                    default="0.0"
+                    min="0"
+                    max="100"
+                    step="1"
+                    settings-key="brightnessDesaturation"
+                    display-format="2">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (0.0)">↺</button>
+                    </div>
+                </percent-slider>
             </div>
 
             <div class="control-group">
-                <label>Saturation Buildup: <span class="range-value" id="saturation-buildup-value">0.00</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="saturation-buildup" data-action="decrease">-</button>
-                    <input type="range" id="saturation-buildup">
-                    <button class="slider-btn" data-slider="saturation-buildup" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="saturation-buildup" data-action="reset" title="Reset to default (0.0)">↺</button>
-                </div>
+                <percent-slider
+                    id="saturation-buildup"
+                    label="Saturation Buildup"
+                    default="0.0"
+                    min="0"
+                    max="100"
+                    step="1"
+                    settings-key="brightnessSaturation"
+                    display-format="2">
+                    <label>
+                        <span>{{label}}</span>: <span class="range-value" bind-text="value">{{value}}</span>
+                    </label>
+                    <div class="slider-control">
+                        <button class="slider-btn" decrease>-</button>
+                        <input type="range" min="{{min}}" max="{{max}}" step="{{step}}" value="{{value}}">
+                        <button class="slider-btn" increase>+</button>
+                        <button class="slider-btn" reset title="Reset to default (0.0)">↺</button>
+                    </div>
+                </percent-slider>
             </div>
         </div>
     </div>

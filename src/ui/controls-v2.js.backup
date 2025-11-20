@@ -71,31 +71,44 @@ export function initControls(renderer, callback) {
     // Store registry on manager for access in other functions (like loadPreset)
     manager.webComponentRegistry = webComponentRegistry;
 
-    // Animation state variables
-    let animationRunning = false; // Is animation currently running
-    let animationFrameId = null; // requestAnimationFrame ID
-    let animationDirection = 1; // 1 for forward, -1 for backward
-    let animationStepsPerIncrement = 10; // Default value, updated by animation-speed control
-    let animationStepCounter = 0; // Tracks frames for animation stepping
-    let shaderLockWasEnabled = false; // Track if we enabled shader lock for this animation
-    let animationAlphaControl = null; // Animation alpha control (registered after HTML injection)
-    let animationSpeedControl = null; // Animation speed control (registered after HTML injection)
-
-    // Timing smoothing state - Asymmetric EMA to track high percentile (slow frames)
-    const ALPHA_STEP_TIME_TARGET_PERCENTILE = 95; // Target percentile to track (higher = smoother but slower to adapt)
-    const ALPHA_STEP_TIME_DECAY = 0.002; // Base decay rate when frames are faster than EMA
-    // Calculate upward tracking rate using rule of thumb: ratio = P/(100-P)
-    const ALPHA_STEP_TIME_UPWARD = (ALPHA_STEP_TIME_TARGET_PERCENTILE / (100 - ALPHA_STEP_TIME_TARGET_PERCENTILE)) * ALPHA_STEP_TIME_DECAY;
-    const ALPHA_STEP_TIME_WARMUP_CYCLES = 3; // Number of alpha cycles to skip before initializing EMA (warm-up period)
-    const ALPHA_STEP_TIME_DISPLAY_INTERVAL = 10; // Update step time display every N alpha cycles (reduce UI overhead)
-    let alphaStepTimeEMA = null; // Asymmetric EMA tracking ~95th percentile of step time (ms)
-
     // ========================================
     // Register all controls
     // ========================================
 
     // === Dimension and integration controls ===
 
+    const dimensionsControl = manager.register(new SliderControl('dimensions', 2, {
+        min: 2,
+        max: 6,
+        step: 1,
+        displayId: 'dim-value',
+        displayFormat: v => v.toFixed(0),
+        onChange: (value) => {
+            logger.verbose('Dimensions changed to:', value);
+
+            // Update dimension inputs when dimensions change
+            const expressionsControl = manager.get('dimension-inputs');
+            if (expressionsControl && renderer.coordinateSystem) {
+                logger.verbose('Updating dimension inputs with dimensions:', value);
+                // Don't reset coordinate system - just update the UI
+                // If dimensions mismatch, shader compilation will fail gracefully
+                if (renderer.coordinateSystem.dimensions === value) {
+                    expressionsControl.setCoordinateSystem(renderer.coordinateSystem);
+                    expressionsControl.updateInputs(value);
+                } else {
+                    logger.warn(`Coordinate system dimension mismatch: ${renderer.coordinateSystem.dimensions}D coordinate system with ${value}D expressions - update coordinate system or expressions to match`);
+                }
+            } else {
+                logger.verbose('Preserving existing coordinate system:', renderer.coordinateSystem.name);
+            }
+
+            // Update mapper controls
+            const mapperParamsControl = manager.get('mapper-params');
+            if (mapperParamsControl) {
+                mapperParamsControl.updateControls();
+            }
+        }
+    }));
 
     const integratorControl = manager.register(new SelectControl('integrator', 'rk2', {
         settingsKey: 'integratorType',
@@ -126,7 +139,25 @@ export function initControls(renderer, callback) {
         animationMax: 0.1
     }));
 
+    const implicitIterationsControl = manager.register(new SliderControl('implicit-iterations', 4, {
+        settingsKey: 'implicitIterations',
+        min: 1,
+        max: 10,
+        step: 1,
+        displayId: 'implicit-iterations-value',
+        displayFormat: v => v.toFixed(0)
+    }));
+
     // === Particle controls ===
+
+    const particleCountControl = manager.register(new SliderControl('particles', 1000, {
+        settingsKey: 'particleCount',
+        min: 100,
+        max: 5000000,
+        step: 10000,
+        displayId: 'particles-value',
+        displayFormat: v => v.toFixed(0)
+    }));
 
     const fadeControl = manager.register(new AnimatableSliderControl('fade', 0.999, {
         settingsKey: 'fadeOpacity',
@@ -150,6 +181,15 @@ export function initControls(renderer, callback) {
         },
         animationMin: 0.95,
         animationMax: 0.9995
+    }));
+
+    const dropControl = manager.register(new SliderControl('drop', 0.0, {
+        settingsKey: 'dropProbability',
+        min: 0,
+        max: 0.1,
+        step: 0.001,
+        displayId: 'drop-value',
+        displayFormat: v => v.toFixed(4)
     }));
 
     const dropLowVelocityControl = manager.register(new CheckboxControl('drop-low-velocity', false, {
@@ -194,9 +234,7 @@ export function initControls(renderer, callback) {
     }));
 
     // Set up mapper params cross-references
-    // Note: dimensions is now a Web Component, get it via DOM
-    const dimensionsElement = document.getElementById('dimensions');
-    mapperParamsControl.setRelatedControls(dimensionsElement, mapperControl);
+    mapperParamsControl.setRelatedControls(dimensionsControl, mapperControl);
 
     // === Color mode controls ===
 
@@ -235,12 +273,98 @@ export function initControls(renderer, callback) {
         settingsKey: 'expressions'
     }));
 
+    // Set up expressions cross-reference to dimensions
+    expressionsControl.setDimensionsControl(dimensionsControl);
+
+    // Initialize coordinate system labels (don't update UI yet - values not set)
+    expressionsControl.setCoordinateSystem(renderer.coordinateSystem, false);
+
+    // === HDR and tone mapping controls ===
+
     const useHDRControl = manager.register(new CheckboxControl('use-hdr', true, {
         settingsKey: 'useHDR'
     }));
 
     const useDepthTestControl = manager.register(new CheckboxControl('use-depth-test', false, {
         settingsKey: 'useDepthTest'
+    }));
+
+    // === Render Scale (formerly Supersampling) ===
+    // Allows rendering at different resolutions (0.5x for performance, 2x+ for quality)
+
+    const supersampleFactorControl = manager.register(new SliderControl('supersample-factor', 1.0, {
+        min: 0.5,
+        max: 4.0,
+        step: 0.5,
+        displayId: 'supersample-factor-value',
+        displayFormat: v => v.toFixed(1) + 'x',
+        settingsKey: 'supersampleFactor'
+    }));
+
+    // === SMAA antialiasing controls ===
+
+    const smaaEnabledControl = manager.register(new CheckboxControl('smaa-enabled', true, {
+        settingsKey: 'smaaEnabled'
+    }));
+
+    const smaaIntensityControl = manager.register(new PercentSliderControl('smaa-intensity', 0.75, {
+        displayId: 'smaa-intensity-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    const smaaThresholdControl = manager.register(new PercentSliderControl('smaa-threshold', 0.10, {
+        displayId: 'smaa-threshold-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    // === Bilateral filter controls ===
+
+    const bilateralEnabledControl = manager.register(new CheckboxControl('bilateral-enabled', false, {
+        settingsKey: 'bilateralEnabled'
+    }));
+
+    // Spatial sigma: slider 10-100 → value 0.5-5.0 (divide by 20)
+    class BilateralSpatialControl extends SliderControl {
+        getValue() {
+            const element = $(`#${this.id}`);
+            return parseFloat(element.val()) / 20.0;
+        }
+        setValue(value) {
+            const element = $(`#${this.id}`);
+            element.val(value * 20.0);
+            this.updateDisplay(value);
+        }
+    }
+
+    const bilateralSpatialControl = manager.register(new BilateralSpatialControl('bilateral-spatial', 4.0, {
+        min: 10,
+        max: 100,
+        step: 1,
+        displayId: 'bilateral-spatial-value',
+        displayFormat: v => v.toFixed(1),
+        settingsKey: 'bilateralSpatialSigma'
+    }));
+
+    // Intensity sigma: slider 1-50 → value 0.01-0.5 (divide by 100)
+    class BilateralIntensityControl extends SliderControl {
+        getValue() {
+            const element = $(`#${this.id}`);
+            return parseFloat(element.val()) / 100.0;
+        }
+        setValue(value) {
+            const element = $(`#${this.id}`);
+            element.val(value * 100.0);
+            this.updateDisplay(value);
+        }
+    }
+
+    const bilateralIntensityControl = manager.register(new BilateralIntensityControl('bilateral-intensity', 0.20, {
+        min: 1,
+        max: 50,
+        step: 0.1,
+        displayId: 'bilateral-intensity-value',
+        displayFormat: v => v.toFixed(2),
+        settingsKey: 'bilateralIntensitySigma'
     }));
 
     // === Tone mapping controls ===
@@ -251,9 +375,6 @@ export function initControls(renderer, callback) {
             updateWhitePointVisibility(value);
         }
     }));
-
-    // === Render Scale (formerly Supersampling) ===
-    // Allows rendering at different resolutions (0.5x for performance, 2x+ for quality)
 
     // Register Web Component controls
     // Linear sliders
@@ -270,19 +391,20 @@ export function initControls(renderer, callback) {
                         expressionsControl.setCoordinateSystem(renderer.coordinateSystem);
                         expressionsControl.updateInputs(value);
                     } else {
-                        logger.warn(`Coordinate system dimension mismatch...`);
+                        logger.warn(`Coordinate system dimension mismatch: ${renderer.coordinateSystem.dimensions}D coordinate system with ${value}D expressions - update coordinate system or expressions to match`);
                     }
+                } else {
+                    logger.verbose('Preserving existing coordinate system:', renderer.coordinateSystem?.name);
                 }
 
                 // Update mapper controls
                 const mapperParamsControl = manager.get('mapper-params');
                 if (mapperParamsControl) {
-                    mapperParamsControl.updateControls();
+                    mapperParamsControl.updateDimensions(value);
                 }
             };
         }
     });
-
     webComponentRegistry.register('linear-slider', 'implicit-iterations');
     webComponentRegistry.register('linear-slider', 'particles');
     webComponentRegistry.register('linear-slider', 'drop');
@@ -312,27 +434,280 @@ export function initControls(renderer, callback) {
         }
     });
 
-    // Percent sliders
-    webComponentRegistry.register('percent-slider', 'smaa-intensity');
-    webComponentRegistry.register('percent-slider', 'smaa-threshold');
-    webComponentRegistry.register('percent-slider', 'bloom-intensity');
-    webComponentRegistry.register('percent-slider', 'bloom-alpha');
-    webComponentRegistry.register('percent-slider', 'color-saturation');
-    webComponentRegistry.register('percent-slider', 'brightness-desat');
-    webComponentRegistry.register('percent-slider', 'saturation-buildup');
+    const gammaControl = manager.register(new LogSliderControl('gamma', 2.2, {
+        minValue: 0.2,
+        maxValue: 10.0,
+        displayId: 'gamma-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    const luminanceGammaControl = manager.register(new LogSliderControl('luminance-gamma', 1.0, {
+        settingsKey: 'luminanceGamma',
+        minValue: 0.2,
+        maxValue: 10.0,
+        displayId: 'luminance-gamma-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    const highlightCompressionControl = manager.register(new LogSliderControl('highlight-compression', 0.0, {
+        settingsKey: 'highlightCompression',
+        minValue: 0.0,
+        maxValue: 10.0,
+        displayId: 'highlight-compression-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    const compressionThresholdControl = manager.register(new LogSliderControl('compression-threshold', 1.0, {
+        settingsKey: 'compressionThreshold',
+        minValue: 0.0001,
+        maxValue: 100000.0,
+        displayId: 'compression-threshold-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    const whitePointControl = manager.register(new LogSliderControl('white-point', 2.0, {
+        settingsKey: 'whitePoint',
+        minValue: 1.0,
+        maxValue: 1000.0,
+        displayId: 'white-point-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    const particleIntensityControl = manager.register(new LogSliderControl('particle-intensity', 1.0, {
+        settingsKey: 'particleIntensity',
+        minValue: 0.001,
+        maxValue: 100.0,
+        displayId: 'particle-intensity-value',
+        displayFormat: v => v.toFixed(3)
+    }));
+
+    const particleSizeControl = manager.register(new LogSliderControl('particle-size', 1.0, {
+        settingsKey: 'particleSize',
+        minValue: 0.1,
+        maxValue: 10.0,
+        displayId: 'particle-size-value',
+        displayFormat: v => v.toFixed(1)
+    }));
+
+    const particleRenderModeControl = manager.register(new SelectControl('particle-render-mode', 'points', {
+        settingsKey: 'particleRenderMode'
+    }));
+
+    const colorSaturationControl = manager.register(new PercentSliderControl('color-saturation', 1.0, {
+        settingsKey: 'colorSaturation',
+        displayId: 'color-saturation-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    const brightnessDesatControl = manager.register(new PercentSliderControl('brightness-desat', 0.0, {
+        settingsKey: 'brightnessDesaturation',
+        displayId: 'brightness-desat-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    const saturationBuildupControl = manager.register(new PercentSliderControl('saturation-buildup', 0.0, {
+        settingsKey: 'brightnessSaturation',
+        displayId: 'saturation-buildup-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    // === Bloom controls (hidden but wired) ===
+
+    const bloomEnabledControl = manager.register(new CheckboxControl('bloom-enabled', false, {
+        settingsKey: 'bloomEnabled'
+    }));
+
+    const bloomIntensityControl = manager.register(new PercentSliderControl('bloom-intensity', 0.3, {
+        settingsKey: 'bloomIntensity',
+        min: 0,
+        max: 200, // Allows 0.0-2.0 range
+        displayId: 'bloom-intensity-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    const bloomRadiusControl = manager.register(new SliderControl('bloom-radius', 1.0, {
+        settingsKey: 'bloomRadius',
+        min: 0.5,
+        max: 3.0,
+        step: 0.1,
+        displayId: 'bloom-radius-value',
+        displayFormat: v => v.toFixed(1)
+    }));
+
+    const bloomAlphaControl = manager.register(new PercentSliderControl('bloom-alpha', 1.0, {
+        settingsKey: 'bloomAlpha',
+        displayId: 'bloom-alpha-value',
+        displayFormat: v => v.toFixed(2)
+    }));
+
+    // === Frame Limit Controls (in FPS counter) ===
 
     const frameLimitEnabledControl = manager.register(new CheckboxControl('frame-limit-enabled', false, {
         settingsKey: 'frameLimitEnabled',
-        onChange: (value) => {
+        onChange: (enabled) => {
+            // Update renderer's frame limit enabled state
             if (window.renderer) {
-                window.renderer.frameLimitEnabled = value;
+                window.renderer.frameLimitEnabled = enabled;
+                // Also sync the current frame limit value when enabling
+                if (enabled) {
+                    const limitValue = frameLimitControl.getValue();
+                    window.renderer.frameLimit = limitValue;
+                    logger.info(`Frame limit enabled: will stop at ${limitValue} frames`);
+                }
             }
         }
     }));
 
-    // === Animation controls ===
-    // Note: animationAlphaControl and animationSpeedControl are registered later
-    // after their HTML is dynamically injected (see Animation Panel Initialization section)
+    const frameLimitControl = manager.register(new LogSliderControl('frame-limit', 1000, {
+        minValue: 100,
+        maxValue: 100000,
+        displayId: 'frame-limit-value',
+        displayFormat: v => {
+            if (v >= 1000) {
+                return `${Math.floor(v / 1000)}k`;
+            }
+            return Math.floor(v).toString();
+        },
+        settingsKey: 'frameLimit',
+        onChange: (value) => {
+            // Update renderer's frame limit
+            if (window.renderer) {
+                window.renderer.frameLimit = value;
+                logger.verbose(`Frame limit updated to: ${value} frames`);
+            }
+        }
+    }));
+
+    // === Animation Testing Controls ===
+
+    // Animation state
+    let animationRunning = false; // Is animation currently running
+    let animationFrameId = null; // requestAnimationFrame ID
+    let animationDirection = 1; // 1 for forward, -1 for backward
+    let animationStepsPerIncrement = 10; // Number of integration steps before alpha increments
+    let animationStepCounter = 0; // Counter for integration steps
+    let shaderLockWasEnabled = false; // Track if we enabled shader lock for this animation
+
+    // Timing smoothing state - Asymmetric EMA to track high percentile (slow frames)
+    const ALPHA_STEP_TIME_TARGET_PERCENTILE = 95; // Target percentile to track (higher = smoother but slower to adapt)
+    const ALPHA_STEP_TIME_DECAY = 0.002; // Base decay rate when frames are faster than EMA
+    // Calculate upward tracking rate using rule of thumb: ratio = P/(100-P)
+    const ALPHA_STEP_TIME_UPWARD = (ALPHA_STEP_TIME_TARGET_PERCENTILE / (100 - ALPHA_STEP_TIME_TARGET_PERCENTILE)) * ALPHA_STEP_TIME_DECAY;
+    const ALPHA_STEP_TIME_WARMUP_CYCLES = 3; // Number of alpha cycles to skip before initializing EMA (warm-up period)
+    const ALPHA_STEP_TIME_DISPLAY_INTERVAL = 10; // Update step time display every N alpha cycles (reduce UI overhead)
+    let alphaStepTimeEMA = null; // Asymmetric EMA tracking ~95th percentile of step time (ms)
+    let alphaStepStartTime = null; // Timestamp when current alpha cycle started
+    let alphaStepWarmupCounter = 0; // Counter for warm-up cycles
+    let alphaStepDisplayCounter = 0; // Counter for display updates
+    let cachedAnimatableControls = null; // Cached list of animatable controls (populated when animation starts)
+    let cachedAnimatableParams = null; // Cached list of animatable parameter controls
+    let lastAppliedSettings = null; // Track last applied settings to detect changes
+    let savedLoggerVerbosity = null; // Save logger verbosity level during animation
+
+    // Settings that require shader recompilation - never apply during animation
+    const SHADER_RECOMPILE_SETTINGS = new Set([
+        'expressions',           // Vector field expressions compiled into shader
+        'dimensions',           // Changes shader structure
+        'integratorType',       // Changes shader code
+        'solutionMethod',       // Changes shader code
+        'transformType',        // Changes shader code
+        'transformParams',      // Transform params compiled into shader
+        'mapperType',           // Changes shader code
+        'mapperParams',         // Mapper params compiled into shader (e.g., projection matrix)
+        'colorMode'             // Changes shader code
+    ]);
+
+    // Create animation alpha control dynamically
+    const animAlphaContainer = $('#animation-alpha-container');
+    logger.info(`Animation alpha container found: ${animAlphaContainer.length > 0}`);
+
+    if (animAlphaContainer.length) {
+        const controlHTML = `
+            <div class="control-group">
+                <label>Animation Alpha (a): <span class="range-value" id="animation-alpha-value">0.00%</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="animation-alpha" data-action="decrease">-</button>
+                    <input type="range" id="animation-alpha">
+                    <button class="slider-btn" data-slider="animation-alpha" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="animation-alpha" data-action="reset" title="Reset to 0.0">↺</button>
+                    <button id="animation-alpha-animate-btn" class="slider-btn" style="margin-left: 8px; background: #4CAF50; color: white;" title="Auto-animate">▶</button>
+                </div>
+                <div class="info">Test time-based expressions with the 'a' variable (0.0 - 1.0). Use in expressions like: sin(x + a*PI), 0.01 + a*0.09</div>
+            </div>
+        `;
+        animAlphaContainer.html(controlHTML);
+        logger.info('Animation alpha control HTML injected');
+    } else {
+        logger.warn('Animation alpha container not found!');
+    }
+
+    // Create animation speed control
+    const animSpeedContainer = $('#animation-speed-container');
+    if (animSpeedContainer.length) {
+        const speedHTML = `
+            <div class="control-group">
+                <label>Steps per Alpha Increment: <span class="range-value" id="animation-speed-value">10</span></label>
+                <div class="slider-control">
+                    <button class="slider-btn" data-slider="animation-speed" data-action="decrease">-</button>
+                    <input type="range" id="animation-speed">
+                    <button class="slider-btn" data-slider="animation-speed" data-action="increase">+</button>
+                    <button class="slider-btn" data-slider="animation-speed" data-action="reset" title="Reset to 10">↺</button>
+                </div>
+                <div class="info">Integration steps to perform before incrementing alpha by 0.01</div>
+            </div>
+        `;
+        animSpeedContainer.html(speedHTML);
+    }
+
+    const animationAlphaControl = manager.register(new PercentSliderControl('animation-alpha', 0.0, {
+        settingsKey: 'animationAlpha',
+        displayId: 'animation-alpha-value',
+        displayFormat: v => `${(v * 100).toFixed(2)}%`,
+        onChange: (value) => {
+            // Update all animatable controls based on alpha
+            manager.controls.forEach((control) => {
+                if (control instanceof AnimatableSliderControl && control.animationEnabled) {
+                    control.updateFromAlpha(value);
+                }
+            });
+
+            // Update animatable parameter controls
+            const transformParamsControl = manager.controls.get('transform-params');
+            if (transformParamsControl && transformParamsControl.parameterControls) {
+                transformParamsControl.parameterControls.forEach((paramControl) => {
+                    if (paramControl.animationEnabled) {
+                        paramControl.updateFromAlpha(value);
+                    }
+                });
+            }
+
+            // Update renderer immediately (no debounce for animation testing)
+            if (window.renderer) {
+                window.renderer.setAnimationAlpha(value);
+
+                // Check if we should clear particles
+                if ($('#animation-clear-particles').is(':checked')) {
+                    window.renderer.resetParticles();
+                }
+
+                // Check if we should clear screen
+                if ($('#animation-clear-screen').is(':checked')) {
+                    window.renderer.clearRenderBuffer();
+                }
+            }
+        }
+    }));
+
+    // Animation speed control (linear scale for steps)
+    const animationSpeedControl = manager.register(new SliderControl('animation-speed', 10, {
+        min: 1,
+        max: 200,
+        displayId: 'animation-speed-value',
+        displayFormat: v => {
+            animationStepsPerIncrement = Math.round(v);
+            return Math.round(v).toString();
+        }
+    }));
 
     // Animation clear checkboxes
     manager.register(new CheckboxControl('animation-clear-particles', false, {
@@ -731,15 +1106,6 @@ export function initControls(renderer, callback) {
         }
     });
 
-    // Animation timing and caching state
-    let alphaStepStartTime = null; // Timestamp when current alpha cycle started
-    let alphaStepWarmupCounter = 0; // Counter for warm-up cycles
-    let alphaStepDisplayCounter = 0; // Counter for display updates
-    let cachedAnimatableControls = null; // Cached list of animatable controls (populated when animation starts)
-    let cachedAnimatableParams = null; // Cached list of animatable parameter controls
-    let lastAppliedSettings = null; // Track last applied settings to detect changes
-    let savedLoggerVerbosity = null; // Save logger verbosity level during animation
-
     // Frame capture state
     let capturedFrames = [];
     let frameCaptureMode = null; // null, 'continuous', or 'fixed'
@@ -1087,6 +1453,28 @@ export function initControls(renderer, callback) {
         frameCaptureMode = null;
     }
 
+    // Animation alpha animate button
+    $('#animation-alpha-animate-btn').on('click', function(e) {
+        e.stopPropagation(); // Prevent panel close
+        const btn = $(this);
+
+        if (animationRunning) {
+            // Stop animation
+            stopAnimation();
+
+            btn.text('▶');
+            btn.css('background', '#4CAF50');
+            btn.attr('title', 'Auto-animate');
+        } else {
+            // Start animation
+            startAnimation();
+
+            btn.text('⏸');
+            btn.css('background', '#FFA726');
+            btn.attr('title', 'Stop auto-animate');
+        }
+    });
+
     // Update loops info text based on half-loops checkbox
     $('#animation-half-loops').on('change', function() {
         const isHalfLoops = $(this).is(':checked');
@@ -1345,11 +1733,7 @@ export function initControls(renderer, callback) {
     if (isMobile && (!savedSettings || (savedSettings.frameLimitEnabled === undefined && savedSettings.frameLimit === undefined))) {
         // On mobile, enable frame limit and set to 500 frames by default (only if not already saved)
         frameLimitEnabledControl.setValue(true);
-        // frame-limit is a Web Component
-        const frameLimitElement = document.getElementById('frame-limit');
-        if (frameLimitElement) {
-            frameLimitElement.setValue(500);
-        }
+        frameLimitControl.setValue(500);
         if (window.renderer) {
             window.renderer.frameLimitEnabled = true;
             window.renderer.frameLimit = 500;
@@ -1432,11 +1816,7 @@ export function initControls(renderer, callback) {
     // Initialize frame limit settings in renderer
     if (renderer) {
         renderer.frameLimitEnabled = frameLimitEnabledControl.getValue();
-        // frame-limit is a Web Component
-        const frameLimitElement = document.getElementById('frame-limit');
-        if (frameLimitElement) {
-            renderer.frameLimit = frameLimitElement.getValue();
-        }
+        renderer.frameLimit = frameLimitControl.getValue();
     }
 
     // Initialize special UI states
@@ -1656,126 +2036,6 @@ export function initControls(renderer, callback) {
 
     // Initialize mobile slider with current value
     syncMobileTimestep();
-
-    // ========================================
-    // Animation Panel Initialization
-    // ========================================
-
-    // Create animation alpha control dynamically
-    const animAlphaContainer = $('#animation-alpha-container');
-    logger.info(`Animation alpha container found: ${animAlphaContainer.length > 0}`);
-
-    if (animAlphaContainer.length) {
-        const controlHTML = `
-            <div class="control-group">
-                <label>Animation Alpha (a): <span class="range-value" id="animation-alpha-value">0.00%</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="animation-alpha" data-action="decrease">-</button>
-                    <input type="range" id="animation-alpha">
-                    <button class="slider-btn" data-slider="animation-alpha" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="animation-alpha" data-action="reset" title="Reset to 0.0">↺</button>
-                    <button id="animation-alpha-animate-btn" class="slider-btn" style="margin-left: 8px; background: #4CAF50; color: white;" title="Auto-animate">▶</button>
-                </div>
-                <div class="info">Test time-based expressions with the 'a' variable (0.0 - 1.0). Use in expressions like: sin(x + a*PI), 0.01 + a*0.09</div>
-            </div>
-        `;
-        animAlphaContainer.html(controlHTML);
-        logger.info('Animation alpha control HTML injected');
-
-        // Register animation alpha control after HTML is injected
-        animationAlphaControl = manager.register(new PercentSliderControl('animation-alpha', 0.0, {
-            settingsKey: 'animationAlpha',
-            displayId: 'animation-alpha-value',
-            displayFormat: v => (v != null ? v.toFixed(2) : '0.00'),
-            onChange: (value) => {
-                // Update renderer immediately (no debounce for animation testing)
-                if (window.renderer) {
-                    window.renderer.setAnimationAlpha(value);
-
-                    // Check if we should clear particles
-                    if ($('#animation-clear-particles').is(':checked')) {
-                        window.renderer.resetParticles();
-                    }
-
-                    // Check if we should clear screen
-                    if ($('#animation-clear-screen').is(':checked')) {
-                        window.renderer.clearRenderBuffer();
-                    }
-                }
-            }
-        }));
-
-        // Manually attach listeners since initializeControls() was already called
-        const debouncedCallback = () => manager.debouncedApply();
-        animationAlphaControl.attachListeners(debouncedCallback);
-
-        // Update display with initial value
-        animationAlphaControl.updateDisplay();
-
-        logger.info('Animation alpha control registered');
-
-        // Attach animation alpha animate button event handler
-        $('#animation-alpha-animate-btn').on('click', function(e) {
-            e.stopPropagation(); // Prevent panel close
-            const btn = $(this);
-
-            if (animationRunning) {
-                // Stop animation
-                stopAnimation();
-
-                btn.text('▶');
-                btn.css('background', '#4CAF50');
-                btn.attr('title', 'Auto-animate');
-            } else {
-                // Start animation
-                startAnimation();
-
-                btn.text('⏸');
-                btn.css('background', '#FFA726');
-                btn.attr('title', 'Stop auto-animate');
-            }
-        });
-    } else {
-        logger.warn('Animation alpha container not found!');
-    }
-
-    // Create animation speed control
-    const animSpeedContainer = $('#animation-speed-container');
-    if (animSpeedContainer.length) {
-        const speedHTML = `
-            <div class="control-group">
-                <label>Steps per Alpha Increment: <span class="range-value" id="animation-speed-value">10</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="animation-speed" data-action="decrease">-</button>
-                    <input type="range" id="animation-speed">
-                    <button class="slider-btn" data-slider="animation-speed" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="animation-speed" data-action="reset" title="Reset to 10">↺</button>
-                </div>
-                <div class="info">Integration steps to perform before incrementing alpha by 0.01</div>
-            </div>
-        `;
-        animSpeedContainer.html(speedHTML);
-
-        // Register animation speed control after HTML is injected
-        animationSpeedControl = manager.register(new SliderControl('animation-speed', 10, {
-            min: 1,
-            max: 200,
-            displayId: 'animation-speed-value',
-            displayFormat: v => {
-                const numValue = typeof v === 'number' && !isNaN(v) ? v : 10;
-                animationStepsPerIncrement = Math.round(numValue);
-                return Math.round(numValue).toString();
-            }
-        }));
-
-        // Manually attach listeners since initializeControls() was already called
-        animationSpeedControl.attachListeners(() => manager.debouncedApply());
-
-        // Update display with initial value
-        animationSpeedControl.updateDisplay();
-
-        logger.info('Animation speed control registered');
-    }
 
     // Call initialization callback
     if (callback) {
