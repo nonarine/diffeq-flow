@@ -632,7 +632,7 @@ export function initControls(renderer, callback) {
     webComponentRegistry.whenAllReady().then(() => {
         if (savedSettings) {
             // Apply initial settings (includes coordinate system restoration)
-            applyInitialSettings(savedSettings, manager, renderer, expressionsControl);
+            applyInitialSettings(savedSettings, manager, renderer);
 
             // Convert Unicode to ASCII in expressions
             if (savedSettings.expressions && Array.isArray(savedSettings.expressions) && window.UnicodeAutocomplete) {

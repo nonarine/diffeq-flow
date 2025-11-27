@@ -50,6 +50,28 @@ esbuild.build({
   fs.writeFileSync(buildIndexPath, html);
   console.log('✓ index.html created in build/');
 
+  // Copy CSS files (Phase 2 refactoring - modular CSS architecture)
+  const srcUiPath = path.join(__dirname, 'src', 'ui');
+  const buildSrcUiPath = path.join(buildDir, 'src', 'ui');
+
+  // Create src/ui directory in build
+  fs.mkdirSync(buildSrcUiPath, { recursive: true });
+
+  // Copy floating-panels.css
+  const floatingPanelsPath = path.join(srcUiPath, 'floating-panels.css');
+  if (fs.existsSync(floatingPanelsPath)) {
+    fs.copyFileSync(floatingPanelsPath, path.join(buildSrcUiPath, 'floating-panels.css'));
+  }
+
+  // Copy styles directory
+  const stylesPath = path.join(srcUiPath, 'styles');
+  const buildStylesPath = path.join(buildSrcUiPath, 'styles');
+  if (fs.existsSync(stylesPath)) {
+    fs.cpSync(stylesPath, buildStylesPath, { recursive: true });
+  }
+
+  console.log('✓ CSS files copied to build/src/ui/');
+
   // Copy docs directory
   const docsPath = path.join(__dirname, 'docs');
   const buildDocsPath = path.join(buildDir, 'docs');
@@ -62,6 +84,8 @@ esbuild.build({
   console.log('   - build/app.min.js (bundled & minified)');
   console.log('   - build/app.min.js.map (source maps)');
   console.log('   - build/index.html (updated references)');
+  console.log('   - build/src/ui/styles/ (modular CSS files)');
+  console.log('   - build/src/ui/floating-panels.css');
   console.log('   - build/docs/ (documentation)');
 
 }).catch((error) => {
