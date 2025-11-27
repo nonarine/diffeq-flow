@@ -2,7 +2,7 @@
 
 _Auto-generated from inline JSDoc documentation_
 
-_Generated: 2025-11-27T13:25:58.929Z_
+_Generated: 2025-11-27T15:34:17.465Z_
 
 ---
 
@@ -571,31 +571,12 @@ Restore animation state from settings
 Get all animatable controls that are enabled
 
 
-### animation-controls.js
+### animation-setup.js
 
-#### class `AnimationControls`
+#### `ZIP()`
 
-Pause animation
-
-#### class `AnimationControls`
-
-Stop animation
-
-#### class `AnimationControls`
-
-Export captured frames as ZIP
-
-#### class `AnimationControls`
-
-Update button states
-
-#### class `AnimationControls`
-
-Enable export button
-
-#### class `AnimationControls`
-
-Update progress bar and text
+Create Animation button - captures frames during alpha animation
+Toggles between "Create" and "Stop" modes during animation
 
 
 ### control-base.js
@@ -674,29 +655,6 @@ Debounced apply function
 #### `reset()`
 
 Immediate apply (no debounce)
-
-
-### controls-v2.js
-
-#### `ControlManager()`
-
-Update white point visibility based on operator
-
-#### `ControlManager()`
-
-Update expression controls visibility
-
-#### `ControlManager()`
-
-Update gradient button visibility
-
-#### `ControlManager()`
-
-Update velocity scaling controls visibility
-
-#### `ControlManager()`
-
-Load settings from URL parameter or localStorage
 
 
 ### coordinate-editor.js
@@ -852,6 +810,64 @@ Should be called after DOM is ready
 #### `definition()`
 
 Attach drag handlers to thumbs
+
+
+### settings-manager.js
+
+#### `sharing(settings)`
+
+Encode settings to base64 URL string
+
+**Parameters:**
+
+- `settings` *Object* - - Settings object to encode
+
+**Returns:** *string|null* - settings string or null on error
+
+#### `sharing()`
+
+Load settings from URL parameter or localStorage
+Priority: URL parameter (?s=base64) > localStorage
+If loaded from URL, saves to localStorage and cleans URL
+
+
+**Returns:** *Object|null* - object or null if none found
+
+#### `sharing(manager, renderer)`
+
+Save settings to localStorage with bbox and coordinate system
+
+**Parameters:**
+
+- `manager` *ControlManager* - - The control manager instance
+- `renderer` *Renderer* - - The renderer instance
+
+**Returns:** *Object* - saved settings object
+
+#### `Bbox(settings)`
+
+Share settings via URL (copies to clipboard)
+Generates a shareable URL with settings encoded as base64
+Preserves the storage parameter if present
+
+
+**Parameters:**
+
+- `settings` *Object* - - Settings object to share
+
+#### `Bbox(savedSettings, renderer, expressionsControl)`
+
+Restore coordinate system from saved settings
+Validates dimension matching and falls back to Cartesian on error
+
+
+**Parameters:**
+
+- `savedSettings` *Object* - - Settings object containing coordinateSystem
+- `renderer` *Renderer* - - The renderer instance
+- `expressionsControl` *DimensionInputsControl* - - The dimension inputs control
+
+**Returns:** *boolean* - if coordinate system was restored successfully
 
 
 ### unicode-autocomplete.js
@@ -1010,6 +1026,55 @@ Call this from attachInternalListeners or connectedCallback
 #### `renderToShadow()`
 
 Override querySelectorAll to use shadow root if available
+
+
+## ui/panel-controllers/
+
+### gradient-panel.js
+
+#### `handlers(manager, gradientControl)`
+
+Initialize gradient panel controller
+
+**Parameters:**
+
+- `manager` *ControlManager* - - The control manager instance
+- `gradientControl` *GradientControl* - - The gradient control instance
+
+**Returns:** *{showGradientPanel: Function, hideGradientPanel: Function, gradientEditor: Object|null}*
+
+
+### mobile-panel-manager.js
+
+#### `panel(renderingPanelManager)`
+
+Initialize mobile panel manager
+
+**Parameters:**
+
+- `renderingPanelManager` *PanelManager* - - The rendering panel manager instance
+
+**Returns:** *Object* - panel manager API
+
+#### `panel(panelName)`
+
+Show a mobile panel
+
+**Parameters:**
+
+- `panelName` *string* - - Name of panel to show ('controls' or 'rendering')
+
+#### `panel(panelName)`
+
+Hide a mobile panel
+
+**Parameters:**
+
+- `panelName` *string* - - Name of panel to hide
+
+#### `panel()`
+
+Hide all mobile panels
 
 
 ## ui/tabs/

@@ -3,7 +3,7 @@
  */
 
 import { Renderer } from './webgl/renderer.js';
-import { initControls, loadPreset } from './ui/controls-v2.js';
+import { initControls, loadPreset } from './ui/controls-registry.js';
 import { logger } from './utils/debug-logger.js';
 import { Animator } from './animation/animator.js';
 import { setCustomFunctions, getCustomFunctions } from './math/parser.js';
