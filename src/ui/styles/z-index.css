@@ -1,0 +1,95 @@
+/**
+ * Z-Index Management
+ *
+ * Centralized z-index values using CSS custom properties.
+ * This works in conjunction with src/ui/utils/z-index.js for JavaScript access.
+ */
+
+:root {
+    /* Canvas layers */
+    --z-grid: 1;
+    --z-counters: 10;
+
+    /* Panels and overlays */
+    --z-floating-panels: 100;
+    --z-zoom-pan: 150;
+    --z-controls: 200;
+    --z-coordinate-editor: 300;
+    --z-gradient-panel: 325;
+    --z-rendering-panel: 350;
+
+    /* Slider components */
+    --z-slider-indicator: 5;
+    --z-slider-thumb: 10;
+    --z-slider-thumb-dragging: 11;
+
+    /* Mobile specific */
+    --z-mobile-view-controls: 9998;
+    --z-mobile-menu-bar: 10000;
+    --z-menu-bar: 10001;
+    --z-mobile-overlay: 20000;
+    --z-mobile-overlay-close: 99999;
+
+    /* Modals */
+    --z-modal: 100000;
+}
+
+/* Apply z-index values */
+#grid-canvas {
+    z-index: var(--z-grid);
+}
+
+#cursor-position,
+#histogram-panel,
+#display-options {
+    z-index: var(--z-floating-panels);
+}
+
+#step-time-counter,
+#fps-counter {
+    z-index: var(--z-counters);
+}
+
+#controls {
+    z-index: var(--z-controls);
+}
+
+#zoom-pan-controls {
+    z-index: var(--z-zoom-pan);
+}
+
+.slider-current-indicator {
+    z-index: var(--z-slider-indicator);
+}
+
+.slider-thumb {
+    z-index: var(--z-slider-thumb);
+}
+
+.slider-thumb.dragging {
+    z-index: var(--z-slider-thumb-dragging);
+}
+
+#modal-overlay {
+    z-index: var(--z-modal);
+}
+
+#menu-bar {
+    z-index: var(--z-menu-bar);
+}
+
+#mobile-menu-bar {
+    z-index: var(--z-mobile-menu-bar);
+}
+
+.mobile-overlay {
+    z-index: var(--z-mobile-overlay);
+}
+
+.mobile-overlay-close {
+    z-index: var(--z-mobile-overlay-close);
+}
+
+#mobile-view-controls {
+    z-index: var(--z-mobile-view-controls);
+}

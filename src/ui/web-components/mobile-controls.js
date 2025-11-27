@@ -361,7 +361,7 @@ export class MobileControls extends composeMixins(
                             <input type="checkbox" class="frame-limit-checkbox" id="frame-limit-checkbox" ${this._frameLimitEnabled ? 'checked' : ''}>
                             Stop at:
                         </label>
-                        <span class="frame-limit-value" id="frame-limit-value">${this._frameLimit}</span>
+                        <span class="frame-limit-value" id="frame-limit-value">${Math.round(this._frameLimit)}</span>
                     </div>
                     <input type="range" class="frame-limit-slider" id="frame-limit-slider"
                            min="0" max="100" step="1" value="${this.frameToSlider(this._frameLimit)}">
@@ -438,7 +438,7 @@ export class MobileControls extends composeMixins(
         frameLimitSlider.addEventListener('input', () => {
             const sliderValue = parseFloat(frameLimitSlider.value);
             this._frameLimit = this.sliderToFrame(sliderValue);
-            frameLimitValue.textContent = this._frameLimit;
+            frameLimitValue.textContent = Math.round(this._frameLimit);
 
             this.triggerChange();
             if (this.onFrameLimitChange) {
@@ -526,7 +526,7 @@ export class MobileControls extends composeMixins(
         const slider = this.shadowRoot.querySelector('#frame-limit-slider');
         const value = this.shadowRoot.querySelector('#frame-limit-value');
         if (slider) slider.value = this.frameToSlider(limit);
-        if (value) value.textContent = limit;
+        if (value) value.textContent = Math.round(limit);
     }
 
     getTimestep() {

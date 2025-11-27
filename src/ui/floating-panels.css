@@ -22,17 +22,17 @@ body.light-theme .floating-panel {
 /* Wider panel for coordinate editor */
 #coordinate-editor-panel {
     width: 480px;
-    z-index: 300; /* Above controls panel (z-index: 200) */
+    z-index: var(--z-coordinate-editor); /* Above controls panel (200) */
 }
 
 /* Gradient editor panel */
 #gradient-panel {
-    z-index: 325; /* Above controls (200) and coordinate editor (300) */
+    z-index: var(--z-gradient-panel); /* Above controls (200) and coordinate editor (300) */
 }
 
 /* Rendering effects panel on top */
 #rendering-panel {
-    z-index: 350; /* Above all other panels */
+    z-index: var(--z-rendering-panel); /* Above all other panels */
 }
 
 .floating-panel-header {
@@ -92,7 +92,7 @@ body.light-theme .floating-panel-header h3 {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 99999; /* Above everything including menu bar (10001) */
+    z-index: var(--z-mobile-overlay-close); /* Above everything including menu bar (10001) */
     transition: background 0.2s, transform 0.1s;
 }
 
@@ -137,7 +137,7 @@ body.light-theme .floating-panel-close:active {
         max-width: 100% !important;
         max-height: 100vh !important;
         border-radius: 0 !important;
-        z-index: 20000 !important; /* Above mobile controls (10) and mobile menu bar (10000) */
+        z-index: var(--z-mobile-overlay) !important; /* Above mobile controls (10) and mobile menu bar (10000) */
         overflow-y: auto !important;
         padding-top: 60px !important; /* Space for close button */
     }
@@ -145,7 +145,7 @@ body.light-theme .floating-panel-close:active {
     /* Show floating panel close buttons on mobile */
     .floating-panel .floating-panel-close {
         display: flex !important;
-        z-index: 99999 !important; /* Ensure above menu bar (10001) */
+        z-index: var(--z-mobile-overlay-close) !important; /* Ensure above menu bar (10001) */
     }
 
     /* Hide mobile menu bar when floating panels are open */

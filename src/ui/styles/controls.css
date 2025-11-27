@@ -1,0 +1,620 @@
+/* ============================================================================
+   CONTROL PANELS
+   ============================================================================ */
+
+/* Main controls panel */
+#controls {
+    position: absolute;
+    top: calc(32px + 25px); /* Menu bar + offset */
+    right: 20px;
+    background: rgba(30, 30, 30, 0.95);
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 12px;
+    width: 340px;
+    max-height: calc(90vh - 57px - 20px);
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+#controls h1 {
+    font-size: 16px;
+    margin-bottom: 10px;
+    color: #4CAF50;
+}
+
+/* Zoom/Pan controls panel */
+#zoom-pan-controls {
+    position: absolute;
+    top: calc(32px + 25px); /* Menu bar + offset */
+    right: 380px;
+    background: rgba(30, 30, 30, 0.95);
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 8px;
+    width: 130px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+#zoom-pan-controls h1 {
+    font-size: 12px;
+    margin-bottom: 6px;
+    color: #4CAF50;
+    text-align: center;
+}
+
+/* Display options panel */
+#display-options {
+    position: absolute;
+    top: calc(32px + 25px); /* Menu bar + offset */
+    left: 20px;
+    background: rgba(30, 30, 30, 0.95);
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 12px;
+    width: 240px;
+    max-height: calc(90vh - 60px);
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+#display-options h1 {
+    font-size: 16px;
+    margin-bottom: 10px;
+    color: #4CAF50;
+}
+
+
+/* ============================================================================
+   ZOOM PAN CONTROLS
+   ============================================================================ */
+
+.zoom-pan-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3px;
+    margin-bottom: 6px;
+}
+
+.zoom-pan-btn {
+    background: #333;
+    color: #ccc;
+    border: 1px solid #555;
+    padding: 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    text-align: center;
+    user-select: none;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.zoom-pan-btn:hover {
+    background: #444;
+    border-color: #666;
+}
+
+.zoom-pan-btn:active {
+    background: #222;
+}
+
+.zoom-btn-group {
+    display: flex;
+    gap: 4px;
+}
+
+.zoom-btn {
+    flex: 1;
+}
+
+
+/* ============================================================================
+   ANIMATION SECTION
+   ============================================================================ */
+
+#animation-section-content {
+    max-height: calc(70vh - 200px);
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+/* Scrollbar styling for animation sections */
+#animation-section-content::-webkit-scrollbar,
+#display-options::-webkit-scrollbar {
+    width: 8px;
+}
+
+#animation-section-content::-webkit-scrollbar-track,
+#display-options::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 4px;
+}
+
+#animation-section-content::-webkit-scrollbar-thumb,
+#display-options::-webkit-scrollbar-thumb {
+    background: rgba(76, 175, 80, 0.5);
+    border-radius: 4px;
+}
+
+#animation-section-content::-webkit-scrollbar-thumb:hover,
+#display-options::-webkit-scrollbar-thumb:hover {
+    background: rgba(76, 175, 80, 0.7);
+}
+
+
+/* ============================================================================
+   ACCORDION
+   ============================================================================ */
+
+#controls h2 {
+    font-size: 13px;
+    margin: 10px 0 6px 0;
+    color: #64B5F6;
+    border-bottom: 1px solid #333;
+    padding: 6px 30px 6px 0;
+    cursor: pointer;
+    user-select: none;
+    position: relative;
+    transition: background 0.2s;
+}
+
+#controls h2:hover {
+    background: rgba(100, 181, 246, 0.1);
+}
+
+#controls h2 .help-icon {
+    position: absolute;
+    right: 18px;
+    top: 50%;
+    transform: translateY(-50%);
+    margin-left: 0;
+}
+
+#controls h2::after {
+    content: '▼';
+    font-size: 10px;
+    transition: transform 0.2s;
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+#controls h2.collapsed::after {
+    transform: translateY(-50%) rotate(-90deg);
+}
+
+.accordion-section {
+    overflow: hidden;
+    transition: max-height 0.3s ease-out, opacity 0.3s ease-out;
+}
+
+.accordion-section.collapsed {
+    max-height: 0 !important;
+    opacity: 0;
+}
+
+
+/* ============================================================================
+   CONTROL GROUPS
+   ============================================================================ */
+
+.control-group {
+    margin-bottom: 10px;
+}
+
+.control-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.control-row .control-group {
+    margin-bottom: 0;
+}
+
+
+/* ============================================================================
+   FORM ELEMENTS
+   ============================================================================ */
+
+label {
+    display: block;
+    font-size: 11px;
+    margin-bottom: 3px;
+    color: #aaa;
+}
+
+input[type="text"],
+input[type="number"],
+textarea,
+select {
+    width: 100%;
+    padding: 6px;
+    background: #2a2a2a;
+    border: 1px solid #444;
+    border-radius: 4px;
+    color: #e0e0e0;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+}
+
+textarea {
+    resize: vertical;
+    min-height: 32px;
+}
+
+input[type="range"] {
+    width: 100%;
+    margin: 3px 0;
+    flex: 1;
+}
+
+.range-value {
+    display: inline-block;
+    float: right;
+    font-size: 10px;
+    color: #888;
+}
+
+
+/* ============================================================================
+   SLIDER CONTROLS
+   ============================================================================ */
+
+.slider-control {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+}
+
+.slider-btn {
+    background: #333;
+    color: #ccc;
+    border: 1px solid #555;
+    padding: 1px 5px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: bold;
+    min-width: 24px;
+    text-align: center;
+    user-select: none;
+    flex-shrink: 0;
+}
+
+.slider-btn:hover {
+    background: #444;
+    border-color: #666;
+}
+
+.slider-btn:active {
+    background: #222;
+}
+
+.slider-btn.anim-btn.active {
+    background: #4CAF50;
+    color: white;
+    border-color: #4CAF50;
+}
+
+
+/* ============================================================================
+   ACTION BUTTONS
+   ============================================================================ */
+
+/* Action button component - matches old button style */
+action-button {
+    display: block;
+    width: 100%;
+}
+
+.action-btn {
+    width: 100%;
+    padding: 8px;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 14px;
+}
+
+/* Default green for most buttons */
+#animation-create-btn .action-btn,
+#export-animation-json .action-btn {
+    background: #4CAF50;
+}
+
+#animation-create-btn .action-btn:hover,
+#export-animation-json .action-btn:hover {
+    background: #45a049;
+}
+
+/* Blue for download button */
+#animation-download-btn .action-btn {
+    background: #42A5F5;
+    padding: 6px;
+}
+
+#animation-download-btn .action-btn:hover {
+    background: #1e88e5;
+}
+
+.action-btn:disabled {
+    background: #666 !important;
+    color: #999;
+    cursor: not-allowed;
+}
+
+
+/* ============================================================================
+   ANIMATION BOUNDS
+   ============================================================================ */
+
+/* Animation bounds slider */
+.animation-bounds-slider {
+    margin: 8px 0;
+    padding: 10px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    border: 1px solid #444;
+}
+
+.bounds-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: #aaa;
+    margin-bottom: 8px;
+}
+
+.bounds-labels span {
+    font-weight: bold;
+}
+
+/* Multi-thumb slider */
+.multi-thumb-slider {
+    position: relative;
+    height: 32px;
+    margin: 4px 0;
+}
+
+.slider-track {
+    position: absolute;
+    top: 14px;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: #333;
+    border-radius: 2px;
+}
+
+.slider-range {
+    position: absolute;
+    top: 14px;
+    height: 4px;
+    background: #4CAF50;
+    border-radius: 2px;
+    pointer-events: none;
+}
+
+.slider-current-indicator {
+    position: absolute;
+    top: 12px;
+    width: 2px;
+    height: 8px;
+    background: #FFA726;
+    pointer-events: none;
+    transform: translateX(-1px);
+}
+
+.slider-thumb {
+    position: absolute;
+    top: 0;
+    width: 16px;
+    height: 32px;
+    background: #555;
+    border: 2px solid #888;
+    border-radius: 4px;
+    cursor: grab;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.slider-thumb:hover {
+    background: #666;
+    border-color: #aaa;
+}
+
+.slider-thumb.dragging {
+    cursor: grabbing;
+    background: #777;
+    border-color: #ccc;
+}
+
+.slider-thumb.min-thumb {
+    border-color: #2196F3;
+}
+
+.slider-thumb.max-thumb {
+    border-color: #F44336;
+}
+
+.slider-thumb.min-thumb:hover {
+    border-color: #42A5F5;
+}
+
+.slider-thumb.max-thumb:hover {
+    border-color: #EF5350;
+}
+
+.thumb-label {
+    font-size: 7px;
+    font-weight: bold;
+    color: #ccc;
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+}
+
+
+/* ============================================================================
+   STANDARD BUTTONS
+   ============================================================================ */
+
+button {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 11px;
+    margin: 3px 3px 3px 0;
+}
+
+button:hover {
+    background: #45a049;
+}
+
+button.secondary {
+    background: #2196F3;
+}
+
+button.secondary:hover {
+    background: #0b7dda;
+}
+
+
+/* ============================================================================
+   DIMENSION INPUTS
+   ============================================================================ */
+
+.dimension-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.dimension-input {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.dimension-input label {
+    min-width: 22px;
+    margin: 0;
+}
+
+.dimension-input input {
+    flex: 1;
+}
+
+.info {
+    font-size: 10px;
+    color: #666;
+    margin-top: 3px;
+    font-style: italic;
+}
+
+
+/* ============================================================================
+   GRADIENT CONTROLS
+   ============================================================================ */
+
+#gradient-preset-toggle {
+    border-bottom-color: #444 !important;
+}
+
+#error-message {
+    background: #d32f2f;
+    color: white;
+    padding: 6px;
+    border-radius: 4px;
+    margin-top: 6px;
+    display: none;
+    font-size: 10px;
+}
+
+/* Gradient editor styles */
+.gradient-stops {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    margin-bottom: 8px;
+}
+
+.gradient-stop {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.gradient-stop .color-picker {
+    width: 40px;
+    height: 25px;
+    padding: 0;
+    border: 1px solid #444;
+    cursor: pointer;
+}
+
+.gradient-stop .stop-position {
+    width: 60px;
+    padding: 4px;
+}
+
+.gradient-stop .remove-stop {
+    background: #d32f2f;
+    color: white;
+    border: none;
+    padding: 2px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+}
+
+.gradient-stop .remove-stop:hover {
+    background: #b71c1c;
+}
+
+.gradient-preview {
+    width: 100%;
+    height: 30px;
+    border-radius: 4px;
+    border: 1px solid #444;
+    margin-top: 8px;
+}
+
+
+/* ============================================================================
+   HELP ICONS
+   ============================================================================ */
+
+/* Help Icon Styles */
+.help-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    margin-left: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.2s;
+    vertical-align: middle;
+}
+
+.help-icon:hover {
+    opacity: 1;
+}
+
+label .help-icon {
+    margin-left: 4px;
+}

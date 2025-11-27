@@ -24,6 +24,8 @@ import { logger } from '../utils/debug-logger.js';
 import { resizeAccordion } from './accordion-utils.js';
 import { WebComponentControlRegistry } from './web-component-registry.js';
 import { AnimationController } from '../animation/animation-controller.js';
+import { ZIndex } from './utils/z-index.js';
+import { PanelManager } from './utils/panel-manager.js';
 
 /**
  * Initialize UI controls with ControlManager
@@ -554,40 +556,35 @@ export function initControls(renderer, callback) {
 
     let gradientEditor = null;
 
+    // Create panel manager for gradient panel (Phase 1 refactoring)
+    const gradientPanelManager = new PanelManager('#gradient-panel', {
+        zIndex: ZIndex.GRADIENT_PANEL,
+        onShow: () => {
+            updateGradientButtonVisibility(manager.get('color-mode').getValue());
+
+            // Initialize gradient editor if not already done
+            if (!gradientEditor) {
+                gradientEditor = initGradientEditor(
+                    'main-gradient-editor',
+                    gradientControl.getValue(),
+                    (newGradient) => {
+                        gradientControl.notifyChange(newGradient);
+                    }
+                );
+                gradientControl.setGradientEditor(gradientEditor);
+            } else {
+                // Update gradient if it changed while editor was hidden
+                gradientEditor.setGradient(gradientControl.getValue());
+            }
+        }
+    });
+
     function showGradientPanel() {
-        const panel = $('#gradient-panel');
-        updateGradientButtonVisibility(manager.get('color-mode').getValue());
-        panel.show();
-
-        // Force z-index for mobile (ensure above menu bar)
-        if (window.innerWidth <= 768) {
-            panel.css({'z-index': '20000', 'position': 'fixed'});
-            panel.find('.floating-panel-close').css('z-index', '99999');
-            $('#menu-bar').css('z-index', '1');
-        }
-
-        // Initialize gradient editor if not already done
-        if (!gradientEditor) {
-            gradientEditor = initGradientEditor(
-                'main-gradient-editor',
-                gradientControl.getValue(),
-                (newGradient) => {
-                    gradientControl.notifyChange(newGradient);
-                }
-            );
-            gradientControl.setGradientEditor(gradientEditor);
-        } else {
-            // Update gradient if it changed while editor was hidden
-            gradientEditor.setGradient(gradientControl.getValue());
-        }
+        gradientPanelManager.show();
     }
 
     function hideGradientPanel() {
-        $('#gradient-panel').hide();
-        // Restore menu bar z-index on mobile
-        if (window.innerWidth <= 768) {
-            $('#menu-bar').css('z-index', '10001');
-        }
+        gradientPanelManager.hide();
     }
 
     // Open gradient editor button
@@ -652,26 +649,20 @@ export function initControls(renderer, callback) {
     // Rendering settings panel
     // ========================================
 
-    function showRenderingPanel() {
-        const panel = $('#rendering-panel');
-        panel.show();
-
-        // Force z-index for mobile (ensure above menu bar)
-        if (window.innerWidth <= 768) {
-            panel.css({'z-index': '20000', 'position': 'fixed'});
-            panel.find('.floating-panel-close').css('z-index', '99999');
-            $('#menu-bar').css('z-index', '1');
+    // Create panel manager for rendering panel (Phase 1 refactoring)
+    const renderingPanelManager = new PanelManager('#rendering-panel', {
+        zIndex: ZIndex.RENDERING_PANEL,
+        onShow: () => {
+            updateWhitePointVisibility(manager.get('tonemap-operator').getValue());
         }
+    });
 
-        updateWhitePointVisibility(manager.get('tonemap-operator').getValue());
+    function showRenderingPanel() {
+        renderingPanelManager.show();
     }
 
     function hideRenderingPanel() {
-        $('#rendering-panel').hide();
-        // Restore menu bar z-index on mobile
-        if (window.innerWidth <= 768) {
-            $('#menu-bar').css('z-index', '10001');
-        }
+        renderingPanelManager.hide();
     }
 
     $('#open-rendering-settings').on('click', function() {
@@ -1320,26 +1311,18 @@ export function initControls(renderer, callback) {
                 return;
             }
 
-            // For floating panels (rendering), just show them
+            // For floating panels (rendering), use panel manager
             // For main panels (controls), add mobile overlay class
             if (panelName === 'rendering') {
-                panel.show();
-                // Update white point visibility based on current operator
-                try {
-                    const operator = manager.get('tonemap-operator');
-                    if (operator) {
-                        updateWhitePointVisibility(operator.getValue());
-                    }
-                } catch (e) {
-                    logger.warn('Could not update white point visibility:', e);
-                }
+                // Use the rendering panel manager (Phase 1 refactoring)
+                renderingPanelManager.show();
             } else {
                 panel.addClass('mobile-overlay active');
                 panel.find('.mobile-overlay-close').show();
                 // Force z-index for mobile (ensure above menu bar)
-                panel.css('z-index', '20000');
-                panel.find('.mobile-overlay-close').css('z-index', '99999');
-                $('#menu-bar').css('z-index', '1');
+                panel.css('z-index', ZIndex.MOBILE_PANEL);
+                panel.find('.mobile-overlay-close').css('z-index', ZIndex.CLOSE_BUTTON);
+                $('#menu-bar').css('z-index', ZIndex.MENU_BAR_LOWERED);
             }
 
             // Mark menu button as active
@@ -1352,15 +1335,16 @@ export function initControls(renderer, callback) {
             const panel = panels[panelName];
             if (!panel) return;
 
-            // For floating panels, just hide them
+            // For floating panels, use panel manager
             // For main panels, remove mobile overlay class
             if (panelName === 'rendering') {
-                panel.hide();
+                // Use the rendering panel manager (Phase 1 refactoring)
+                renderingPanelManager.hide();
             } else {
                 panel.removeClass('mobile-overlay active');
                 panel.find('.mobile-overlay-close').hide();
                 // Restore menu bar z-index on mobile
-                $('#menu-bar').css('z-index', '10001');
+                $('#menu-bar').css('z-index', ZIndex.MENU_BAR);
             }
 
             // Remove active state from menu button

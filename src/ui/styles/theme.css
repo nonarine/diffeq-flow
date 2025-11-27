@@ -1,0 +1,331 @@
+/* ============================================================================
+   Light Theme Styles
+   Extracted from index.html.bak for consolidation
+   ============================================================================ */
+
+/* Base Theme */
+body.light-theme {
+    background: #f5f5f5;
+    color: #212121;
+}
+
+body.light-theme #canvas {
+    filter: invert(1);
+}
+
+body.light-theme #grid-canvas {
+    filter: invert(1);
+}
+
+/* Controls Panel */
+body.light-theme #controls {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: #ccc;
+    color: #212121;
+}
+
+body.light-theme #controls h1 {
+    color: #2E7D32;
+}
+
+body.light-theme #controls h2 {
+    color: #1976D2;
+    border-color: #ddd;
+}
+
+body.light-theme #controls h2:hover {
+    background: rgba(25, 118, 210, 0.1);
+}
+
+/* Form Controls */
+body.light-theme label {
+    color: #555;
+}
+
+body.light-theme input[type="text"],
+body.light-theme input[type="number"],
+body.light-theme textarea,
+body.light-theme select {
+    background: #fff;
+    border-color: #ccc;
+    color: #212121;
+}
+
+body.light-theme .slider-btn {
+    background: #e0e0e0;
+    color: #333;
+    border-color: #bbb;
+}
+
+body.light-theme .slider-btn:hover {
+    background: #d0d0d0;
+    border-color: #999;
+}
+
+body.light-theme .info {
+    color: #666;
+}
+
+/* HUD Overlays */
+body.light-theme #cursor-position {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: #ccc;
+    color: #2E7D32;
+}
+
+body.light-theme #step-time-counter {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: #ccc;
+    color: #F57C00;
+}
+
+body.light-theme #fps-counter {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: #ccc;
+    color: #2E7D32;
+}
+
+body.light-theme #fps-counter .frame-limit-controls label {
+    color: #666;
+}
+
+body.light-theme #fps-counter .frame-limit-controls .range-value {
+    color: #2E7D32;
+}
+
+/* Mobile Timestep Controls */
+body.light-theme .mobile-timestep-inline .mobile-timestep-label {
+    color: #F57C00;
+}
+
+/* Zoom/Pan Controls */
+body.light-theme #zoom-pan-controls {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: #ccc;
+    color: #212121;
+}
+
+body.light-theme #zoom-pan-controls h1 {
+    color: #2E7D32;
+}
+
+body.light-theme .zoom-pan-btn {
+    background: #e0e0e0;
+    color: #333;
+    border-color: #bbb;
+}
+
+body.light-theme .zoom-pan-btn:hover {
+    background: #d0d0d0;
+    border-color: #999;
+}
+
+body.light-theme .zoom-pan-btn:active {
+    background: #c0c0c0;
+}
+
+/* Display Options Panel */
+body.light-theme #display-options {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: #ccc;
+    color: #212121;
+}
+
+body.light-theme #display-options h1 {
+    color: #2E7D32;
+}
+
+/* Action Buttons */
+body.light-theme .action-btn:disabled {
+    background: #ccc !important;
+    color: #888;
+}
+
+/* Floating Panels */
+body.light-theme .panel-header {
+    background: #f5f5f5;
+    border-bottom-color: #ddd;
+}
+
+body.light-theme .panel-header h3 {
+    color: #212121;
+}
+
+body.light-theme .panel-close:hover {
+    background: rgba(0, 0, 0, 0.1);
+    color: #212121;
+}
+
+/* Coordinate Editor */
+body.light-theme .coordinate-editor-buttons {
+    border-top-color: #ddd;
+}
+
+body.light-theme .info-text {
+    background: rgba(0, 0, 0, 0.03);
+    color: #666;
+}
+
+/* Gradient Controls */
+body.light-theme #gradient-preset-toggle {
+    border-bottom-color: #ddd !important;
+}
+
+/* Modal Window */
+body.light-theme #modal-window {
+    background: #ffffff;
+    border-color: #ccc;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.3);
+}
+
+body.light-theme #modal-header {
+    background: #f5f5f5;
+    border-bottom-color: #ddd;
+}
+
+body.light-theme #modal-title {
+    color: #212121;
+}
+
+body.light-theme #modal-close:hover {
+    background: rgba(0, 0, 0, 0.1);
+    color: #212121;
+}
+
+/* Modal Tabs */
+body.light-theme #modal-tab-bar {
+    background: #e8e8e8;
+    border-bottom-color: #ccc;
+}
+
+body.light-theme .modal-tab-button:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #212121;
+}
+
+body.light-theme .modal-tab-button.active {
+    color: #2E7D32;
+    border-bottom-color: #2E7D32;
+    background: rgba(46, 125, 50, 0.1);
+}
+
+/* Documentation Sections */
+body.light-theme .docs-section {
+    background: #f9f9f9;
+    border-color: #ddd;
+}
+
+body.light-theme .docs-section-header {
+    background: #f0f0f0;
+}
+
+body.light-theme .docs-section-header:hover {
+    background: #e8e8e8;
+}
+
+body.light-theme .docs-section-header h3 {
+    color: #2E7D32;
+}
+
+body.light-theme .docs-section-content p {
+    color: #444;
+}
+
+body.light-theme .docs-section-content h5 {
+    color: #2E7D32;
+    border-bottom-color: #ddd;
+}
+
+body.light-theme .docs-section-content code {
+    background: #e8e8e8;
+    color: #2E7D32;
+}
+
+body.light-theme .code-example {
+    background: #fff;
+    border-color: #ddd;
+}
+
+/* Menu Bar */
+body.light-theme #menu-bar {
+    background: #f5f5f5;
+    border-bottom-color: #ccc;
+}
+
+body.light-theme .menu-item {
+    color: #333;
+}
+
+body.light-theme .menu-item:hover {
+    background: rgba(0, 0, 0, 0.08);
+    color: #000;
+}
+
+/* Mobile Menu Bar */
+body.light-theme #mobile-menu-bar {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: #ccc;
+    box-shadow: -2px 0 10px rgba(0, 0, 0, 0.15);
+}
+
+body.light-theme .mobile-menu-btn {
+    background: #e0e0e0;
+    color: #333;
+    border-color: #bbb;
+}
+
+body.light-theme .mobile-menu-btn:hover {
+    background: #d0d0d0;
+    border-color: #999;
+}
+
+body.light-theme .mobile-menu-btn:active {
+    background: #c0c0c0;
+}
+
+body.light-theme .mobile-menu-btn.active {
+    background: #4CAF50;
+    border-color: #66BB6A;
+    color: #fff;
+}
+
+/* Mobile Overlay */
+body.light-theme .mobile-overlay {
+    background: rgba(255, 255, 255, 0.98);
+}
+
+body.light-theme .mobile-overlay-close {
+    background: #e0e0e0;
+    color: #333;
+    border-color: #bbb;
+}
+
+body.light-theme .mobile-overlay-close:hover {
+    background: #d0d0d0;
+}
+
+body.light-theme .mobile-overlay-close:active {
+    background: #c0c0c0;
+}
+
+/* Mobile View Controls */
+body.light-theme #mobile-view-controls {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: #ccc;
+    box-shadow: -2px 2px 10px rgba(0, 0, 0, 0.15);
+}
+
+body.light-theme .mobile-view-btn {
+    background: #e0e0e0;
+    color: #333;
+    border-color: #bbb;
+}
+
+body.light-theme .mobile-view-btn:hover {
+    background: #d0d0d0;
+    border-color: #999;
+}
+
+body.light-theme .mobile-view-btn:active {
+    background: #c0c0c0;
+}

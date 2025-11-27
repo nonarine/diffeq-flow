@@ -2,7 +2,7 @@
 
 _Auto-generated from inline JSDoc documentation_
 
-_Generated: 2025-11-27T12:09:30.326Z_
+_Generated: 2025-11-27T13:25:58.929Z_
 
 ---
 
@@ -678,16 +678,25 @@ Immediate apply (no debounce)
 
 ### controls-v2.js
 
-#### `ControlManager(bbox, canvas)`
+#### `ControlManager()`
 
-Expand bbox to fit canvas aspect ratio (ensure WHOLE bbox is visible)
+Update white point visibility based on operator
 
-**Parameters:**
+#### `ControlManager()`
 
-- `bbox` *Object* - - Original bbox with min/max arrays
-- `canvas` *HTMLCanvasElement* - - Canvas element
+Update expression controls visibility
 
-**Returns:** *Object* - bbox that fits aspect ratio
+#### `ControlManager()`
+
+Update gradient button visibility
+
+#### `ControlManager()`
+
+Update velocity scaling controls visibility
+
+#### `ControlManager()`
+
+Load settings from URL parameter or localStorage
 
 
 ### coordinate-editor.js
@@ -1238,6 +1247,14 @@ Register a single binding
 - `element` *Element* - - The element to bind
 - `bindAttr` *string* - - The bind attribute name (e.g., "bind-text", "bind-attr-value")
 - `varName` *string* - - The variable name to bind to
+
+
+### log-slider.js
+
+#### `linear()`
+
+Convert logarithmic value to linear slider position [0, 100]
+Applies inverse curve to maintain consistency
 
 
 ### number-input.js

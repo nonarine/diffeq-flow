@@ -116,11 +116,23 @@ export class LogSlider extends ControlElement {
         this.sliderInput = this.findByRole('slider', 'input[type="range"]');
         if (!this.sliderInput) return;
 
-        // Add input listener
-        this.addInputListener(this.sliderInput, () => {
+        const updateValue = () => {
             const sliderValue = parseFloat(this.sliderInput.value);
             this.value = this.linearToLog(sliderValue) / this.transform;
             this.triggerChange();
+        };
+
+        // Add input listener (fires during drag)
+        this.addInputListener(this.sliderInput, updateValue);
+
+        // Add change listener (fires on click and after drag ends)
+        this.sliderInput.addEventListener('change', updateValue);
+
+        // Add click listener to handle clicks on the track
+        this.sliderInput.addEventListener('click', (e) => {
+            // The browser will update the slider value automatically on click,
+            // but we need to trigger our update function
+            updateValue();
         });
 
         // Register action buttons using helper
