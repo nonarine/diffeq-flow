@@ -51,6 +51,7 @@ import { WebComponentControlRegistry } from './web-component-registry.js';
 import { AnimationController } from '../animation/animation-controller.js';
 import { ZIndex } from './utils/z-index.js';
 import { PanelManager } from './utils/panel-manager.js';
+import { isMobile } from './utils/mobile.js';
 
 // Import specialized modules (Phase 3 refactoring)
 import { updateWhitePointVisibility, updateExpressionControls, updateGradientButtonVisibility, updateVelocityScalingVisibility } from './visibility-manager.js';
@@ -614,8 +615,7 @@ export function initControls(renderer, callback) {
     const savedSettings = loadSettingsFromURLOrStorage();
 
     // Set mobile-specific defaults if no saved settings exist
-    const isMobile = window.innerWidth <= 768;
-    if (isMobile && (!savedSettings || (savedSettings.frameLimitEnabled === undefined && savedSettings.frameLimit === undefined))) {
+    if (isMobile() && (!savedSettings || (savedSettings.frameLimitEnabled === undefined && savedSettings.frameLimit === undefined))) {
         if (frameLimitEnabledCheckbox) frameLimitEnabledCheckbox.setValue(true);
         const frameLimitElement = document.getElementById('frame-limit');
         if (frameLimitElement) {

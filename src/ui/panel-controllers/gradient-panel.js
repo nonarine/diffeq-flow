@@ -94,25 +94,8 @@ export function initGradientPanel(manager, gradientControl) {
         }
     });
 
-    // Close gradient panel when clicking outside
-    $(document).on('click', function(e) {
-        const panel = $('#gradient-panel');
-        const openButton = $('#open-gradient-editor');
-
-        if ($(e.target).is(openButton) ||
-            $(e.target).closest('#gradient-panel').length > 0) {
-            return;
-        }
-
-        if (panel.is(':visible')) {
-            hideGradientPanel();
-        }
-    });
-
-    // Prevent clicks inside gradient panel from closing it
-    $('#gradient-panel').on('click', function(e) {
-        e.stopPropagation();
-    });
+    // Enable click-outside-to-close behavior
+    gradientPanelManager.enableClickOutside(['#open-gradient-editor']);
 
     return {
         showGradientPanel,

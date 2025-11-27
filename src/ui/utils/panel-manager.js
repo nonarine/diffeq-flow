@@ -144,11 +144,55 @@ export class PanelManager {
     }
 
     /**
+     * Enable click-outside-to-close behavior
+     *
+     * @param {Array<string>} excludeSelectors - jQuery selectors for elements that shouldn't trigger close
+     * @example
+     * panelManager.enableClickOutside(['#open-button', '#mobile-menu-button']);
+     */
+    enableClickOutside(excludeSelectors = []) {
+        this.clickOutsideExclusions = [this.panelSelector, ...excludeSelectors];
+
+        // Remove any existing handler
+        $(document).off('click.panelManager' + this.panelSelector);
+
+        // Add new handler
+        $(document).on('click.panelManager' + this.panelSelector, (e) => {
+            // Check if click is inside panel or any excluded elements
+            for (const selector of this.clickOutsideExclusions) {
+                if ($(e.target).is(selector) || $(e.target).closest(selector).length > 0) {
+                    return; // Don't close
+                }
+            }
+
+            // Click is outside - close panel if visible
+            if (this.isVisible()) {
+                this.hide();
+            }
+        });
+
+        // Prevent clicks inside panel from propagating
+        this.panel.off('click.panelManagerStop').on('click.panelManagerStop', (e) => {
+            e.stopPropagation();
+        });
+    }
+
+    /**
+     * Disable click-outside-to-close behavior
+     */
+    disableClickOutside() {
+        $(document).off('click.panelManager' + this.panelSelector);
+        this.panel.off('click.panelManagerStop');
+        this.clickOutsideExclusions = null;
+    }
+
+    /**
      * Clean up event listeners
      * Call this when destroying the panel manager
      */
     destroy() {
         this.closeButton.off('click.panelManager');
+        this.disableClickOutside();
     }
 }
 

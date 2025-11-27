@@ -54,29 +54,11 @@ export function initRenderingPanel(manager) {
         }
     });
 
-    // Close rendering panel when clicking outside
-    $(document).on('click', function(e) {
-        const panel = $('#rendering-panel');
-        const renderingButton = $('#open-rendering-settings');
-        const mobileRenderingButton = $('#mobile-menu-rendering');
-
-        if ($(e.target).is(renderingButton) ||
-            $(e.target).is(mobileRenderingButton) ||
-            $(e.target).closest('#mobile-menu-rendering').length > 0 ||
-            $(e.target).closest('#rendering-panel').length > 0) {
-            // Don't close rendering panel
-            return;
-        }
-
-        if (panel.is(':visible')) {
-            hideRenderingPanel();
-        }
-    });
-
-    // Prevent clicks inside rendering panel from closing it
-    $('#rendering-panel').on('click', function(e) {
-        e.stopPropagation();
-    });
+    // Enable click-outside-to-close behavior
+    renderingPanelManager.enableClickOutside([
+        '#open-rendering-settings',
+        '#mobile-menu-rendering'
+    ]);
 
     return {
         showRenderingPanel,
