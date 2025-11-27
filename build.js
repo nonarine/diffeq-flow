@@ -37,9 +37,11 @@ esbuild.build({
 
   let html = fs.readFileSync(indexPath, 'utf8');
 
-  // Replace all script tags with single bundled script
-  // Remove all individual script tags
-  html = html.replace(/<script[^>]*src="src\/[^"]*"[^>]*><\/script>\s*/g, '');
+  // Remove all individual module script tags
+  html = html.replace(/<script[^>]*type="module"[^>]*src="src\/[^"]*"[^>]*><\/script>\s*/g, '');
+
+  // Remove the service worker and dynamic main.js loading block
+  html = html.replace(/<!-- Register Service Worker.*?<\/script>/s, '');
 
   // Add bundled script before closing body tag
   html = html.replace(
