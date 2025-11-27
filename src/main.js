@@ -404,7 +404,8 @@ $(document).ready(function() {
         const gridCtx = gridCanvas.getContext('2d');
         const cursorDiv = $('#cursor-position');
 
-        let showGrid = $('#show-grid').is(':checked');
+        const showGridCheckbox = document.getElementById('show-grid');
+        let showGrid = showGridCheckbox?.getValue ? showGridCheckbox.getValue() : true;
         let cursorX = 0;
         let cursorY = 0;
 
@@ -574,10 +575,12 @@ $(document).ready(function() {
         });
 
         // Toggle grid
-        $('#show-grid').on('change', function() {
-            showGrid = $(this).is(':checked');
-            drawGrid();
-        });
+        if (showGridCheckbox) {
+            showGridCheckbox.addEventListener('change', function() {
+                showGrid = showGridCheckbox.getValue();
+                drawGrid();
+            });
+        }
 
         // Redraw grid when window resizes
         window.addEventListener('resize', resizeGridCanvas);
@@ -587,6 +590,8 @@ $(document).ready(function() {
 
         // Update FPS counter
         const fpsDisplay = document.querySelector('#fps-counter .fps-display');
+        const mobileControls = document.getElementById('mobile-controls');
+
         function formatFrameCount(count) {
             if (count >= 1000) {
                 const k = count / 1000;
@@ -599,12 +604,23 @@ $(document).ready(function() {
             }
             return count.toString();
         }
+
         function updateFPS() {
             if (renderer && renderer.fps !== undefined) {
                 const framesText = renderer.totalFrames !== undefined
                     ? ` | ${formatFrameCount(renderer.totalFrames)} frames`
                     : '';
-                fpsDisplay.textContent = `FPS: ${renderer.fps}${framesText}`;
+                const fpsText = `${renderer.fps}${framesText}`;
+
+                // Update desktop FPS display
+                if (fpsDisplay) {
+                    fpsDisplay.textContent = `FPS: ${fpsText}`;
+                }
+
+                // Update mobile controls FPS display
+                if (mobileControls && mobileControls.setFPS) {
+                    mobileControls.setFPS(fpsText);
+                }
             }
         }
         setInterval(updateFPS, 500); // Update every 500ms
@@ -716,11 +732,6 @@ $(document).ready(function() {
     // Step 7: Setup animation panel
     function setupAnimationPanel(renderer, manager) {
         let animator = null;
-
-        // Open/close panel
-        $('#open-animation-panel').on('click', function() {
-            $('#animation-panel').toggle();
-        });
 
         // Load animation script
         $('#animation-script-input').on('change', function(e) {

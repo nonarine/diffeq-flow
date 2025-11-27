@@ -1,5 +1,27 @@
 # TODO & Future Work
 
+## Improved Particle Dropping for Point Attractors
+
+**Removed Feature:** "Drop low velocity particles" checkbox (removed 2025-11-26)
+- Simple velocity threshold wasn't effective at identifying truly stuck particles
+- Dropped particles at limit cycles and other low-velocity regions incorrectly
+
+**Better Approach:**
+Implement smarter heuristics to detect particles stuck at point attractors:
+- Track particle position history (e.g., last 10-20 positions)
+- Calculate position variance over time window
+- Drop particles with low position variance AND low velocity (indicates stuck at fixed point)
+- OR: Drop particles that haven't moved beyond some epsilon distance in N frames
+- OR: Use velocity direction changes to detect circling vs. converging behavior
+
+**Implementation Ideas:**
+- Could be done in shader with circular buffer in texture
+- Or track subset of particles on CPU side for detection
+- Make threshold configurable (position variance, time window)
+- Add visualization mode to highlight "stale" particles before dropping
+
+---
+
 ## Settings Transformation Architecture
 **Current Issue:** Settings transformations (e.g., `implicitIterations` → `integratorParams`) happen in the ControlManager `onApply` callback, which only runs during UI interactions, not during initial load from localStorage. This can cause settings to be incomplete on page refresh.
 

@@ -203,11 +203,10 @@ uniform vec2 u_max;
 uniform float u_h;
 uniform float u_rand_seed;
 uniform float u_drop_rate;
+uniform float u_respawn_margin;
 uniform int u_out_coordinate;
 uniform float u_particles_res;
 uniform float u_max_velocity;
-uniform float u_drop_low_velocity;
-uniform float u_velocity_threshold;
 uniform float u_alpha;
 ${hasTransform ? 'uniform vec4 u_transform_params;' : ''}
 
@@ -279,24 +278,17 @@ void main() {
     new_pos = integrate(pos, u_h);
     `}
 
-    // Calculate velocity at new position for low-velocity dropping
-    ${vecType} velocity = ${hasTransform ? 'get_velocity_original(new_pos)' : 'get_velocity(new_pos)'};
-    float speed = length(velocity);
-
-    // Check if particle is outside viewport bounds with small margin
-    // Use 20% margin to allow particles to flow slightly off-screen before respawning
+    // Check if particle is outside viewport bounds with configurable margin
+    // Margin allows particles to flow off-screen before respawning
     float width = u_max.x - u_min.x;
     float height = u_max.y - u_min.y;
-    bool outside = new_pos.x < (u_min.x - width * 0.2) || new_pos.x > (u_max.x + width * 0.2) ||
-                   new_pos.y < (u_min.y - height * 0.2) || new_pos.y > (u_max.y + height * 0.2);
-
-    // Check if particle is too slow (if drop_low_velocity is enabled)
-    bool too_slow = u_drop_low_velocity > 0.5 && speed < (u_max_velocity * u_velocity_threshold);
+    bool outside = new_pos.x < (u_min.x - width * u_respawn_margin) || new_pos.x > (u_max.x + width * u_respawn_margin) ||
+                   new_pos.y < (u_min.y - height * u_respawn_margin) || new_pos.y > (u_max.y + height * u_respawn_margin);
 
     // Random drop: reset particle to random position with small probability
-    // Also reset if particle exits the viewport or is too slow
+    // Also reset if particle exits the viewport
     float drop_chance = rand(texcoord);
-    bool should_respawn = drop_chance < u_drop_rate || outside || too_slow;
+    bool should_respawn = drop_chance < u_drop_rate || outside;
     if (should_respawn) {
         // Spawn particles 2% OUTSIDE viewport for natural flow-in effect (negative margin)
         // Use texcoord + rand_seed for truly independent random values per particle per frame
@@ -439,7 +431,8 @@ uniform vec2 u_viewport_size;  // Actual render resolution (renderWidth, renderH
 uniform vec2 u_canvas_size;    // Canvas resolution (canvas.width, canvas.height)
 
 varying vec${dimensions} v_pos;
-varying vec${dimensions} v_velocity;          // Full N-dimensional velocity (for expression mode)
+varying vec${dimensions} v_velocity;          // Actual particle velocity (pos - prev_pos)
+varying vec${dimensions} v_field_velocity;    // Vector field at particle position
 varying vec${dimensions} v_velocity_projected; // Projected 2D velocity (for angle-based color modes)
 
 ${mapperCode}
@@ -510,11 +503,8 @@ void main() {
     }).join('\n    ')}
     `}
 
-    // Calculate velocity for coloring
-    ${vecType} velocity;
-    ${hasCoordinateSystem ? `
-    // For coordinate systems: compute Cartesian velocity from position difference
-    // Read previous position (already in Cartesian space from update shader)
+    // Calculate ACTUAL particle velocity for coloring (not vector field!)
+    // This gives correct colors based on particle motion, not field strength
     ${vecType} prev_pos;
     ${Array.from({ length: dimensions }, (_, i) => {
         const coord = ['x', 'y', 'z', 'w'][i];
@@ -527,16 +517,16 @@ void main() {
         }
     }).join('\n    ')}
 
-    // Cartesian velocity from finite difference
-    velocity = pos - prev_pos;
-    ` : `
-    // For Cartesian systems: compute velocity directly
-    velocity = get_velocity(pos);
-    `}
+    // Actual particle velocity from position difference
+    ${vecType} velocity = pos - prev_pos;
+
+    // Also compute vector field at current position (for field-based color modes)
+    ${vecType} field_velocity = get_velocity(pos);
 
     // Pass N-dimensional position and full velocity to fragment shader
     v_pos = pos;
-    v_velocity = velocity; // Full N-dimensional velocity for expression mode
+    v_velocity = velocity; // Actual particle velocity for expression mode
+    v_field_velocity = field_velocity; // Vector field at position
 
     // Skip newly spawned particles (age < 1) by moving them off-screen
     if (age < 1.0) {
@@ -593,7 +583,8 @@ precision highp float;
 ${customFunctions}
 
 varying vec${dimensions} v_pos;
-varying vec${dimensions} v_velocity;          // Full N-dimensional velocity (for expression mode)
+varying vec${dimensions} v_velocity;          // Actual particle velocity (pos - prev_pos)
+varying vec${dimensions} v_field_velocity;    // Vector field at particle position
 varying vec${dimensions} v_velocity_projected; // Projected 2D velocity (for angle-based color modes)
 
 ${usesMaxVelocity ? 'uniform float u_max_velocity;\nuniform float u_velocity_log_scale;' : ''}
@@ -606,8 +597,8 @@ uniform vec2 u_canvas_size;    // Canvas resolution
 ${colorCode}
 
 void main() {
-    // Get color based on position and velocity
-    vec3 color = getColor(v_pos, v_velocity, v_velocity_projected);
+    // Get color based on position, particle velocity, and field velocity
+    vec3 color = getColor(v_pos, v_velocity, v_field_velocity, v_velocity_projected);
 
     // Apply saturation adjustment (for attractor visualization)
     // 0.0 = grayscale, 1.0 = full saturation

@@ -1,0 +1,160 @@
+/* Floating Panel Styles */
+
+.floating-panel {
+    position: fixed;
+    right: 330px;
+    top: calc(32px + 25px); /* Menu bar + offset */
+    width: 320px;
+    max-height: calc(90vh - 67px); /* Account for menu bar + offset */
+    background: rgba(30, 30, 30, 0.98);
+    border: 1px solid #444;
+    border-radius: 8px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+body.light-theme .floating-panel {
+    background: rgba(255, 255, 255, 0.98);
+    border-color: #ccc;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+/* Wider panel for coordinate editor */
+#coordinate-editor-panel {
+    width: 480px;
+    z-index: 300; /* Above controls panel (z-index: 200) */
+}
+
+/* Gradient editor panel */
+#gradient-panel {
+    z-index: 325; /* Above controls (200) and coordinate editor (300) */
+}
+
+/* Rendering effects panel on top */
+#rendering-panel {
+    z-index: 350; /* Above all other panels */
+}
+
+.floating-panel-header {
+    background: #252525;
+    padding: 12px 16px;
+    border-bottom: 1px solid #444;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: move;
+}
+
+body.light-theme .floating-panel-header {
+    background: #f5f5f5;
+    border-bottom-color: #ddd;
+}
+
+.floating-panel-header h3 {
+    margin: 0;
+    font-size: 14px;
+    color: #4CAF50;
+    font-weight: 600;
+}
+
+body.light-theme .floating-panel-header h3 {
+    color: #2E7D32;
+}
+
+.floating-panel-content {
+    padding: 16px;
+    overflow-y: auto;
+    max-height: calc(90vh - 67px - 50px); /* Panel height - header */
+}
+
+.info {
+    display: block;
+    font-size: 11px;
+    color: #888;
+    margin-top: 3px;
+    font-style: italic;
+}
+
+/* Floating Panel Close Button */
+.floating-panel-close {
+    position: fixed;
+    top: 10px;
+    right: 10px;
+    background: #333;
+    color: #e0e0e0;
+    border: 1px solid #555;
+    border-radius: 50%;
+    width: 44px;
+    height: 44px;
+    font-size: 24px;
+    font-weight: bold;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 99999; /* Above everything including menu bar (10001) */
+    transition: background 0.2s, transform 0.1s;
+}
+
+.floating-panel-close:hover {
+    background: #444;
+    transform: scale(1.1);
+}
+
+.floating-panel-close:active {
+    background: #222;
+    transform: scale(0.95);
+}
+
+body.light-theme .floating-panel-close {
+    background: #e0e0e0;
+    color: #333;
+    border-color: #bbb;
+}
+
+body.light-theme .floating-panel-close:hover {
+    background: #d0d0d0;
+}
+
+body.light-theme .floating-panel-close:active {
+    background: #c0c0c0;
+}
+
+/* Mobile styles */
+@media screen and (max-width: 768px) {
+    /* Floating panels become full-screen modals on mobile */
+    .floating-panel,
+    #coordinate-editor-panel,
+    #gradient-panel,
+    #rendering-panel {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        width: 100% !important;
+        height: 100vh !important;
+        max-width: 100% !important;
+        max-height: 100vh !important;
+        border-radius: 0 !important;
+        z-index: 20000 !important; /* Above mobile controls (10) and mobile menu bar (10000) */
+        overflow-y: auto !important;
+        padding-top: 60px !important; /* Space for close button */
+    }
+
+    /* Show floating panel close buttons on mobile */
+    .floating-panel .floating-panel-close {
+        display: flex !important;
+        z-index: 99999 !important; /* Ensure above menu bar (10001) */
+    }
+
+    /* Hide mobile menu bar when floating panels are open */
+    #mobile-menu-bar {
+        pointer-events: auto;
+    }
+
+    body:has(.floating-panel[style*="display: block"]) #mobile-menu-bar,
+    body:has(.floating-panel[style*="display: flex"]) #mobile-menu-bar {
+        display: none;
+    }
+}

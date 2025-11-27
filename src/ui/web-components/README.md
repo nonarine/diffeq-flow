@@ -7,11 +7,32 @@ This directory contains the Web Component-based control system implementation.
 ```
 web-components/
 ├── index.js          - Main export, registers all components
-├── base.js           - ControlElement base class with reactive binding
-├── slider.js         - MySlider component (linear slider)
-├── log-slider.js     - MyLogSlider component (logarithmic slider)
+├── base.js           - ControlElement base class with reactive binding (uses mixins)
+├── slider.js         - LinearSlider component (linear slider)
+├── log-slider.js     - LogSlider component (logarithmic slider)
 └── README.md         - This file
+
+../mixins/
+├── control-mixin.js  - ControlManager integration mixins
+├── index.js          - Mixin exports
+└── README.md         - Mixin documentation
 ```
+
+## Architecture
+
+**ControlElement** = Reactive binding system + Control interface mixins
+
+ControlElement uses **composition via mixins** to provide the Control interface:
+- **ControlMixin** - Save/load/apply integration with ControlManager
+- **ButtonActionMixin** - Automatic button registration (+/- buttons)
+- **AttributeHelpersMixin** - Typed attribute readers
+
+This means:
+- ✅ Control interface is reusable (not locked to ControlElement)
+- ✅ Other components can use mixins without inheriting ControlElement
+- ✅ Reduced code duplication (~150 lines extracted to mixins)
+
+See [`../mixins/README.md`](../mixins/README.md) for mixin documentation.
 
 ## Usage
 
@@ -364,6 +385,70 @@ this.addInputListener(element, callback); // No debounce
 ### Other Utilities
 - `formatValue(value)` - Format value for display
 - `triggerChange()` - Trigger onChange and ControlManager callbacks
+
+## Creating Custom Components with Mixins
+
+You can create custom controls using just the mixins, without inheriting from ControlElement:
+
+```javascript
+import { composeMixins, ControlMixin, ButtonActionMixin, AttributeHelpersMixin } from '../mixins/index.js';
+
+class ColorPicker extends composeMixins(
+    HTMLElement,
+    ControlMixin,
+    ButtonActionMixin,
+    AttributeHelpersMixin
+) {
+    connectedCallback() {
+        // Initialize control properties (settingsKey, defaultValue)
+        this.initializeControlProperties();
+
+        // Read attributes
+        this.defaultValue = this.getAttribute('default') || '#000000';
+
+        // Set up UI
+        this.innerHTML = `
+            <input type="color" value="${this.defaultValue}">
+            <button reset>Reset</button>
+        `;
+
+        this.input = this.querySelector('input');
+        this.input.addEventListener('input', () => this.triggerChange());
+
+        this.registerActionButtons(['reset']);
+    }
+
+    getValue() {
+        return this.input.value;
+    }
+
+    setValue(value) {
+        this.input.value = value;
+    }
+
+    handleButtonAction(action) {
+        if (action === 'reset') {
+            this.setValue(this.defaultValue);
+            this.triggerChange();
+            return true;
+        }
+        return false;
+    }
+}
+
+customElements.define('color-picker', ColorPicker);
+```
+
+**HTML:**
+```html
+<color-picker
+    id="background-color"
+    settings-key="backgroundColor"
+    default="#ffffff">
+</color-picker>
+```
+
+This gives you ControlManager integration (save/load/apply) without the ControlElement template system.
 
 ## Testing
 

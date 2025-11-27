@@ -108,7 +108,6 @@ export class Renderer {
         this.colorMode = 'white';
         this.colorExpression = 'x * y'; // Default expression for expression mode
         this.colorGradient = getDefaultGradient(); // Default gradient
-        this.useCustomGradient = false; // Apply custom gradient to preset modes
         this.velocityScaleMode = 'percentile95'; // 'max', 'average', 'percentile90', 'percentile95'
         this.velocityLogScale = false; // Use logarithmic scaling for velocity colors
 
@@ -162,7 +161,7 @@ export class Renderer {
         this.timestep = 0.01;
         this.fadeOpacity = 0.99;
         this.dropProbability = 0.003;
-        this.dropLowVelocity = false; // Drop particles below velocity threshold
+        this.respawnMargin = 0.2; // Margin (as fraction of viewport) for respawning particles
 
         // Animation support
         this.animationAlpha = 0.0; // Alpha parameter for animation (0.0 to 1.0)
@@ -556,19 +555,15 @@ export class Renderer {
                 // Generate complete color function
                 colorCode = generateExpressionColorMode(this.dimensions, expressionGLSL, gradientGLSL);
             }
-            // Handle custom gradient for preset modes
-            else if (this.useCustomGradient &&
-                     (this.colorMode === 'velocity_magnitude' ||
-                      this.colorMode === 'velocity_angle' ||
-                      this.colorMode === 'velocity_combined')) {
+            // Handle gradient-based color modes (always use current gradient)
+            else if (colorMode.usesGradient) {
                 // Generate gradient GLSL
                 const gradientGLSL = generateGradientGLSL(this.colorGradient);
 
                 // Generate gradient-based version of the preset mode
                 colorCode = generateGradientColorMode(this.colorMode, this.dimensions, gradientGLSL);
 
-                // These modes still use max velocity
-                usesMaxVelocity = this.colorMode === 'velocity_magnitude' || this.colorMode === 'velocity_combined';
+                // usesMaxVelocity already set from colorMode
             }
 
             // Create update program
@@ -739,11 +734,10 @@ export class Renderer {
         gl.uniform1f(gl.getUniformLocation(program, 'u_h'), this.timestep * (this.integratorCostFactor || 1));
         gl.uniform1f(gl.getUniformLocation(program, 'u_rand_seed'), randSeed);
         gl.uniform1f(gl.getUniformLocation(program, 'u_drop_rate'), this.dropProbability);
+        gl.uniform1f(gl.getUniformLocation(program, 'u_respawn_margin'), this.respawnMargin);
         gl.uniform1f(gl.getUniformLocation(program, 'u_particles_res'), resolution);
         const velocityScale = this.getVelocityScale();
         gl.uniform1f(gl.getUniformLocation(program, 'u_max_velocity'), velocityScale);
-        gl.uniform1f(gl.getUniformLocation(program, 'u_drop_low_velocity'), this.dropLowVelocity ? 1.0 : 0.0);
-        gl.uniform1f(gl.getUniformLocation(program, 'u_velocity_threshold'), this.lowVelocityThreshold);
 
         // Set animation alpha parameter (for time-based expressions)
         const alphaLoc = gl.getUniformLocation(program, 'u_alpha');
@@ -1901,12 +1895,6 @@ export class Renderer {
             }
         }
 
-        if (config.useCustomGradient !== undefined && config.useCustomGradient !== this.useCustomGradient) {
-            logger.info(`Changing custom gradient usage: ${this.useCustomGradient} → ${config.useCustomGradient}`);
-            this.useCustomGradient = config.useCustomGradient;
-            needsRecompile = true;
-        }
-
         if (config.velocityScaleMode !== undefined && config.velocityScaleMode !== this.velocityScaleMode) {
             logger.info(`Changing velocity scale mode: ${this.velocityScaleMode} → ${config.velocityScaleMode}`);
             this.velocityScaleMode = config.velocityScaleMode;
@@ -1931,9 +1919,9 @@ export class Renderer {
             logger.verbose(`Drop probability: ${this.dropProbability} → ${config.dropProbability}`);
             this.dropProbability = config.dropProbability;
         }
-        if (config.dropLowVelocity !== undefined) {
-            logger.verbose(`Drop low velocity: ${this.dropLowVelocity} → ${config.dropLowVelocity}`);
-            this.dropLowVelocity = config.dropLowVelocity;
+        if (config.respawnMargin !== undefined) {
+            logger.verbose(`Respawn margin: ${this.respawnMargin} → ${config.respawnMargin}`);
+            this.respawnMargin = config.respawnMargin;
         }
 
         // Animation settings

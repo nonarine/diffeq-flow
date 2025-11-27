@@ -11,11 +11,9 @@ import {
     AdaptiveSliderControl,
     TimestepControl,
     TextControl,
-    SelectControl,
     CheckboxControl
 } from './control-base.js';
-import { AnimatableSliderControl } from './animatable-slider.js';
-import { AnimatableTimestepControl } from './animatable-timestep.js';
+// AnimatableSliderControl and AnimatableTimestepControl replaced with web components
 import { AnimatableParameterControl } from './parameter-control.js';
 import { DimensionInputsControl, MapperParamsControl, GradientControl, TransformParamsControl } from './custom-controls.js';
 import { initGradientEditor } from './gradient-editor.js';
@@ -25,6 +23,7 @@ import { getDefaultGradient } from '../math/gradients.js';
 import { logger } from '../utils/debug-logger.js';
 import { resizeAccordion } from './accordion-utils.js';
 import { WebComponentControlRegistry } from './web-component-registry.js';
+import { AnimationController } from '../animation/animation-controller.js';
 
 /**
  * Initialize UI controls with ControlManager
@@ -32,6 +31,9 @@ import { WebComponentControlRegistry } from './web-component-registry.js';
  * @param {Function} callback - Called when initialization is complete
  */
 export function initControls(renderer, callback) {
+    // Track previous dimensions to detect changes
+    let previousDimensions = null;
+
     // Create the control manager
     const manager = new ControlManager({
         renderer: renderer,  // Pass renderer for coordinate system handling
@@ -43,10 +45,38 @@ export function initControls(renderer, callback) {
                 settings.integratorParams = { iterations: settings.implicitIterations };
             }
 
+            // Update expression inputs BEFORE applying to renderer if dimensions changed
+            // This ensures settings.expressions has the correct length
+            const currentDimensions = settings.dimensions;
+            if (currentDimensions !== previousDimensions) {
+                const expressionsControl = manager.get('dimension-inputs');
+                if (expressionsControl) {
+                    expressionsControl.updateInputs(currentDimensions);
+                    // Re-get expressions with correct length
+                    settings.expressions = expressionsControl.getValue();
+                }
+
+                // Update mapper params control if dimensions changed
+                const mapperParamsControl = manager.get('mapper-params');
+                if (mapperParamsControl) {
+                    mapperParamsControl.updateControls();
+                }
+
+                previousDimensions = currentDimensions;
+            }
+
             // Apply settings directly to renderer
             // Allow temporary error states (e.g. dimension/coordinate system mismatch)
             // Shader compilation will fail gracefully and user can fix it
             renderer.updateConfig(settings);
+
+            // Update coordinate system (just updates variable names, doesn't rebuild DOM)
+            if (renderer.coordinateSystem) {
+                const expressionsControl = manager.get('dimension-inputs');
+                if (expressionsControl) {
+                    expressionsControl.setCoordinateSystem(renderer.coordinateSystem, false);
+                }
+            }
 
             // Save to localStorage (including bbox for pan/zoom state and coordinate system)
             const settingsToSave = manager.getSettings();
@@ -71,24 +101,10 @@ export function initControls(renderer, callback) {
     // Store registry on manager for access in other functions (like loadPreset)
     manager.webComponentRegistry = webComponentRegistry;
 
-    // Animation state variables
-    let animationRunning = false; // Is animation currently running
-    let animationFrameId = null; // requestAnimationFrame ID
-    let animationDirection = 1; // 1 for forward, -1 for backward
-    let animationStepsPerIncrement = 10; // Default value, updated by animation-speed control
-    let animationStepCounter = 0; // Tracks frames for animation stepping
-    let shaderLockWasEnabled = false; // Track if we enabled shader lock for this animation
-    let animationAlphaControl = null; // Animation alpha control (registered after HTML injection)
-    let animationSpeedControl = null; // Animation speed control (registered after HTML injection)
-
-    // Timing smoothing state - Asymmetric EMA to track high percentile (slow frames)
-    const ALPHA_STEP_TIME_TARGET_PERCENTILE = 95; // Target percentile to track (higher = smoother but slower to adapt)
-    const ALPHA_STEP_TIME_DECAY = 0.002; // Base decay rate when frames are faster than EMA
-    // Calculate upward tracking rate using rule of thumb: ratio = P/(100-P)
-    const ALPHA_STEP_TIME_UPWARD = (ALPHA_STEP_TIME_TARGET_PERCENTILE / (100 - ALPHA_STEP_TIME_TARGET_PERCENTILE)) * ALPHA_STEP_TIME_DECAY;
-    const ALPHA_STEP_TIME_WARMUP_CYCLES = 3; // Number of alpha cycles to skip before initializing EMA (warm-up period)
-    const ALPHA_STEP_TIME_DISPLAY_INTERVAL = 10; // Update step time display every N alpha cycles (reduce UI overhead)
-    let alphaStepTimeEMA = null; // Asymmetric EMA tracking ~95th percentile of step time (ms)
+    // Create Animation Controller
+    const animationController = new AnimationController(renderer, manager);
+    // Make it globally accessible for debugging
+    window.animationController = animationController;
 
     // ========================================
     // Register all controls
@@ -96,10 +112,12 @@ export function initControls(renderer, callback) {
 
     // === Dimension and integration controls ===
 
-
-    const integratorControl = manager.register(new SelectControl('integrator', 'rk2', {
-        settingsKey: 'integratorType',
-        onChange: (value) => {
+    // Integrator select (web component with onChange handler)
+    webComponentRegistry.register('select-control', 'integrator');
+    const integratorElement = document.getElementById('integrator');
+    if (integratorElement) {
+        integratorElement.addEventListener('change', () => {
+            const value = integratorElement.getValue();
             // Show/hide implicit method controls based on integrator type
             const isImplicit = value.startsWith('implicit-') || value === 'trapezoidal';
             $('#implicit-iterations-group').toggle(isImplicit);
@@ -107,87 +125,72 @@ export function initControls(renderer, callback) {
 
             // Resize accordion to accommodate shown/hidden controls
             resizeAccordion('#integrator', 0);
-        }
-    }));
+        });
+    }
 
-    const solutionMethodControl = manager.register(new SelectControl('solution-method', 'fixed-point', {
-        settingsKey: 'solutionMethod'
-    }));
+    // Solution method select
+    webComponentRegistry.register('select-control', 'solution-method');
 
-    const timestepControl = manager.register(new AnimatableTimestepControl('timestep', 0.01, {
-        min: 0.001,
-        max: 2.5,
-        step: 0.001,
-        smallIncrement: 0.001,  // - and + buttons
-        largeIncrement: 0.01,   // -- and ++ buttons
-        displayId: 'timestep-value',
-        displayFormat: v => v.toFixed(4),
-        animationMin: 0.001,    // Animation range: 0.001 to 0.1
-        animationMax: 0.1
-    }));
+    // Timestep slider with custom increment buttons
+    webComponentRegistry.register('animatable-timestep', 'timestep');
 
     // === Particle controls ===
 
-    const fadeControl = manager.register(new AnimatableSliderControl('fade', 0.999, {
-        settingsKey: 'fadeOpacity',
-        min: 0,
-        max: 100,
-        step: 0.1,
-        displayId: 'fade-value',
-        displayFormat: v => v.toFixed(4),
-        // Transform slider [0-100] to log scale [0.9-0.9999]
-        transform: (sliderValue) => {
-            const minLog = Math.log(0.9);
-            const maxLog = Math.log(0.9999);
-            const scale = (maxLog - minLog) / 100;
-            return Math.exp(minLog + scale * sliderValue);
-        },
-        inverseTransform: (value) => {
-            const minLog = Math.log(0.9);
-            const maxLog = Math.log(0.9999);
-            const scale = (maxLog - minLog) / 100;
-            return (Math.log(value) - minLog) / scale;
-        },
-        animationMin: 0.95,
-        animationMax: 0.9995
-    }));
+    // Fade slider with custom logarithmic transform
+    webComponentRegistry.register('animatable-slider', 'fade').then(el => {
+        if (el) {
+            // Import and apply fade transform
+            import('./web-components/animatable-slider.js').then(module => {
+                const { createFadeTransform } = module;
+                const { transform, inverseTransform } = createFadeTransform();
+                el.setCustomTransform(transform, inverseTransform);
 
-    const dropLowVelocityControl = manager.register(new CheckboxControl('drop-low-velocity', false, {
-        settingsKey: 'dropLowVelocity'
-    }));
+                // Update bounds display now that transform is set
+                if (el.updateBoundsDisplay) {
+                    el.updateBoundsDisplay();
+                }
+            });
+        }
+    });
+
+    // drop-low-velocity is now a web component with settings-key
 
     // === Transform controls ===
 
-    const transformControl = manager.register(new SelectControl('transform', 'identity', {
-        settingsKey: 'transformType',
-        onChange: (value) => {
+    // Transform select (web component with onChange handler)
+    webComponentRegistry.register('select-control', 'transform');
+    const transformElement = document.getElementById('transform');
+    if (transformElement) {
+        transformElement.addEventListener('change', () => {
             // Update transform params UI when transform type changes
             const transformParamsControl = manager.get('transform-params');
             if (transformParamsControl) {
                 transformParamsControl.updateControls();
             }
-        }
-    }));
+        });
+    }
 
     const transformParamsControl = manager.register(new TransformParamsControl({}, {
         settingsKey: 'transformParams'
     }));
 
-    // Set up transform params cross-reference
-    transformParamsControl.setTransformControl(transformControl);
+    // Set up transform params cross-reference (pass web component element)
+    transformParamsControl.setTransformControl(transformElement);
 
     // === Mapper controls ===
 
-    const mapperControl = manager.register(new SelectControl('mapper', 'select', {
-        settingsKey: 'mapperType',
-        onChange: (value) => {
+    // Mapper select (web component with onChange handler)
+    webComponentRegistry.register('select-control', 'mapper');
+    const mapperElement = document.getElementById('mapper');
+    if (mapperElement) {
+        mapperElement.addEventListener('change', () => {
             // Update mapper params UI when mapper type changes
             const mapperParamsControl = manager.get('mapper-params');
             if (mapperParamsControl) {
                 mapperParamsControl.updateControls();
             }
-        }
-    }));
+        });
+    }
 
     const mapperParamsControl = manager.register(new MapperParamsControl({ dim1: 0, dim2: 1 }, {
         settingsKey: 'mapperParams'
@@ -196,38 +199,34 @@ export function initControls(renderer, callback) {
     // Set up mapper params cross-references
     // Note: dimensions is now a Web Component, get it via DOM
     const dimensionsElement = document.getElementById('dimensions');
-    mapperParamsControl.setRelatedControls(dimensionsElement, mapperControl);
+    mapperParamsControl.setRelatedControls(dimensionsElement, mapperElement);
 
     // === Color mode controls ===
 
-    const colorModeControl = manager.register(new SelectControl('color-mode', 'velocity_angle', {
-        settingsKey: 'colorMode',
-        onChange: (value) => {
+    // Color mode select (web component with onChange handler)
+    webComponentRegistry.register('select-control', 'color-mode');
+    const colorModeElement = document.getElementById('color-mode');
+    if (colorModeElement) {
+        colorModeElement.addEventListener('change', () => {
+            const value = colorModeElement.getValue();
             updateExpressionControls(value);
             updateGradientButtonVisibility(value);
             updateVelocityScalingVisibility(value);
-        }
-    }));
+        });
+    }
 
     const colorExpressionControl = manager.register(new TextControl('color-expression', 'x * y', {
         settingsKey: 'colorExpression'
-    }));
-
-    const useCustomGradientControl = manager.register(new CheckboxControl('use-custom-gradient', false, {
-        settingsKey: 'useCustomGradient'
     }));
 
     const gradientControl = manager.register(new GradientControl(getDefaultGradient(), {
         settingsKey: 'colorGradient'
     }));
 
-    const velocityScaleModeControl = manager.register(new SelectControl('velocity-scale-mode', 'percentile95', {
-        settingsKey: 'velocityScaleMode'
-    }));
+    // Velocity scale mode select (web component)
+    webComponentRegistry.register('select-control', 'velocity-scale-mode');
 
-    const velocityLogScaleControl = manager.register(new CheckboxControl('velocity-log-scale', false, {
-        settingsKey: 'velocityLogScale'
-    }));
+    // velocity-log-scale is now a web component with settings-key
 
     // === Expression inputs (custom control) ===
 
@@ -235,22 +234,22 @@ export function initControls(renderer, callback) {
         settingsKey: 'expressions'
     }));
 
-    const useHDRControl = manager.register(new CheckboxControl('use-hdr', true, {
-        settingsKey: 'useHDR'
-    }));
-
-    const useDepthTestControl = manager.register(new CheckboxControl('use-depth-test', false, {
-        settingsKey: 'useDepthTest'
-    }));
+    // use-hdr and use-depth-test are now web components with settings-key
 
     // === Tone mapping controls ===
 
-    const tonemapOperatorControl = manager.register(new SelectControl('tonemap-operator', 'aces', {
-        settingsKey: 'tonemapOperator',
-        onChange: (value) => {
+    // Tonemap operator select (web component with onChange handler)
+    webComponentRegistry.register('select-control', 'tonemap-operator');
+    const tonemapElement = document.getElementById('tonemap-operator');
+    if (tonemapElement) {
+        tonemapElement.addEventListener('change', () => {
+            const value = tonemapElement.getValue();
             updateWhitePointVisibility(value);
-        }
-    }));
+        });
+    }
+
+    // Particle render mode select (web component)
+    webComponentRegistry.register('select-control', 'particle-render-mode');
 
     // === Render Scale (formerly Supersampling) ===
     // Allows rendering at different resolutions (0.5x for performance, 2x+ for quality)
@@ -262,22 +261,11 @@ export function initControls(renderer, callback) {
             el.onChange = (value) => {
                 logger.verbose('Dimensions changed to:', value);
 
-                // Update dimension inputs when dimensions change
+                // Update dimension inputs immediately (before debounced apply)
                 const expressionsControl = manager.get('dimension-inputs');
-                if (expressionsControl && renderer.coordinateSystem) {
+                if (expressionsControl) {
                     logger.verbose('Updating dimension inputs with dimensions:', value);
-                    if (renderer.coordinateSystem.dimensions === value) {
-                        expressionsControl.setCoordinateSystem(renderer.coordinateSystem);
-                        expressionsControl.updateInputs(value);
-                    } else {
-                        logger.warn(`Coordinate system dimension mismatch...`);
-                    }
-                }
-
-                // Update mapper controls
-                const mapperParamsControl = manager.get('mapper-params');
-                if (mapperParamsControl) {
-                    mapperParamsControl.updateControls();
+                    expressionsControl.updateInputs(value);
                 }
             };
         }
@@ -320,46 +308,48 @@ export function initControls(renderer, callback) {
     webComponentRegistry.register('percent-slider', 'color-saturation');
     webComponentRegistry.register('percent-slider', 'brightness-desat');
     webComponentRegistry.register('percent-slider', 'saturation-buildup');
+    webComponentRegistry.register('percent-slider', 'respawn-margin');
 
-    const frameLimitEnabledControl = manager.register(new CheckboxControl('frame-limit-enabled', false, {
-        settingsKey: 'frameLimitEnabled',
-        onChange: (value) => {
+    // Checkboxes (all migrated to web components)
+    webComponentRegistry.register('check-box', 'velocity-log-scale');
+    webComponentRegistry.register('check-box', 'show-grid');
+    webComponentRegistry.register('check-box', 'frame-limit-enabled');
+    webComponentRegistry.register('check-box', 'use-hdr');
+    webComponentRegistry.register('check-box', 'use-depth-test');
+    webComponentRegistry.register('check-box', 'smaa-enabled');
+    webComponentRegistry.register('check-box', 'bilateral-enabled');
+    webComponentRegistry.register('check-box', 'bloom-enabled');
+    webComponentRegistry.register('check-box', 'animation-clear-particles');
+    webComponentRegistry.register('check-box', 'animation-clear-screen');
+    webComponentRegistry.register('check-box', 'animation-smooth-timing');
+    webComponentRegistry.register('check-box', 'animation-lock-shaders');
+    webComponentRegistry.register('check-box', 'animation-half-loops');
+
+    // frame-limit-enabled is now a web component with settings-key
+    // Wire up the onChange behavior for renderer integration
+    const frameLimitEnabledCheckbox = document.getElementById('frame-limit-enabled');
+    if (frameLimitEnabledCheckbox) {
+        frameLimitEnabledCheckbox.addEventListener('change', () => {
             if (window.renderer) {
-                window.renderer.frameLimitEnabled = value;
+                window.renderer.frameLimitEnabled = frameLimitEnabledCheckbox.getValue();
             }
-        }
-    }));
+        });
+    }
 
     // === Animation controls ===
-    // Note: animationAlphaControl and animationSpeedControl are registered later
-    // after their HTML is dynamically injected (see Animation Panel Initialization section)
-
-    // Animation clear checkboxes
-    manager.register(new CheckboxControl('animation-clear-particles', false, {
-        settingsKey: 'animationClearParticles'
-    }));
-
-    manager.register(new CheckboxControl('animation-clear-screen', false, {
-        settingsKey: 'animationClearScreen'
-    }));
-
-    manager.register(new CheckboxControl('animation-smooth-timing', false, {
-        settingsKey: 'animationSmoothTiming'
-    }));
-
-    manager.register(new CheckboxControl('animation-lock-shaders', false, {
-        settingsKey: 'animationLockShaders'
-        // Note: This is a UI preference only - lock is applied during animation playback
-        // Does NOT map to renderer.lockShaderRecompilation (which is runtime state only)
-    }));
+    // Animation checkboxes are now web components with settings-key
+    // Event handlers are wired up below in the animation section
 
     logger.info('Animation alpha control registered');
 
     // === Theme control (special handling for immediate application) ===
 
-    const themeControl = manager.register(new SelectControl('theme-selector', 'dark', {
-        settingsKey: 'theme',
-        onChange: (value) => {
+    // Theme select (web component with onChange handler for immediate application)
+    webComponentRegistry.register('select-control', 'theme-selector');
+    const themeElement = document.getElementById('theme-selector');
+    if (themeElement) {
+        themeElement.addEventListener('change', () => {
+            const value = themeElement.getValue();
             // Apply theme immediately (no debounce)
             if (value === 'light') {
                 $('body').addClass('light-theme');
@@ -368,8 +358,8 @@ export function initControls(renderer, callback) {
             }
             // Save immediately
             manager.saveToStorage();
-        }
-    }));
+        });
+    }
 
     // ========================================
     // Non-managed controls (special buttons)
@@ -537,16 +527,6 @@ export function initControls(renderer, callback) {
         const sliderId = $(this).data('slider');
         const action = $(this).data('action');
 
-        // Handle mobile timestep buttons by delegating to main timestep control
-        if (sliderId === 'mobile-timestep') {
-            const timestepControl = manager.get('timestep');
-            if (timestepControl && timestepControl.handleButtonAction) {
-                timestepControl.handleButtonAction(action);
-                // Mobile slider will auto-sync via the change listener
-            }
-            return;
-        }
-
         // Try to get the registered control
         const control = manager.get(sliderId);
         if (control && control.handleButtonAction) {
@@ -579,6 +559,13 @@ export function initControls(renderer, callback) {
         updateGradientButtonVisibility(manager.get('color-mode').getValue());
         panel.show();
 
+        // Force z-index for mobile (ensure above menu bar)
+        if (window.innerWidth <= 768) {
+            panel.css({'z-index': '20000', 'position': 'fixed'});
+            panel.find('.floating-panel-close').css('z-index', '99999');
+            $('#menu-bar').css('z-index', '1');
+        }
+
         // Initialize gradient editor if not already done
         if (!gradientEditor) {
             gradientEditor = initGradientEditor(
@@ -597,11 +584,24 @@ export function initControls(renderer, callback) {
 
     function hideGradientPanel() {
         $('#gradient-panel').hide();
+        // Restore menu bar z-index on mobile
+        if (window.innerWidth <= 768) {
+            $('#menu-bar').css('z-index', '10001');
+        }
     }
 
     // Open gradient editor button
     $('#open-gradient-editor').on('click', function() {
         showGradientPanel();
+    });
+
+    // Reset gradient to default button
+    $('#reset-gradient').on('click', function() {
+        const defaultGradient = getDefaultGradient();
+        if (gradientEditor) {
+            gradientEditor.setGradient(defaultGradient);
+            gradientControl.notifyChange(defaultGradient);
+        }
     });
 
     // Configure coordinates button
@@ -653,12 +653,25 @@ export function initControls(renderer, callback) {
     // ========================================
 
     function showRenderingPanel() {
-        $('#rendering-panel').show();
+        const panel = $('#rendering-panel');
+        panel.show();
+
+        // Force z-index for mobile (ensure above menu bar)
+        if (window.innerWidth <= 768) {
+            panel.css({'z-index': '20000', 'position': 'fixed'});
+            panel.find('.floating-panel-close').css('z-index', '99999');
+            $('#menu-bar').css('z-index', '1');
+        }
+
         updateWhitePointVisibility(manager.get('tonemap-operator').getValue());
     }
 
     function hideRenderingPanel() {
         $('#rendering-panel').hide();
+        // Restore menu bar z-index on mobile
+        if (window.innerWidth <= 768) {
+            $('#menu-bar').css('z-index', '10001');
+        }
     }
 
     $('#open-rendering-settings').on('click', function() {
@@ -731,585 +744,355 @@ export function initControls(renderer, callback) {
         }
     });
 
-    // Animation timing and caching state
-    let alphaStepStartTime = null; // Timestamp when current alpha cycle started
-    let alphaStepWarmupCounter = 0; // Counter for warm-up cycles
-    let alphaStepDisplayCounter = 0; // Counter for display updates
-    let cachedAnimatableControls = null; // Cached list of animatable controls (populated when animation starts)
-    let cachedAnimatableParams = null; // Cached list of animatable parameter controls
-    let lastAppliedSettings = null; // Track last applied settings to detect changes
-    let savedLoggerVerbosity = null; // Save logger verbosity level during animation
+    // ========================================
+    // Animation Panel Setup
+    // ========================================
 
-    // Frame capture state
-    let capturedFrames = [];
-    let frameCaptureMode = null; // null, 'continuous', or 'fixed'
-    let frameCaptureTotal = 0;
-    let frameCaptureCount = 0;
-    let frameCaptureAlphaIncrement = 0.01;
+    // Register animation web components and set controller
+    const animationAlphaElement = document.getElementById('animation-alpha');
+    const animationSpeedElement = document.getElementById('animation-speed');
 
-    // Start animation function (used by both play button and create animation)
-    function startAnimation(options = {}) {
-        const {
-            captureFrames = false,
-            totalFrames = 0,
-            loops = 1,
-            halfLoops = false,
-            onProgress = null,
-            onComplete = null
-        } = options;
-
-        // Stop if already running
-        if (animationRunning) return;
-
-        // Setup frame capture if requested
-        if (captureFrames) {
-            frameCaptureMode = 'fixed';
-            frameCaptureTotal = totalFrames;
-            frameCaptureCount = 0;
-            capturedFrames = [];
-            // Calculate alpha increment based on half-loops mode
-            // halfLoops=false: each loop goes 0->1->0 (2 ranges per loop)
-            // halfLoops=true: each loop goes 0->1 (1 range per loop)
-            const rangesPerLoop = halfLoops ? 1.0 : 2.0;
-            frameCaptureAlphaIncrement = (loops * rangesPerLoop) / totalFrames;
-        } else {
-            frameCaptureMode = 'continuous';
-            frameCaptureAlphaIncrement = 0.01;
-        }
-
-        // Start animation
-        animationRunning = true;
-
-        // Pause main renderer loop so we have full control
-        if (window.renderer) {
-            window.renderer.stop();
-        }
-
-        // Reset step counter and timing state when starting animation
-        animationStepCounter = 0;
-        alphaStepTimeEMA = null;
-        alphaStepStartTime = null;
-        alphaStepWarmupCounter = 0;
-        alphaStepDisplayCounter = 0;
-        lastAppliedSettings = null;
-
-        // Lock shaders if checkbox is enabled
-        const shouldLockShaders = $('#animation-lock-shaders').is(':checked');
-        if (shouldLockShaders && renderer) {
-            renderer.lockShaderRecompilation = true;
-            shaderLockWasEnabled = true;
-            logger.info('Shader recompilation lock ENABLED (animation started)', null, false);
-        } else {
-            shaderLockWasEnabled = false;
-        }
-
-        // Buffer logs during animation (will be flushed when animation stops)
-        savedLoggerVerbosity = logger.verbosity;
-        logger.setVerbosity('silent');
-
-        // Cache animatable controls to avoid repeated DOM queries and instanceof checks
-        cachedAnimatableControls = [];
-        manager.controls.forEach((control) => {
-            if (control instanceof AnimatableSliderControl) {
-                cachedAnimatableControls.push(control);
-            }
-        });
-
-        // Cache animatable parameter controls
-        cachedAnimatableParams = [];
-        const transformParamsControl = manager.controls.get('transform-params');
-        if (transformParamsControl && transformParamsControl.parameterControls) {
-            transformParamsControl.parameterControls.forEach((paramControl) => {
-                if (paramControl instanceof AnimatableParameterControl) {
-                    cachedAnimatableParams.push(paramControl);
-                }
-            });
-        }
-
-        // Animation loop that performs integration steps
-        const animationLoop = () => {
-            if (!animationRunning) {
-                return; // Animation was stopped
-            }
-
-            const freezeScreen = $('#animation-clear-screen').is(':checked');
-            const smoothTiming = $('#animation-smooth-timing').is(':checked');
-
-            // Increment step counter
-            animationStepCounter++;
-
-            // Start timing on first step of alpha cycle
-            if (animationStepCounter === 1) {
-                // Clear shader recompilation flag (don't reset warm-up during animation)
-                if (window.renderer && window.renderer.shadersJustRecompiled) {
-                    window.renderer.shadersJustRecompiled = false;
-                }
-                alphaStepStartTime = performance.now();
-            }
-
-            // Check if we should increment alpha
-            if (animationStepCounter >= animationStepsPerIncrement) {
-                animationStepCounter = 0;
-
-                // If freeze mode: accumulate final step, display the buffer, THEN clear for next cycle
-                if (freezeScreen && window.renderer) {
-                    window.renderer.render(true);
-                }
-
-                // Calculate elapsed time for this alpha cycle
-                const alphaStepEndTime = performance.now();
-                const alphaStepElapsed = alphaStepEndTime - alphaStepStartTime;
-
-                // Update asymmetric EMA (tracks ~95th percentile) after warm-up
-                if (alphaStepWarmupCounter < ALPHA_STEP_TIME_WARMUP_CYCLES) {
-                    // Still warming up - skip this cycle and don't update EMA
-                    alphaStepWarmupCounter++;
-                } else if (alphaStepTimeEMA === null) {
-                    // Warm-up complete - initialize EMA from this cycle
-                    alphaStepTimeEMA = alphaStepElapsed;
-                } else {
-                    // Use asymmetric smoothing: fast upward tracking, slow downward decay
-                    if (alphaStepElapsed > alphaStepTimeEMA) {
-                        // Slower than EMA - track upward quickly
-                        alphaStepTimeEMA = ALPHA_STEP_TIME_UPWARD * alphaStepElapsed +
-                                          (1 - ALPHA_STEP_TIME_UPWARD) * alphaStepTimeEMA;
-                    } else {
-                        // Faster than EMA - decay slowly
-                        alphaStepTimeEMA = ALPHA_STEP_TIME_DECAY * alphaStepElapsed +
-                                          (1 - ALPHA_STEP_TIME_DECAY) * alphaStepTimeEMA;
-                    }
-                }
-
-                // Update step time display if smoothing is enabled (throttled to reduce UI overhead)
-                if (smoothTiming) {
-                    alphaStepDisplayCounter++;
-                    if (alphaStepDisplayCounter >= ALPHA_STEP_TIME_DISPLAY_INTERVAL) {
-                        alphaStepDisplayCounter = 0;
-                        if (alphaStepTimeEMA === null) {
-                            $('#step-time-counter').text(`Step: ${alphaStepElapsed.toFixed(1)}ms (warming up...)`);
-                        } else {
-                            $('#step-time-counter').text(`Step: ${alphaStepElapsed.toFixed(1)}ms (EMA: ${alphaStepTimeEMA.toFixed(1)}ms)`);
-                        }
-                        $('#step-time-counter').show();
-                    }
-                } else {
-                    $('#step-time-counter').hide();
-                }
-
-                let currentValue = animationAlphaControl.getValue();
-
-                // Update value based on direction and increment
-                currentValue += animationDirection * frameCaptureAlphaIncrement;
-
-                // Bounce at boundaries
-                if (currentValue >= 1.0) {
-                    currentValue = 1.0;
-                    animationDirection = -1;
-                } else if (currentValue <= 0.0) {
-                    currentValue = 0.0;
-                    animationDirection = 1;
-                }
-
-                // Update slider value WITHOUT triggering input event (avoid debounced apply)
-                animationAlphaControl.setValue(currentValue);
-
-                // Update all animatable controls based on alpha (use cached list)
-                for (let i = 0; i < cachedAnimatableControls.length; i++) {
-                    cachedAnimatableControls[i].updateFromAlpha(currentValue);
-                }
-
-                // Update animatable parameter controls (use cached list)
-                for (let i = 0; i < cachedAnimatableParams.length; i++) {
-                    cachedAnimatableParams[i].updateFromAlpha(currentValue);
-                }
-
-                // Manually update renderer with new alpha value and apply interpolated settings
-                if (window.renderer) {
-                    window.renderer.setAnimationAlpha(currentValue);
-
-                    // Build changed settings directly from animatable controls (avoid full getSettings() overhead)
-                    const changedSettings = {};
-
-                    // Collect values from animatable sliders
-                    for (let i = 0; i < cachedAnimatableControls.length; i++) {
-                        const control = cachedAnimatableControls[i];
-                        const newValue = control.getValue();
-                        if (lastAppliedSettings === null || newValue !== lastAppliedSettings[control.settingsKey]) {
-                            changedSettings[control.settingsKey] = newValue;
-                        }
-                    }
-
-                    // Collect values from animatable parameters
-                    for (let i = 0; i < cachedAnimatableParams.length; i++) {
-                        const paramControl = cachedAnimatableParams[i];
-                        const newValue = paramControl.getValue();
-                        const paramKey = paramControl.parameterName;
-
-                        // Build transformParams object
-                        if (!changedSettings.transformParams) {
-                            changedSettings.transformParams = lastAppliedSettings?.transformParams ? {...lastAppliedSettings.transformParams} : {};
-                        }
-
-                        if (lastAppliedSettings === null || newValue !== lastAppliedSettings.transformParams?.[paramKey]) {
-                            changedSettings.transformParams[paramKey] = newValue;
-                        }
-                    }
-
-                    // Apply changed settings to renderer (only if there are changes)
-                    if (Object.keys(changedSettings).length > 0) {
-                        try {
-                            window.renderer.updateConfig(changedSettings);
-
-                            // Update last applied settings
-                            if (lastAppliedSettings === null) {
-                                lastAppliedSettings = {};
-                            }
-                            Object.assign(lastAppliedSettings, changedSettings);
-                        } catch (error) {
-                            logger.error('Failed to apply animation settings:', error);
-                        }
-                    } else if (lastAppliedSettings === null) {
-                        // First cycle with no animatable settings - initialize tracking
-                        lastAppliedSettings = {};
-                    }
-
-                    // Check if we should clear particles
-                    if ($('#animation-clear-particles').is(':checked')) {
-                        window.renderer.resetParticles();
-                    }
-
-                    // If NOT freeze mode: render normally with display
-                    // (freeze mode already rendered and cleared earlier)
-                    if (!freezeScreen) {
-                        window.renderer.render(true);
-                    }
-
-                    if(freezeScreen) {
-                        window.renderer.clearRenderBuffer(true); // Clear without restarting main loop
-                    }
-
-                    // Capture frame if in frame capture mode
-                    if (frameCaptureMode === 'fixed') {
-                        // Capture the high-resolution render buffer
-                        window.renderer.captureRenderBuffer().then(function(blob) {
-                            capturedFrames.push(blob);
-                            frameCaptureCount++;
-
-                            // Call progress callback
-                            if (onProgress) {
-                                onProgress(frameCaptureCount, frameCaptureTotal, currentValue);
-                            }
-
-                            // Check if we're done
-                            if (frameCaptureCount >= frameCaptureTotal) {
-                                stopAnimation();
-                                if (onComplete) {
-                                    onComplete(capturedFrames);
-                                }
-                            }
-                        }).catch(function(error) {
-                            console.error('Failed to capture animation frame:', error);
-                            stopAnimation();
-                            alert('Failed to capture animation frame. Check console for details.');
-                        });
-                    }
-                }
-
-                // Alpha cycle complete - check if we need to delay for timing smoothing
-                if (smoothTiming && alphaStepTimeEMA !== null && alphaStepElapsed < alphaStepTimeEMA) {
-                    const delayNeeded = alphaStepTimeEMA - alphaStepElapsed;
-                    // Wait before starting next cycle
-                    setTimeout(() => {
-                        if (animationRunning) {
-                            animationFrameId = requestAnimationFrame(animationLoop);
-                        }
-                    }, delayNeeded);
-                    return; // Exit early, setTimeout will continue the loop
-                }
-            } else {
-                // Between alpha changes (steps 1 to N-1)
-                if (window.renderer) {
-                    if (freezeScreen) {
-                        // Freeze mode: accumulate in hidden buffer (don't display yet)
-                        window.renderer.render(false);
-                    } else {
-                        // Normal mode: render and display continuously
-                        window.renderer.render(true);
-                    }
-                }
-            }
-
-            // Continue animation loop if still running
-            if (animationRunning) {
-                animationFrameId = requestAnimationFrame(animationLoop);
-            }
-        };
-
-        // Start the animation loop
-        animationFrameId = requestAnimationFrame(animationLoop);
+    if (animationAlphaElement) {
+        animationAlphaElement.setController(animationController);
+        // Register with control manager for save/restore
+        webComponentRegistry.register('animation-alpha', 'animation-alpha');
+        logger.info('Animation alpha web component registered');
     }
 
-    // Stop animation function
-    function stopAnimation() {
-        animationRunning = false;
-        if (animationFrameId !== null) {
-            cancelAnimationFrame(animationFrameId);
-            animationFrameId = null;
+    if (animationSpeedElement) {
+        animationSpeedElement.setController(animationController);
+        logger.info('Animation speed web component registered');
+    }
+
+    // Sync steps-per-increment to frame limit
+    const frameLimitElement = document.getElementById('frame-limit');
+    // Note: frameLimitEnabledCheckbox already declared above
+    const syncCheckboxElement = document.getElementById('sync-steps-to-frame-limit');
+
+    function syncStepsToFrameLimit() {
+        try {
+            console.log('syncStepsToFrameLimit called');
+            if (typeof syncCheckboxElement?.getValue !== 'function') { console.log('bail: syncCheckbox no getValue'); return; }
+            if (!syncCheckboxElement.getValue()) { console.log('bail: syncCheckbox not checked'); return; }
+            if (typeof animationSpeedElement?.getValue !== 'function') { console.log('bail: animationSpeed no getValue'); return; }
+            if (typeof frameLimitElement?.setValue !== 'function') { console.log('bail: frameLimit no setValue'); return; }
+
+            const steps = animationSpeedElement.getValue();
+            console.log('syncing steps:', steps);
+
+            // Update UI
+            frameLimitElement.setValue(steps);
+
+            // Enable frame limiting if not already
+            if (frameLimitEnabledCheckbox && !frameLimitEnabledCheckbox.getValue()) {
+                frameLimitEnabledCheckbox.setValue(true);
+            }
+
+            // Update renderer and restart
+            if (window.renderer) {
+                window.renderer.frameLimit = steps;
+                window.renderer.frameLimitEnabled = true;
+                window.renderer.totalFrames = 0; // Reset frame counter
+                window.renderer.clearRenderBuffer(); // Clear screen
+                window.renderer.resetParticles(); // Reset particle positions
+                if (!window.renderer.isRunning) {
+                    window.renderer.start();
+                }
+            }
+        } catch (e) {
+            console.warn('syncStepsToFrameLimit error:', e);
         }
+    }
 
-        // Resume main renderer loop
-        if (window.renderer && !window.renderer.isRunning) {
-            window.renderer.start();
+    // Sync when checkbox is checked (web component fires 'change' event)
+    syncCheckboxElement?.addEventListener('change', function() {
+        try {
+            if (typeof syncCheckboxElement.getValue === 'function' && syncCheckboxElement.getValue()) {
+                syncStepsToFrameLimit();
+            }
+        } catch (e) {
+            console.warn('sync checkbox change error:', e);
         }
+    });
 
-        // Hide step time counter
-        $('#step-time-counter').hide();
+    // Sync when animation speed changes (if checkbox is checked)
+    if (animationSpeedElement) {
+        animationSpeedElement.onChange = syncStepsToFrameLimit;
+    }
 
-        // Clear cached controls and settings
-        cachedAnimatableControls = null;
-        cachedAnimatableParams = null;
-        lastAppliedSettings = null;
+    // Register sync checkbox with web component registry
+    if (syncCheckboxElement) {
+        webComponentRegistry.register('check-box', 'sync-steps-to-frame-limit');
+    }
 
-        // Restore logger verbosity (this will auto-flush buffered logs)
-        if (savedLoggerVerbosity !== null) {
-            logger.setVerbosity(savedLoggerVerbosity);
-            savedLoggerVerbosity = null;
-        }
+    // Wire animation checkboxes to controller options
+    const animClearParticles = document.getElementById('animation-clear-particles');
+    const animClearScreen = document.getElementById('animation-clear-screen');
+    const animSmoothTiming = document.getElementById('animation-smooth-timing');
+    const animLockShaders = document.getElementById('animation-lock-shaders');
 
-        // Unlock shaders if we locked them
-        if (shaderLockWasEnabled && renderer) {
-            renderer.lockShaderRecompilation = false;
-            shaderLockWasEnabled = false;
-            logger.info('Shader recompilation lock DISABLED (animation stopped)');
-        }
+    if (animClearParticles) {
+        animClearParticles.addEventListener('change', function() {
+            animationController.setOptions({ clearParticles: animClearParticles.getValue() });
+        });
+    }
 
-        // Reset frame capture mode
-        frameCaptureMode = null;
+    if (animClearScreen) {
+        animClearScreen.addEventListener('change', function() {
+            animationController.setOptions({ clearScreen: animClearScreen.getValue() });
+        });
+    }
+
+    if (animSmoothTiming) {
+        animSmoothTiming.addEventListener('change', function() {
+            animationController.setOptions({ smoothTiming: animSmoothTiming.getValue() });
+        });
+    }
+
+    if (animLockShaders) {
+        animLockShaders.addEventListener('change', function() {
+            animationController.setOptions({ lockShaders: animLockShaders.getValue() });
+        });
     }
 
     // Update loops info text based on half-loops checkbox
-    $('#animation-half-loops').on('change', function() {
-        const isHalfLoops = $(this).is(':checked');
-        const infoText = isHalfLoops
-            ? 'Number of half cycles (1 = 0.0 → 1.0, 2 = 0.0 → 1.0 → 0.0)'
-            : 'Number of complete alpha cycles (0.0 → 1.0 → 0.0)';
-        $('#animation-loops-info').text(infoText);
-    });
+    const halfLoopsElement = document.getElementById('animation-half-loops');
+    if (halfLoopsElement) {
+        halfLoopsElement.addEventListener('change', function() {
+            const isHalfLoops = halfLoopsElement.getValue();
+            const infoText = isHalfLoops
+                ? 'Number of half cycles (1 = 0.0 → 1.0, 2 = 0.0 → 1.0 → 0.0)'
+                : 'Number of complete alpha cycles (0.0 → 1.0 → 0.0)';
+            $('#animation-loops-info').text(infoText);
+        });
+    }
 
     // Create Animation button - captures frames during alpha animation
-    $('#animation-create-btn').on('click', function() {
-        const createBtn = $(this);
+    const createAnimBtn = document.getElementById('animation-create-btn');
+    if (createAnimBtn) {
+        createAnimBtn.addEventListener('action', function() {
+            // Check if animation is currently running (stop mode)
+            if (animationController.isRunning) {
+                // Stop the animation early
+                animationController.stop();
 
-        // Check if button is in "stop" mode
-        if (createBtn.data('stop-animation')) {
-            // Stop the animation early
-            stopAnimation();
-
-            // Restore button state
-            createBtn.text('▶ Create Animation');
-            createBtn.css('background', '#4CAF50');
-            createBtn.data('stop-animation', false);
-
-            $('#animation-frames').prop('disabled', false);
-            $('#animation-loops').prop('disabled', false);
-            $('#animation-half-loops').prop('disabled', false);
-            $('#animation-download-btn').prop('disabled', capturedFrames.length === 0);
-
-            // Update progress to show it was stopped
-            $('#progress-text').text(`Stopped: ${capturedFrames.length} frames captured`);
-
-            logger.info(`Animation stopped early: ${capturedFrames.length} frames captured`);
-            return;
-        }
-
-        if (animationRunning) return;
-
-        const framesInput = $('#animation-frames');
-        const loopsInput = $('#animation-loops');
-        const halfLoopsCheckbox = $('#animation-half-loops');
-        const downloadBtn = $('#animation-download-btn');
-        const progressContainer = $('#animation-progress');
-        const progressBar = $('#progress-bar');
-        const progressText = $('#progress-text');
-        const progressAlpha = $('#progress-alpha');
-
-        // Get parameters
-        const totalFrames = parseInt(framesInput.val()) || 100;
-        const loops = parseInt(loopsInput.val()) || 1;
-        const isHalfLoops = halfLoopsCheckbox.is(':checked');
-
-        // Update UI - button becomes stop button
-        createBtn.prop('disabled', false);
-        createBtn.text('⏹ Stop Animation');
-        createBtn.css('background', '#f44336'); // Red color for stop
-        createBtn.data('stop-animation', true); // Flag to indicate it's now a stop button
-        framesInput.prop('disabled', true);
-        loopsInput.prop('disabled', true);
-        halfLoopsCheckbox.prop('disabled', true);
-        downloadBtn.prop('disabled', true);
-        progressContainer.show();
-        progressBar.css('width', '0%');
-        progressText.text(`Frame 0 / ${totalFrames}`);
-        progressAlpha.text('α: 0.00');
-
-        // Start animation with frame capture
-        startAnimation({
-            captureFrames: true,
-            totalFrames: totalFrames,
-            loops: loops,
-            halfLoops: isHalfLoops,
-            onProgress: (frameCount, totalFrames, alpha) => {
-                const progress = (frameCount / totalFrames) * 100;
-                progressBar.css('width', `${progress}%`);
-                progressText.text(`Frame ${frameCount} / ${totalFrames}`);
-                progressAlpha.text(`α: ${alpha.toFixed(2)}`);
-            },
-            onComplete: (frames) => {
                 // Restore button state
-                createBtn.prop('disabled', false);
-                createBtn.text('▶ Create Animation');
-                createBtn.css('background', '#4CAF50');
-                createBtn.data('stop-animation', false);
-                framesInput.prop('disabled', false);
-                loopsInput.prop('disabled', false);
-                halfLoopsCheckbox.prop('disabled', false);
-                downloadBtn.prop('disabled', false);
-                progressBar.css('width', '100%');
-                progressText.text(`Complete: ${frames.length} frames`);
+                createAnimBtn.setLabel('Create Animation');
+                createAnimBtn.setIcon('▶');
+                createAnimBtn.setStyle('#4CAF50');
 
-                logger.info(`Animation creation complete: ${frames.length} frames captured`);
+                // Re-enable inputs
+                const framesInput = document.getElementById('animation-frames');
+                const loopsInput = document.getElementById('animation-loops');
+                const halfLoopsCheckbox = document.getElementById('animation-half-loops');
+                const downloadBtn = document.getElementById('animation-download-btn');
+
+                if (framesInput) framesInput.disabled = false;
+                if (loopsInput) loopsInput.disabled = false;
+                if (halfLoopsCheckbox) halfLoopsCheckbox.disabled = false;
+                if (downloadBtn) downloadBtn.setEnabled(animationController.getFrames().length > 0);
+
+                // Update progress to show it was stopped
+                $('#progress-text').text(`Stopped: ${animationController.getFrames().length} frames captured`);
+
+                logger.info(`Animation stopped early: ${animationController.getFrames().length} frames captured`);
+                return;
             }
+
+            // Get parameters from number-input web components
+            const framesInput = document.getElementById('animation-frames');
+            const loopsInput = document.getElementById('animation-loops');
+            const halfLoopsCheckbox = document.getElementById('animation-half-loops');
+            const downloadBtn = document.getElementById('animation-download-btn');
+
+            const totalFrames = framesInput ? framesInput.getValue() : 100;
+            const loops = loopsInput ? loopsInput.getValue() : 1;
+            const isHalfLoops = halfLoopsCheckbox?.getValue ? halfLoopsCheckbox.getValue() : false;
+
+            // Update UI - button becomes stop button
+            createAnimBtn.setLabel('Stop Animation');
+            createAnimBtn.setIcon('⏹');
+            createAnimBtn.setStyle('#f44336');
+
+            // Disable inputs
+            if (framesInput) framesInput.disabled = true;
+            if (loopsInput) loopsInput.disabled = true;
+            if (halfLoopsCheckbox) halfLoopsCheckbox.disabled = true;
+            if (downloadBtn) downloadBtn.setEnabled(false);
+
+            // Show progress
+            $('#animation-progress').show();
+            $('#progress-bar').css('width', '0%');
+            $('#progress-text').text(`Frame 0 / ${totalFrames}`);
+            $('#progress-alpha').text('α: 0.00');
+
+            // Start animation with frame capture
+            animationController.start({
+                captureFrames: true,
+                totalFrames: totalFrames,
+                loops: loops,
+                halfLoops: isHalfLoops,
+                onProgress: (frameCount, total, alpha) => {
+                    const progress = (frameCount / total) * 100;
+                    $('#progress-bar').css('width', `${progress}%`);
+                    $('#progress-text').text(`Frame ${frameCount} / ${total}`);
+                    $('#progress-alpha').text(`α: ${alpha.toFixed(2)}`);
+                },
+                onComplete: (frames) => {
+                    // Restore button state
+                    createAnimBtn.setLabel('Create Animation');
+                    createAnimBtn.setIcon('▶');
+                    createAnimBtn.setStyle('#4CAF50');
+
+                    // Re-enable inputs
+                    if (framesInput) framesInput.disabled = false;
+                    if (loopsInput) loopsInput.disabled = false;
+                    if (halfLoopsCheckbox) halfLoopsCheckbox.disabled = false;
+                    if (downloadBtn) downloadBtn.setEnabled(true);
+
+                    // Update progress
+                    $('#progress-bar').css('width', '100%');
+                    $('#progress-text').text(`Complete: ${frames.length} frames`);
+
+                    logger.info(`Animation creation complete: ${frames.length} frames captured`);
+                }
+            });
         });
-    });
+    }
 
     // Download Animation button
-    $('#animation-download-btn').on('click', async function() {
-        if (capturedFrames.length === 0) {
-            alert('No frames to download. Create an animation first.');
-            return;
-        }
+    const downloadBtn = document.getElementById('animation-download-btn');
+    if (downloadBtn) {
+        downloadBtn.addEventListener('action', async function() {
+            const capturedFrames = animationController.getFrames();
 
-        const btn = $(this);
-        btn.prop('disabled', true);
-        btn.text('⏳ Creating ZIP...');
-
-        try {
-            const MAX_FRAMES_PER_ZIP = 300;
-            const totalFrames = capturedFrames.length;
-            const numParts = Math.ceil(totalFrames / MAX_FRAMES_PER_ZIP);
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-
-            logger.info(`Splitting ${totalFrames} frames into ${numParts} ZIP file(s)`);
-
-            // Create and download each ZIP part
-            for (let part = 0; part < numParts; part++) {
-                const startIdx = part * MAX_FRAMES_PER_ZIP;
-                const endIdx = Math.min((part + 1) * MAX_FRAMES_PER_ZIP, totalFrames);
-
-                btn.text(`⏳ Creating ZIP ${part + 1}/${numParts}...`);
-
-                // Create ZIP file using JSZip
-                const zip = new JSZip();
-                const framesFolder = zip.folder('frames');
-
-                // Add frames to this ZIP part
-                for (let i = startIdx; i < endIdx; i++) {
-                    const paddedIndex = String(i).padStart(5, '0');
-                    framesFolder.file(`frame_${paddedIndex}.png`, capturedFrames[i]);
-                }
-
-                // Generate ZIP file
-                const zipBlob = await zip.generateAsync({ type: 'blob' });
-
-                // Create download link
-                const url = URL.createObjectURL(zipBlob);
-                const link = document.createElement('a');
-                const partSuffix = numParts > 1 ? `.${part + 1}` : '';
-                link.download = `animation-${timestamp}${partSuffix}.zip`;
-                link.href = url;
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-
-                // Clean up
-                URL.revokeObjectURL(url);
-
-                logger.info(`Part ${part + 1}/${numParts} downloaded: frames ${startIdx}-${endIdx - 1}`);
-
-                // Small delay between downloads to avoid browser issues
-                if (part < numParts - 1) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                }
+            if (capturedFrames.length === 0) {
+                alert('No frames to download. Create an animation first.');
+                return;
             }
 
-            logger.info(`Animation download complete: ${totalFrames} frames in ${numParts} ZIP file(s)`);
-            if (numParts > 1) {
-                alert(`Animation split into ${numParts} ZIP files. Use create-video.sh with the base filename (without .1, .2, etc) to reconstruct.`);
+            downloadBtn.setLoading(true, 'Creating ZIP...');
+
+            try {
+                const MAX_FRAMES_PER_ZIP = 300;
+                const totalFrames = capturedFrames.length;
+                const numParts = Math.ceil(totalFrames / MAX_FRAMES_PER_ZIP);
+                const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+
+                logger.info(`Splitting ${totalFrames} frames into ${numParts} ZIP file(s)`);
+
+                // Create and download each ZIP part
+                for (let part = 0; part < numParts; part++) {
+                    const startIdx = part * MAX_FRAMES_PER_ZIP;
+                    const endIdx = Math.min((part + 1) * MAX_FRAMES_PER_ZIP, totalFrames);
+
+                    downloadBtn.setLoading(true, `Creating ZIP ${part + 1}/${numParts}...`);
+
+                    // Create ZIP file using JSZip
+                    const zip = new JSZip();
+                    const framesFolder = zip.folder('frames');
+
+                    // Add frames to this ZIP part
+                    for (let i = startIdx; i < endIdx; i++) {
+                        const paddedIndex = String(i).padStart(5, '0');
+                        framesFolder.file(`frame_${paddedIndex}.png`, capturedFrames[i]);
+                    }
+
+                    // Generate ZIP file
+                    const zipBlob = await zip.generateAsync({ type: 'blob' });
+
+                    // Create download link
+                    const url = URL.createObjectURL(zipBlob);
+                    const link = document.createElement('a');
+                    const partSuffix = numParts > 1 ? `.${part + 1}` : '';
+                    link.download = `animation-${timestamp}${partSuffix}.zip`;
+                    link.href = url;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+
+                    // Clean up
+                    URL.revokeObjectURL(url);
+
+                    logger.info(`Part ${part + 1}/${numParts} downloaded: frames ${startIdx}-${endIdx - 1}`);
+
+                    // Small delay between downloads to avoid browser issues
+                    if (part < numParts - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 500));
+                    }
+                }
+
+                logger.info(`Animation download complete: ${totalFrames} frames in ${numParts} ZIP file(s)`);
+                if (numParts > 1) {
+                    alert(`Animation split into ${numParts} ZIP files. Use create-video.sh with the base filename (without .1, .2, etc) to reconstruct.`);
+                }
+            } catch (error) {
+                logger.error('Failed to create ZIP:', error);
+                alert('Failed to create ZIP file: ' + error.message);
+            } finally {
+                downloadBtn.setLoading(false);
             }
-        } catch (error) {
-            logger.error('Failed to create ZIP:', error);
-            alert('Failed to create ZIP file: ' + error.message);
-        } finally {
-            btn.prop('disabled', false);
-            btn.text('💾 Download Animation (ZIP)');
-        }
-    });
+        });
+    }
 
     // Export Animation JSON button
-    $('#export-animation-json').on('click', function() {
-        const settings = manager.getSettings();
+    const exportJsonBtn = document.getElementById('export-animation-json');
+    if (exportJsonBtn) {
+        exportJsonBtn.addEventListener('action', function() {
+            const settings = manager.getSettings();
 
-        // Add bbox from renderer
-        if (renderer && renderer.bbox) {
-            settings.bbox = {
-                min: [renderer.bbox.min[0], renderer.bbox.min[1]],
-                max: [renderer.bbox.max[0], renderer.bbox.max[1]]
-            };
-        }
-
-        // Remove animationAlpha from export (it's test-only)
-        delete settings.animationAlpha;
-
-        // Create animation template
-        const animationTemplate = {
-            name: "Untitled Animation",
-            description: "Animation created from current settings",
-            fps: 30,
-            baseSettings: settings,
-            timeline: [
-                {
-                    time: 0.0,
-                    settings: {},
-                    easing: "linear"
-                },
-                {
-                    time: 10.0,
-                    settings: {
-                        // Add your parameter changes here
-                    },
-                    easing: "linear"
-                }
-            ],
-            frameConfig: {
-                burnInSteps: 5000,
-                clearAfterBurnIn: true,
-                accumulationSteps: 2000
+            // Add bbox from renderer
+            if (renderer && renderer.bbox) {
+                settings.bbox = {
+                    min: [renderer.bbox.min[0], renderer.bbox.min[1]],
+                    max: [renderer.bbox.max[0], renderer.bbox.max[1]]
+                };
             }
-        };
 
-        // Download as JSON
-        const blob = new Blob([JSON.stringify(animationTemplate, null, 2)], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'animation-template.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+            // Remove animationAlpha from export (it's test-only)
+            delete settings.animationAlpha;
 
-        logger.info('Exported animation template JSON');
-    });
+            // Create animation template
+            const animationTemplate = {
+                name: "Untitled Animation",
+                description: "Animation created from current settings",
+                fps: 30,
+                baseSettings: settings,
+                timeline: [
+                    {
+                        time: 0.0,
+                        settings: {},
+                        easing: "linear"
+                    },
+                    {
+                        time: 10.0,
+                        settings: {
+                            // Add your parameter changes here
+                        },
+                        easing: "linear"
+                    }
+                ],
+                frameConfig: {
+                    burnInSteps: 5000,
+                    clearAfterBurnIn: true,
+                    accumulationSteps: 2000
+                }
+            };
+
+            // Download as JSON
+            const blob = new Blob([JSON.stringify(animationTemplate, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'animation-template.json';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+
+            logger.info('Exported animation template JSON');
+        });
+    }
 
     // Close panels when clicking outside
     $(document).on('click', function(e) {
@@ -1343,18 +1126,18 @@ export function initControls(renderer, callback) {
     // Set mobile-specific defaults if no saved settings exist
     const isMobile = window.innerWidth <= 768;
     if (isMobile && (!savedSettings || (savedSettings.frameLimitEnabled === undefined && savedSettings.frameLimit === undefined))) {
-        // On mobile, enable frame limit and set to 500 frames by default (only if not already saved)
-        frameLimitEnabledControl.setValue(true);
+        // On mobile, enable frame limit and set to 200 frames by default (only if not already saved)
+        if (frameLimitEnabledCheckbox) frameLimitEnabledCheckbox.setValue(true);
         // frame-limit is a Web Component
         const frameLimitElement = document.getElementById('frame-limit');
         if (frameLimitElement) {
-            frameLimitElement.setValue(500);
+            frameLimitElement.setValue(200);
         }
         if (window.renderer) {
             window.renderer.frameLimitEnabled = true;
-            window.renderer.frameLimit = 500;
+            window.renderer.frameLimit = 200;
         }
-        logger.info('Mobile detected: frame limit enabled at 500 frames');
+        logger.info('Mobile detected: frame limit enabled at 200 frames');
     }
 
     // Wait for all Web Components to be ready before applying settings
@@ -1426,36 +1209,53 @@ export function initControls(renderer, callback) {
         }
 
         // Apply settings after all Web Components are ready
-        webComponentRegistry.applyWhenReady(savedSettings);
+        webComponentRegistry.applyWhenReady(savedSettings).then(() => {
+            // Initialize animation controller options from restored checkbox states
+            animationController.setOptions({
+                clearParticles: animClearParticles?.getValue ? animClearParticles.getValue() : false,
+                clearScreen: animClearScreen?.getValue ? animClearScreen.getValue() : false,
+                smoothTiming: animSmoothTiming?.getValue ? animSmoothTiming.getValue() : false,
+                lockShaders: animLockShaders?.getValue ? animLockShaders.getValue() : false
+            });
+
+            // Sync steps to frame limit if checkbox was restored as checked
+            try {
+                if (typeof syncCheckboxElement?.getValue === 'function' && syncCheckboxElement.getValue()) {
+                    syncStepsToFrameLimit();
+                }
+            } catch (e) {
+                console.warn('sync init error:', e);
+            }
+
+            // Initialize frame limit settings in renderer
+            if (renderer) {
+                renderer.frameLimitEnabled = frameLimitEnabledCheckbox?.getValue ? frameLimitEnabledCheckbox.getValue() : false;
+                // frame-limit is a Web Component
+                const frameLimitElement = document.getElementById('frame-limit');
+                if (frameLimitElement) {
+                    renderer.frameLimit = frameLimitElement.getValue();
+                }
+            }
+
+            // Initialize special UI states (after web components are ready)
+            updateWhitePointVisibility(manager.get('tonemap-operator').getValue());
+            updateExpressionControls(manager.get('color-mode').getValue());
+            updateGradientButtonVisibility(manager.get('color-mode').getValue());
+            updateVelocityScalingVisibility(manager.get('color-mode').getValue());
+
+            // Initialize implicit method controls visibility
+            const currentIntegrator = manager.get('integrator').getValue() || 'rk2';
+            const isImplicit = currentIntegrator.startsWith('implicit-') || currentIntegrator === 'trapezoidal';
+            $('#implicit-iterations-group').toggle(isImplicit);
+            $('#solution-method-group').toggle(isImplicit);
+
+            // Apply initial theme
+            const theme = manager.get('theme-selector').getValue();
+            if (theme === 'light') {
+                $('body').addClass('light-theme');
+            }
+        });
     });
-
-    // Initialize frame limit settings in renderer
-    if (renderer) {
-        renderer.frameLimitEnabled = frameLimitEnabledControl.getValue();
-        // frame-limit is a Web Component
-        const frameLimitElement = document.getElementById('frame-limit');
-        if (frameLimitElement) {
-            renderer.frameLimit = frameLimitElement.getValue();
-        }
-    }
-
-    // Initialize special UI states
-    updateWhitePointVisibility(manager.get('tonemap-operator').getValue());
-    updateExpressionControls(manager.get('color-mode').getValue());
-    updateGradientButtonVisibility(manager.get('color-mode').getValue());
-    updateVelocityScalingVisibility(manager.get('color-mode').getValue());
-
-    // Initialize implicit method controls visibility
-    const currentIntegrator = manager.get('integrator').getValue() || 'rk2';
-    const isImplicit = currentIntegrator.startsWith('implicit-') || currentIntegrator === 'trapezoidal';
-    $('#implicit-iterations-group').toggle(isImplicit);
-    $('#solution-method-group').toggle(isImplicit);
-
-    // Apply initial theme
-    const theme = manager.get('theme-selector').getValue();
-    if (theme === 'light') {
-        $('body').addClass('light-theme');
-    }
 
     // Load presets data
     loadPresets();
@@ -1536,6 +1336,10 @@ export function initControls(renderer, callback) {
             } else {
                 panel.addClass('mobile-overlay active');
                 panel.find('.mobile-overlay-close').show();
+                // Force z-index for mobile (ensure above menu bar)
+                panel.css('z-index', '20000');
+                panel.find('.mobile-overlay-close').css('z-index', '99999');
+                $('#menu-bar').css('z-index', '1');
             }
 
             // Mark menu button as active
@@ -1555,6 +1359,8 @@ export function initControls(renderer, callback) {
             } else {
                 panel.removeClass('mobile-overlay active');
                 panel.find('.mobile-overlay-close').hide();
+                // Restore menu bar z-index on mobile
+                $('#menu-bar').css('z-index', '10001');
             }
 
             // Remove active state from menu button
@@ -1615,167 +1421,66 @@ export function initControls(renderer, callback) {
     window.mobilePanelManager = initMobilePanelManager();
 
     // ========================================
-    // Mobile Timestep Slider Sync
+    // Mobile Controls Component Sync
     // ========================================
-    const $mobileTimestep = $('#mobile-timestep');
-    const $mobileTimestepValue = $('#mobile-timestep-value');
+    const mobileControls = document.getElementById('mobile-controls');
 
-    // Sync mobile slider with main timestep control
-    function syncMobileTimestep() {
-        const value = timestepControl.getValue();
-        // Use log scale for mobile slider (same as AnimatableTimestepControl)
-        const logValue = Math.log10(value);
-        $mobileTimestep.val(logValue);
-        $mobileTimestepValue.text(value.toFixed(4));
-    }
-
-    // Listen to main timestep changes
-    $('#timestep').on('input change', syncMobileTimestep);
-
-    // Update main timestep when mobile slider changes
-    $mobileTimestep.on('input', function() {
-        const logValue = parseFloat($(this).val());
-        const value = Math.pow(10, logValue);
-
-        // Update the main timestep control's DOM element directly
-        const timestepElement = $('#timestep');
-        timestepElement.val(value);
-
-        // Update both displays
-        timestepControl.updateDisplay(value);
-        $mobileTimestepValue.text(value.toFixed(4));
-
-        // Call onChange callback if it exists
-        if (timestepControl.onChange) {
-            timestepControl.onChange(value);
+    if (mobileControls) {
+        // Sync mobile controls with main controls
+        function syncMobileControls() {
+            const timestepControl = manager.get('timestep');
+            if (timestepControl) {
+                mobileControls.setTimestep(timestepControl.getValue());
+            }
         }
 
-        // Trigger the debounced apply (same as main control does)
-        manager.debouncedApply();
-    });
+        // Listen to main timestep changes
+        $('#timestep').on('input change', syncMobileControls);
 
-    // Initialize mobile slider with current value
-    syncMobileTimestep();
+        // Update main controls when mobile controls change
+        mobileControls.onTimestepChange = (value) => {
+            const timestepControl = manager.get('timestep');
+            if (timestepControl) {
+                timestepControl.setValue(value);
+                manager.debouncedApply();
+            }
+        };
 
-    // ========================================
-    // Animation Panel Initialization
-    // ========================================
+        mobileControls.onFrameLimitEnabledChange = (enabled) => {
+            const control = manager.get('frame-limit-enabled');
+            if (control) {
+                control.setValue(enabled);
+                manager.debouncedApply();
+            }
+        };
 
-    // Create animation alpha control dynamically
-    const animAlphaContainer = $('#animation-alpha-container');
-    logger.info(`Animation alpha container found: ${animAlphaContainer.length > 0}`);
+        mobileControls.onFrameLimitChange = (limit) => {
+            const control = manager.get('frame-limit');
+            if (control) {
+                control.setValue(limit);
+                manager.debouncedApply();
+            }
+        };
 
-    if (animAlphaContainer.length) {
-        const controlHTML = `
-            <div class="control-group">
-                <label>Animation Alpha (a): <span class="range-value" id="animation-alpha-value">0.00%</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="animation-alpha" data-action="decrease">-</button>
-                    <input type="range" id="animation-alpha">
-                    <button class="slider-btn" data-slider="animation-alpha" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="animation-alpha" data-action="reset" title="Reset to 0.0">↺</button>
-                    <button id="animation-alpha-animate-btn" class="slider-btn" style="margin-left: 8px; background: #4CAF50; color: white;" title="Auto-animate">▶</button>
-                </div>
-                <div class="info">Test time-based expressions with the 'a' variable (0.0 - 1.0). Use in expressions like: sin(x + a*PI), 0.01 + a*0.09</div>
-            </div>
-        `;
-        animAlphaContainer.html(controlHTML);
-        logger.info('Animation alpha control HTML injected');
+        // Initialize mobile controls with current values (after all web components are ready)
+        // Use a slight delay to ensure settings have been restored
+        webComponentRegistry.whenAllReady().then(() => {
+            setTimeout(() => {
+                syncMobileControls();
 
-        // Register animation alpha control after HTML is injected
-        animationAlphaControl = manager.register(new PercentSliderControl('animation-alpha', 0.0, {
-            settingsKey: 'animationAlpha',
-            displayId: 'animation-alpha-value',
-            displayFormat: v => (v != null ? v.toFixed(2) : '0.00'),
-            onChange: (value) => {
-                // Update renderer immediately (no debounce for animation testing)
-                if (window.renderer) {
-                    window.renderer.setAnimationAlpha(value);
+                const frameLimitEnabledControl = manager.get('frame-limit-enabled');
+                const frameLimitControl = manager.get('frame-limit');
 
-                    // Check if we should clear particles
-                    if ($('#animation-clear-particles').is(':checked')) {
-                        window.renderer.resetParticles();
-                    }
-
-                    // Check if we should clear screen
-                    if ($('#animation-clear-screen').is(':checked')) {
-                        window.renderer.clearRenderBuffer();
-                    }
+                if (frameLimitEnabledControl) {
+                    mobileControls.setFrameLimitEnabled(frameLimitEnabledControl.getValue());
                 }
-            }
-        }));
-
-        // Manually attach listeners since initializeControls() was already called
-        const debouncedCallback = () => manager.debouncedApply();
-        animationAlphaControl.attachListeners(debouncedCallback);
-
-        // Update display with initial value
-        animationAlphaControl.updateDisplay();
-
-        logger.info('Animation alpha control registered');
-
-        // Attach animation alpha animate button event handler
-        $('#animation-alpha-animate-btn').on('click', function(e) {
-            e.stopPropagation(); // Prevent panel close
-            const btn = $(this);
-
-            if (animationRunning) {
-                // Stop animation
-                stopAnimation();
-
-                btn.text('▶');
-                btn.css('background', '#4CAF50');
-                btn.attr('title', 'Auto-animate');
-            } else {
-                // Start animation
-                startAnimation();
-
-                btn.text('⏸');
-                btn.css('background', '#FFA726');
-                btn.attr('title', 'Stop auto-animate');
-            }
+                if (frameLimitControl) {
+                    mobileControls.setFrameLimit(frameLimitControl.getValue());
+                }
+            }, 100);
         });
-    } else {
-        logger.warn('Animation alpha container not found!');
     }
 
-    // Create animation speed control
-    const animSpeedContainer = $('#animation-speed-container');
-    if (animSpeedContainer.length) {
-        const speedHTML = `
-            <div class="control-group">
-                <label>Steps per Alpha Increment: <span class="range-value" id="animation-speed-value">10</span></label>
-                <div class="slider-control">
-                    <button class="slider-btn" data-slider="animation-speed" data-action="decrease">-</button>
-                    <input type="range" id="animation-speed">
-                    <button class="slider-btn" data-slider="animation-speed" data-action="increase">+</button>
-                    <button class="slider-btn" data-slider="animation-speed" data-action="reset" title="Reset to 10">↺</button>
-                </div>
-                <div class="info">Integration steps to perform before incrementing alpha by 0.01</div>
-            </div>
-        `;
-        animSpeedContainer.html(speedHTML);
-
-        // Register animation speed control after HTML is injected
-        animationSpeedControl = manager.register(new SliderControl('animation-speed', 10, {
-            min: 1,
-            max: 200,
-            displayId: 'animation-speed-value',
-            displayFormat: v => {
-                const numValue = typeof v === 'number' && !isNaN(v) ? v : 10;
-                animationStepsPerIncrement = Math.round(numValue);
-                return Math.round(numValue).toString();
-            }
-        }));
-
-        // Manually attach listeners since initializeControls() was already called
-        animationSpeedControl.attachListeners(() => manager.debouncedApply());
-
-        // Update display with initial value
-        animationSpeedControl.updateDisplay();
-
-        logger.info('Animation speed control registered');
-    }
 
     // Call initialization callback
     if (callback) {

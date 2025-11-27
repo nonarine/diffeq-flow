@@ -45,6 +45,8 @@ export class LinearSlider extends ControlElement {
         });
 
         this._displayFormat = null;
+        this._displayMultiplier = 1.0;
+        this._displaySuffix = '';
         this.sliderInput = null;
     }
 
@@ -56,6 +58,10 @@ export class LinearSlider extends ControlElement {
         this.step = this.getNumberAttribute('step', 1);
         this.transform = this.getNumberAttribute('transform', 1.0);
         this.defaultValue = this.getNumberAttribute('default', 50);
+
+        // Display formatting options
+        this._displayMultiplier = this.getNumberAttribute('display-multiplier', 1.0);
+        this._displaySuffix = this.getAttribute('display-suffix') || '';
 
         // Parse display format BEFORE setting value (since setter triggers formatValue)
         const formatAttr = this.getAttribute('display-format');
@@ -71,8 +77,12 @@ export class LinearSlider extends ControlElement {
     }
 
     formatValue(value) {
-        if (value === this._value && this._displayFormat) {
-            return this._displayFormat(value);
+        // Only use _displayFormat for numeric values (not strings like labels)
+        // This allows animation bounds to be formatted correctly too
+        if (this._displayFormat && typeof value === 'number') {
+            // Apply multiplier and suffix for display
+            const displayValue = value * this._displayMultiplier;
+            return this._displayFormat(displayValue) + this._displaySuffix;
         }
         return super.formatValue(value);
     }
@@ -111,14 +121,20 @@ export class LinearSlider extends ControlElement {
         const currentValue = this.value;
         let newValue = currentValue;
 
+        // Convert slider units to value units using transform
+        // For PercentSlider (transform=100): slider 0-100, value 0.0-1.0
+        const valueStep = this.step / this.transform;
+        const valueMin = this.min / this.transform;
+        const valueMax = this.max / this.transform;
+
         if (action === 'increase') {
-            newValue = Math.min(this.max, currentValue + this.step);
+            newValue = Math.min(valueMax, currentValue + valueStep);
         } else if (action === 'decrease') {
-            newValue = Math.max(this.min, currentValue - this.step);
+            newValue = Math.max(valueMin, currentValue - valueStep);
         } else if (action === 'increase-large') {
-            newValue = Math.min(this.max, currentValue + this.step * 10);
+            newValue = Math.min(valueMax, currentValue + valueStep * 10);
         } else if (action === 'decrease-large') {
-            newValue = Math.max(this.min, currentValue - this.step * 10);
+            newValue = Math.max(valueMin, currentValue - valueStep * 10);
         } else if (action === 'reset') {
             newValue = this.defaultValue;
         } else {

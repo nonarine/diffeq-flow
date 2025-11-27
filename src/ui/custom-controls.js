@@ -79,7 +79,12 @@ export class DimensionInputsControl extends Control {
         if (this.dimensionsControl) {
             return this.dimensionsControl.getValue();
         }
-        return parseInt($('#dimensions').val()) || 2;
+        // Get from web component
+        const dimensionsEl = document.getElementById('dimensions');
+        if (dimensionsEl && dimensionsEl.getValue) {
+            return dimensionsEl.getValue();
+        }
+        return 2;
     }
 
     /**
@@ -154,6 +159,17 @@ export class DimensionInputsControl extends Control {
             }
         }
 
+        // Pad valuesToUse to match new dimensions if needed
+        // This preserves existing values when increasing dimensions
+        if (valuesToUse.length < dimensions) {
+            const padded = [...valuesToUse];
+            for (let i = valuesToUse.length; i < dimensions; i++) {
+                padded[i] = '0'; // Use '0' for new dimensions, not defaults
+            }
+            valuesToUse = padded;
+            logger.verbose('Padded values to match dimensions:', valuesToUse);
+        }
+
         logger.verbose('Values to use:', valuesToUse);
 
         // Clear and rebuild
@@ -161,8 +177,10 @@ export class DimensionInputsControl extends Control {
         logger.verbose('Container emptied, now creating', dimensions, 'inputs');
 
         for (let i = 0; i < dimensions; i++) {
-            const varName = this.varNames[i];
-            const defaultValue = valuesToUse[i] || this.defaultValue[i] || '0';
+            // Use fallback variable names if coordinate system hasn't updated yet
+            const fallbackVarNames = ['x', 'y', 'z', 'w', 'u', 'v'];
+            const varName = this.varNames[i] || fallbackVarNames[i] || `v${i}`;
+            const defaultValue = valuesToUse[i] || '0';
 
             const div = $('<div class="dimension-input"></div>');
             div.append(`<label>d${varName}/dt =</label>`);

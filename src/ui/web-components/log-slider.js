@@ -52,6 +52,7 @@ export class LogSlider extends ControlElement {
         this.minValue = this.getNumberAttribute('min-value', 0.01);
         this.maxValue = this.getNumberAttribute('max-value', 100.0);
         this.transform = this.getNumberAttribute('transform', 1.0);
+        this.curve = this.getNumberAttribute('curve', 1.0); // Sensitivity curve: <1 = easier at low end, >1 = easier at high end
         this.defaultValue = this.getNumberAttribute('default', 1.0);
 
         // Parse display format BEFORE setting value (since setter triggers formatValue)
@@ -68,7 +69,9 @@ export class LogSlider extends ControlElement {
     }
 
     formatValue(value) {
-        if (value === this._value && this._displayFormat) {
+        // Only use _displayFormat for numeric values (not strings like labels)
+        // This allows animation bounds to be formatted correctly too
+        if (this._displayFormat && typeof value === 'number') {
             return this._displayFormat(value);
         }
         return super.formatValue(value);
@@ -76,22 +79,36 @@ export class LogSlider extends ControlElement {
 
     /**
      * Convert linear slider position [0, 100] to logarithmic value
+     * Applies curve parameter to adjust sensitivity
      */
     linearToLog(sliderValue) {
+        // Apply curve to slider position (0-1 range)
+        const normalized = sliderValue / 100;
+        const curved = Math.pow(normalized, this.curve);
+        const curvedSliderValue = curved * 100;
+
+        // Apply logarithmic transformation
         const minLog = Math.log(this.minValue);
         const maxLog = Math.log(this.maxValue);
         const scale = (maxLog - minLog) / 100;
-        return Math.exp(minLog + scale * sliderValue);
+        return Math.exp(minLog + scale * curvedSliderValue);
     }
 
     /**
      * Convert logarithmic value to linear slider position [0, 100]
+     * Applies inverse curve to maintain consistency
      */
     logToLinear(actualValue) {
+        // Apply inverse logarithmic transformation
         const minLog = Math.log(this.minValue);
         const maxLog = Math.log(this.maxValue);
         const scale = (maxLog - minLog) / 100;
-        return (Math.log(actualValue) - minLog) / scale;
+        const curvedSliderValue = (Math.log(actualValue) - minLog) / scale;
+
+        // Apply inverse curve
+        const curved = curvedSliderValue / 100;
+        const normalized = Math.pow(curved, 1 / this.curve);
+        return normalized * 100;
     }
 
     attachInternalListeners() {

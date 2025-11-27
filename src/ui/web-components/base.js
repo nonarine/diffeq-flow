@@ -3,27 +3,32 @@
  * Provides reactive binding system with {{variable}} syntax
  */
 
+import { composeMixins, ControlMixin, ButtonActionMixin, AttributeHelpersMixin, AccordionAwareMixin } from '../mixins/index.js';
+
 /**
  * ControlElement - Base class for reactive Web Component controls
  *
- * Implements Control interface compatible with ControlManager:
- * - getValue()
- * - setValue(value)
- * - reset()
- * - handleButtonAction(action)
- * - saveToSettings(settings)
- * - restoreFromSettings(settings)
- * - attachListeners(callback)
+ * Uses mixins to implement Control interface compatible with ControlManager.
+ * Mixins provide:
+ * - ControlMixin: getValue/setValue/reset/attachListeners/saveToSettings/restoreFromSettings/triggerChange
+ * - ButtonActionMixin: handleButtonAction/registerActionButtons
+ * - AttributeHelpersMixin: getNumberAttribute/getBooleanAttribute
+ * - AccordionAwareMixin: Automatic accordion resize on content changes
+ *
+ * ControlElement adds:
+ * - Reactive binding system with {{variable}} template syntax
+ * - Template processing (inline, external, or direct innerHTML)
+ * - Helper methods for element finding and listener attachment
  */
-export class ControlElement extends HTMLElement {
+export class ControlElement extends composeMixins(
+    HTMLElement,
+    ControlMixin,
+    ButtonActionMixin,
+    AttributeHelpersMixin,
+    AccordionAwareMixin
+) {
     constructor() {
         super();
-
-        // Control interface properties (match control-base.js)
-        // Note: this.id is inherited from HTMLElement and auto-syncs with the id attribute
-        this.defaultValue = null;
-        this.settingsKey = null;
-        this.onChange = null;
 
         // Transform support for linear scaling (e.g., slider 0-100 → value 0.0-1.0)
         this.transform = 1.0;
@@ -34,7 +39,6 @@ export class ControlElement extends HTMLElement {
 
         // Internal state
         this._initialized = false;
-        this._callback = null;
     }
 
     /**
@@ -47,7 +51,9 @@ export class ControlElement extends HTMLElement {
         if (!this.id) {
             this.id = this.generateId();
         }
-        this.settingsKey = this.getAttribute('settings-key') || this.id;
+
+        // Initialize control properties from mixins (settingsKey, defaultValue)
+        this.initializeControlProperties();
 
         // Initialize properties from attributes
         this.initializeProperties();
@@ -320,75 +326,11 @@ export class ControlElement extends HTMLElement {
     }
 
     /**
-     * Reset to default value
+     * Note: reset(), handleButtonAction(), attachListeners(), saveToSettings(),
+     * restoreFromSettings(), triggerChange(), getNumberAttribute(), and
+     * getBooleanAttribute() are provided by mixins (ControlMixin, ButtonActionMixin,
+     * AttributeHelpersMixin).
      */
-    reset() {
-        this.setValue(this.defaultValue);
-    }
-
-    /**
-     * Handle button action (override in subclasses)
-     */
-    handleButtonAction(action) {
-        return false;
-    }
-
-    /**
-     * Attach listeners (called by ControlManager)
-     */
-    attachListeners(callback) {
-        this._callback = callback;
-    }
-
-    /**
-     * Save to settings
-     */
-    saveToSettings(settings) {
-        settings[this.settingsKey] = this.getValue();
-    }
-
-    /**
-     * Restore from settings
-     */
-    restoreFromSettings(settings) {
-        if (settings && settings[this.settingsKey] != null) {
-            this.setValue(settings[this.settingsKey]);
-        }
-    }
-
-    /**
-     * Trigger change callback
-     */
-    triggerChange() {
-        const value = this.getValue();
-
-        if (this.onChange) {
-            this.onChange(value);
-        }
-
-        if (this._callback) {
-            this._callback();
-        }
-
-        this.dispatchEvent(new CustomEvent('control-change', {
-            detail: { value },
-            bubbles: true
-        }));
-    }
-
-    /**
-     * Helpers for reading attributes
-     */
-    getNumberAttribute(name, defaultValue = 0) {
-        const value = this.getAttribute(name);
-        return value !== null ? parseFloat(value) : defaultValue;
-    }
-
-    getBooleanAttribute(name, defaultValue = false) {
-        const value = this.getAttribute(name);
-        if (value === null) return defaultValue;
-        return value === '' || value === 'true' || value === name;
-    }
 
     /**
      * Helper: Find input element
@@ -410,24 +352,8 @@ export class ControlElement extends HTMLElement {
     }
 
     /**
-     * Helper: Register action buttons
-     * Automatically finds and binds buttons with action attributes
-     *
-     * @param {Array<string>} actions - List of action names to register
-     *
-     * Example:
-     * this.registerActionButtons(['decrease', 'increase', 'reset']);
+     * Note: registerActionButtons() is provided by ButtonActionMixin
      */
-    registerActionButtons(actions) {
-        for (const action of actions) {
-            const buttons = this.querySelectorAll(`[${action}]`);
-            for (const button of buttons) {
-                button.addEventListener('click', () => {
-                    this.handleButtonAction(action);
-                });
-            }
-        }
-    }
 
     /**
      * Helper: Create reactive property

@@ -146,14 +146,12 @@ export function computeSymbolicJacobian(expressions, dimensions) {
                     const derivative = window.nerdamer.diff(window.nerdamer(expr), variable).toString();
                     logger.verbose(`  Raw derivative: ${derivative}`);
 
-                    // Simplify the result to cancel common factors BEFORE inversion
-                    // This helps Nerdamer produce cleaner inverse matrices
-                    // expand() first to distribute terms, then simplify to cancel
-                    // let simplified = window.nerdamer(`simplify(expand(${derivative}))`).toString();
-                    // logger.verbose(`  Simplified: ${simplified}`);
-
-                    // Optimize: replace pow(x, n) with x*x*... for small integer exponents
-                    let optimized = optimizePowerExpressions(window.nerdamer(`simplify(${derivative})`).toString());
+                    // DON'T call simplify() - Nerdamer often makes things worse by:
+                    // - Introducing negative powers (x^(-1) instead of 1/x)
+                    // - Creating imaginary terms (sqrt(-y))
+                    // - Expanding expressions to be much longer
+                    // Just optimize power expressions and use the raw derivative
+                    let optimized = optimizePowerExpressions(derivative);
                     logger.verbose(`  Optimized: ${optimized}`);
 
                     row.push(optimized);

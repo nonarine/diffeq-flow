@@ -29,6 +29,8 @@ export class PercentSlider extends LinearSlider {
         super();
         // Always use transform of 100 (slider 0-100 → value 0.0-1.0)
         this.transform = 100;
+        this._displayMultiplier = 100; // Multiply stored value by 100 for display
+        this._displaySuffix = '%';
     }
 
     initializeProperties() {
@@ -37,5 +39,15 @@ export class PercentSlider extends LinearSlider {
 
         // Override transform to always be 100
         this.transform = 100;
+
+        // Multiply by 100 for display (unless explicitly overridden)
+        if (!this.hasAttribute('display-multiplier')) {
+            this._displayMultiplier = 100;
+        }
+
+        // Always show percent suffix (unless explicitly overridden)
+        if (!this.hasAttribute('display-suffix')) {
+            this._displaySuffix = '%';
+        }
     }
 }

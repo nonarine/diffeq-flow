@@ -2,11 +2,105 @@
 
 _Auto-generated from inline JSDoc documentation_
 
-_Generated: 2025-11-16T18:27:17.036Z_
+_Generated: 2025-11-27T12:09:30.326Z_
 
 ---
 
 ## animation/
+
+### animation-controller.js
+
+#### `variable()`
+
+AnimationController - Alpha-based parameter animation system
+
+Manages interactive real-time parameter animation using a simple alpha variable (0.0-1.0).
+This is separate from the Animator keyframe system (animator.js), which is used for
+professional batch rendering with complex timelines.
+
+Responsibilities:
+- Manage animation alpha state and playback loop
+- Query and update animatable controls
+- Frame capture during animation
+- Timing smoothing with EMA
+- Shader lock management
+- Integration with renderer
+
+Usage:
+  const controller = new AnimationController(renderer, controlManager);
+  controller.setAlpha(0.5);  // Manual alpha change
+  controller.start();         // Begin auto-animation
+  controller.stop();          // Stop auto-animation
+
+#### `system(alpha, updateControls)`
+
+Set current alpha value and optionally update animatable controls
+
+**Parameters:**
+
+- `alpha` *number* - - Alpha value (0.0 to 1.0)
+- `updateControls` *boolean* - - Whether to update animatable controls
+
+#### `system()`
+
+Get current alpha value
+
+**Returns:** *number* - alpha (0.0 to 1.0)
+
+#### `system(stepsPerIncrement)`
+
+Set animation speed (steps per increment)
+
+**Parameters:**
+
+- `stepsPerIncrement` *number* - - Number of integration steps before incrementing alpha
+
+#### `system(options, options.clearParticles, options.clearScreen, options.smoothTiming, options.lockShaders)`
+
+Set animation options
+
+**Parameters:**
+
+- `options` *Object* - - Animation options
+- `options.clearParticles` *boolean* - - Clear particles on alpha change
+- `options.clearScreen` *boolean* - - Clear screen on alpha change (freeze mode)
+- `options.smoothTiming` *boolean* - - Enable timing smoothing with EMA
+- `options.lockShaders` *boolean* - - Lock shader recompilation during animation
+
+#### `system(captureOptions, captureOptions.captureFrames, captureOptions.totalFrames, captureOptions.loops, captureOptions.halfLoops, captureOptions.onProgress, captureOptions.onComplete)`
+
+Start auto-animation
+
+**Parameters:**
+
+- `captureOptions` *Object* - - Optional frame capture configuration
+- `captureOptions.captureFrames` *boolean* - - Whether to capture frames
+- `captureOptions.totalFrames` *number* - - Total frames to capture
+- `captureOptions.loops` *number* - - Number of loops
+- `captureOptions.halfLoops` *boolean* - - Whether to count as half-loops
+- `captureOptions.onProgress` *Function* - - Progress callback (frameCount, totalFrames, alpha)
+- `captureOptions.onComplete` *Function* - - Completion callback (frames)
+
+#### `AnimationController(elapsed)`
+
+Update timing EMA for smoothing
+
+**Parameters:**
+
+- `elapsed` *number* - - Elapsed time in milliseconds
+
+#### `setAlpha()`
+
+Capture current frame
+
+#### `setAlpha(alpha)`
+
+Emit alpha changed event to listeners
+
+**Parameters:**
+
+- `alpha` *number* - - New alpha value
+
 
 ### animator.js
 
@@ -143,6 +237,10 @@ Preset coordinate systems
 
 
 ### gradients.js
+
+#### `code()`
+
+Convert hex color string to RGB array [0,1]
 
 #### `code()`
 
@@ -580,53 +678,16 @@ Immediate apply (no debounce)
 
 ### controls-v2.js
 
-#### `states()`
+#### `ControlManager(bbox, canvas)`
 
-Update white point visibility based on operator
+Expand bbox to fit canvas aspect ratio (ensure WHOLE bbox is visible)
 
-#### `states()`
+**Parameters:**
 
-Update expression controls visibility
+- `bbox` *Object* - - Original bbox with min/max arrays
+- `canvas` *HTMLCanvasElement* - - Canvas element
 
-#### `states()`
-
-Update gradient button visibility
-
-#### `updateConfig()`
-
-Update velocity scaling controls visibility
-
-#### `updateConfig()`
-
-Load settings from URL parameter or localStorage
-
-#### `updateConfig()`
-
-Decode settings from base64 URL string
-
-#### `updateConfig()`
-
-Encode settings to base64 URL string
-
-#### `updateConfig()`
-
-Share settings via URL
-
-#### `localStorage()`
-
-Show error message
-
-#### `localStorage()`
-
-Hide error message
-
-#### `localStorage()`
-
-Load preset examples
-
-#### `getSettings()`
-
-Load a specific preset
+**Returns:** *Object* - bbox that fits aspect ratio
 
 
 ### coordinate-editor.js
@@ -656,6 +717,15 @@ Initialize coordinate editor panel
 
 Custom control classes for complex UI controls (Version 2)
 Refactored to eliminate duplication with transform parameter definitions
+
+#### class `FloatCheckboxControl`
+
+Reset to default value
+
+#### class `FloatCheckboxControl`
+
+GradientControl - integrates with existing gradient editor
+Wraps the gradient editor for use with ControlManager
 
 #### class `FloatCheckboxControl`
 
@@ -711,16 +781,16 @@ Get current transform type
 
 Get current parameter values
 
-#### class `FloatCheckboxControl`
+#### `constructor()`
 
 Set parameter values
 
-#### class `FloatCheckboxControl`
+#### `constructor()`
 
 Update transform parameter controls based on transform type
 Reads parameter definitions directly from the transform instance
 
-#### `constructor()`
+#### `super()`
 
 Update accordion section height to fit content
 
@@ -741,15 +811,15 @@ Delegates to the appropriate ParameterControl instance
 
 Attach event listeners
 
-#### `super()`
+#### `getValue()`
 
 Reset to default value
 
-#### `super()`
+#### `getValue()`
 
 Save to settings
 
-#### `super()`
+#### `getValue()`
 
 Restore from settings
 
@@ -780,6 +850,157 @@ Attach drag handlers to thumbs
 #### `letters()`
 
 Convert ASCII names in a string to Unicode symbols
+
+
+## ui/mixins/
+
+### animatable-mixin.js
+
+#### `triggerAccordionResize()`
+
+Set animation bounds
+
+#### `triggerAccordionResize()`
+
+Update value based on current alpha (0.0 to 1.0)
+Called during animation playback
+
+#### `triggerAccordionResize()`
+
+Update the current value indicator position
+
+#### `triggerAccordionResize()`
+
+Update bounds display (handle positions and labels)
+
+#### `triggerAccordionResize()`
+
+Convert value to percentage position on slider
+Override if slider uses non-linear scaling
+
+#### `triggerAccordionResize()`
+
+Convert percentage position to value
+Override if slider uses non-linear scaling
+
+#### `triggerAccordionResize()`
+
+Attach drag handlers to the min/max thumbs
+
+
+### control-mixin.js
+
+#### `class(Base)`
+
+ControlMixin - Core ControlManager interface
+
+Provides save/load/apply integration with ControlManager.
+Makes any class compatible with ControlManager's registration system.
+
+Required methods to implement in subclass:
+- getValue() - Return current value
+- setValue(value) - Set value and update UI
+
+
+**Parameters:**
+
+- `Base` *Class* - - Base class to extend
+
+**Returns:** *Class* - class with control interface
+
+#### `class()`
+
+Initialize settingsKey from attribute or id
+Call this from connectedCallback or initializeProperties
+
+#### `class()`
+
+ABSTRACT: Get current control value
+Must be implemented by subclass
+
+#### `class()`
+
+ABSTRACT: Set control value and update UI
+Must be implemented by subclass
+
+#### `class()`
+
+Reset control to default value
+
+#### `class(callback)`
+
+Attach change callback from ControlManager
+
+**Parameters:**
+
+- `callback` *Function* - - Callback to trigger on value change (usually manager.debouncedApply)
+
+#### `class()`
+
+Trigger onChange callback and ControlManager callback
+Call this whenever the control value changes
+
+#### `class(settings)`
+
+Save control value to settings object
+Called by ControlManager.getSettings()
+
+**Parameters:**
+
+- `settings` *Object* - - Settings object to populate
+
+#### `class(settings)`
+
+Restore control value from settings object
+Called by ControlManager.applySettings()
+
+**Parameters:**
+
+- `settings` *Object* - - Settings object to read from
+
+#### `class(Base)`
+
+ButtonActionMixin - Add +/- button support
+
+Provides automatic button registration and action handling.
+Looks for buttons with action attributes: [increase], [decrease], [reset], etc.
+
+Methods to optionally override in subclass:
+- handleButtonAction(action) - Handle button clicks
+
+
+**Parameters:**
+
+- `Base` *Class* - - Base class to extend
+
+**Returns:** *Class* - class with button action support
+
+#### `class(action)`
+
+Handle button action
+Override in subclass to implement specific button behaviors
+
+**Parameters:**
+
+- `action` *string* - - Action name (increase, decrease, reset, etc.)
+
+**Returns:** *boolean* - if action was handled, false otherwise
+
+#### `class(actions)`
+
+Auto-register buttons with action attributes
+Call this from attachInternalListeners or connectedCallback
+
+**Parameters:**
+
+- `actions` *Array<string>* - - Array of action names to register
+
+
+### shadow-dom-mixin.js
+
+#### `renderToShadow()`
+
+Override querySelectorAll to use shadow root if available
 
 
 ## ui/tabs/
@@ -917,6 +1138,117 @@ Update tab button active state
 #### `constructor()`
 
 Destroy all tabs and clean up
+
+
+## ui/web-components/
+
+### animatable-timestep.js
+
+#### `buttons()`
+
+Animatable Timestep Web Component
+Extends AnimatableSlider with custom timestep increment buttons (-- - + ++)
+
+#### `buttons()`
+
+AnimatableTimestep - Animatable slider with timestep-specific increment buttons
+
+Usage:
+<animatable-timestep
+  id="timestep"
+  label="Timestep"
+  default="0.01"
+  min="0.001"
+  max="2.5"
+  step="0.001"
+  small-increment="0.001"
+  large-increment="0.01"
+  animation-min="0.001"
+  animation-max="0.1"
+  display-format="3">
+  <!-- Include buttons with decrease-large, decrease, increase, increase-large attributes -->
+</animatable-timestep>
+
+Features:
+- All AnimatableSlider features
+- Custom small increment for - and + buttons (e.g., 0.001)
+- Custom large increment for -- and ++ buttons (e.g., 0.01)
+- Configurable via attributes
+
+
+### animation-speed.js
+
+#### `speed()`
+
+Animation Speed Web Component
+
+Linear slider for controlling animation speed (steps per alpha increment).
+NOT saved to settings (ephemeral).
+
+Usage:
+<animation-speed
+  id="animation-speed"
+  default="10"
+  min="1"
+  max="200">
+</animation-speed>
+
+#### `speed(controller)`
+
+Set the animation controller
+
+**Parameters:**
+
+- `controller` *AnimationController* - - The animation controller instance
+
+#### `speed()`
+
+Override attachInternalListeners to add controller updates
+
+#### `settings()`
+
+Override saveToSettings to prevent saving (ephemeral control)
+
+#### `settings()`
+
+Override restoreFromSettings to prevent restoring (ephemeral control)
+
+
+### base.js
+
+#### class `for`
+
+Base class for all Web Component controls
+Provides reactive binding system with {{variable}} syntax
+
+#### class `for`
+
+Register attribute bindings for all elements with a specific attribute
+
+#### class `for`
+
+Recursively find and register all bind-* attributes in children
+
+#### class `for`
+
+Register a single binding
+
+**Parameters:**
+
+- `element` *Element* - - The element to bind
+- `bindAttr` *string* - - The bind attribute name (e.g., "bind-text", "bind-attr-value")
+- `varName` *string* - - The variable name to bind to
+
+
+### number-input.js
+
+#### `ControlManager()`
+
+Override saveToSettings to prevent saving (not managed by ControlManager)
+
+#### `ControlManager()`
+
+Override restoreFromSettings to prevent restoring (not managed by ControlManager)
 
 
 ## utils/
@@ -1229,10 +1561,6 @@ Reads the framebuffer pixels and computes min/max/avg values
 
 #### `FloatStrategy()`
 
-Log update shader (contains integrator and Jacobian)
-
-#### `FloatStrategy()`
-
 Log draw shader (contains color computations)
 
 #### `FloatStrategy()`
@@ -1262,10 +1590,6 @@ Returns both HDR and LDR values without copying entire framebuffer
 
 Generate particle rendering vertex shader
 
-#### `linkProgram()`
-
-Generate particle rendering fragment shader
-
 #### `createProgram()`
 
 Generate screen fade/composite vertex shader
@@ -1274,7 +1598,7 @@ Generate screen fade/composite vertex shader
 
 Generate screen fade fragment shader
 
-#### `attachShader()`
+#### `createProgram()`
 
 Generate screen copy fragment shader
 

@@ -66,13 +66,6 @@ function formatColor(color) {
 }
 
 /**
- * Create default gradient (spectrum)
- */
-export function getDefaultGradient() {
-    return getSpectrumGradient();
-}
-
-/**
  * Create velocity magnitude gradient (blue → cyan → green → yellow → red)
  */
 export function getVelocityMagnitudeGradient() {
@@ -98,6 +91,29 @@ export function getSpectrumGradient() {
         { position: 0.83, color: [0.0, 0.0, 1.0] },   // Blue
         { position: 1.00, color: [0.5, 0.0, 1.0] }    // Violet
     ];
+}
+
+/**
+ * Create HSV color wheel (for angle-based coloring, wraps around)
+ * Red → Yellow → Green → Cyan → Blue → Magenta → back to Red
+ */
+export function getHSVGradient() {
+    return [
+        { position: 0.00, color: [1.0, 0.0, 0.0] },   // Red (0°)
+        { position: 0.17, color: [1.0, 1.0, 0.0] },   // Yellow (60°)
+        { position: 0.33, color: [0.0, 1.0, 0.0] },   // Green (120°)
+        { position: 0.50, color: [0.0, 1.0, 1.0] },   // Cyan (180°)
+        { position: 0.67, color: [0.0, 0.0, 1.0] },   // Blue (240°)
+        { position: 0.83, color: [1.0, 0.0, 1.0] },   // Magenta (300°)
+        { position: 1.00, color: [1.0, 0.0, 0.0] }    // Red (360° = 0°, wraps)
+    ];
+}
+
+/**
+ * Create default gradient (HSV color wheel, works for both angles and magnitudes)
+ */
+export function getDefaultGradient() {
+    return getHSVGradient();
 }
 
 /**
