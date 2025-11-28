@@ -1775,6 +1775,10 @@ export class Renderer {
             this.dimensions = config.dimensions;
             needsRecompile = true;
 
+            // Update coordinate system to match new dimensions
+            this.coordinateSystem = getCartesianSystem(this.dimensions);
+            logger.info(`Updated coordinate system to ${this.dimensions}D Cartesian`);
+
             // Update particle system
             this.particleSystem.setDimensions(this.dimensions);
             this.textureManager.dispose();

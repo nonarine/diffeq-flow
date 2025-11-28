@@ -94,7 +94,8 @@ export class DimensionInputsControl extends Control {
         const dimensions = this.getDimensions();
         const expressions = [];
         for (let i = 0; i < dimensions; i++) {
-            let expr = $(`#expr-${i}`).val().trim();
+            const value = $(`#expr-${i}`).val();
+            let expr = value ? value.trim() : '0';
 
             // Convert Unicode symbols to ASCII (θ → theta, φ → phi, etc.)
             if (expr && window.UnicodeAutocomplete && window.UnicodeAutocomplete.unicodeToAscii) {
@@ -142,13 +143,21 @@ export class DimensionInputsControl extends Control {
             valuesToUse = newValues;
             logger.verbose('Using provided newValues');
         } else {
-            // Get current values before clearing (check if elements exist first)
+            // Get current values before clearing - read ALL existing inputs, not just current dimension count
             const firstElement = $(`#expr-0`);
             logger.verbose('firstElement exists:', firstElement.length > 0);
             try {
                 if (firstElement.length > 0) {
-                    valuesToUse = this.getValue();
-                    logger.verbose('Got current values from getValue()');
+                    // Read all existing expression inputs (find max index)
+                    const existingValues = [];
+                    let i = 0;
+                    while ($(`#expr-${i}`).length > 0) {
+                        const value = $(`#expr-${i}`).val();
+                        existingValues.push(value ? value.trim() : '0');
+                        i++;
+                    }
+                    valuesToUse = existingValues;
+                    logger.verbose('Got current values from existing inputs:', valuesToUse);
                 } else {
                     valuesToUse = this.defaultValue;
                     logger.verbose('Using defaultValue');
@@ -164,7 +173,7 @@ export class DimensionInputsControl extends Control {
         if (valuesToUse.length < dimensions) {
             const padded = [...valuesToUse];
             for (let i = valuesToUse.length; i < dimensions; i++) {
-                padded[i] = '0'; // Use '0' for new dimensions, not defaults
+                padded[i] = '0'; // Use '0' for new dimensions
             }
             valuesToUse = padded;
             logger.verbose('Padded values to match dimensions:', valuesToUse);

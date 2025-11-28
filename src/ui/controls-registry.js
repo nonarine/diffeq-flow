@@ -479,6 +479,12 @@ export function initControls(renderer, callback) {
         const sliderId = $(this).data('slider');
         const action = $(this).data('action');
 
+        // Safety check: ignore buttons without slider ID
+        if (!sliderId) {
+            console.warn('Slider button missing data-slider attribute');
+            return;
+        }
+
         // Try to get the registered control
         const control = manager.get(sliderId);
         if (control && control.handleButtonAction) {
