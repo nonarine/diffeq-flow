@@ -1,0 +1,234 @@
+/**
+ * Notebook Modal Styling
+ *
+ * Matches the settings modal (#modal-overlay) styling
+ */
+
+.notebook-modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.85);
+    display: none;
+    z-index: var(--z-modal);
+    overflow: auto;
+    padding: 10px;
+}
+
+.notebook-modal-overlay[style*="display: block"] {
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+}
+
+.notebook-modal-container {
+    background: #1a1a1a;
+    border: 1px solid #444;
+    border-radius: 8px;
+    box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6);
+    width: 80%;
+    height: calc(100% - 20px);
+    max-width: none;
+    max-height: none;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.notebook-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 20px;
+    border-bottom: 1px solid #444;
+    background: #0a0a0a;
+    border-radius: 8px 8px 0 0;
+}
+
+.notebook-modal-title {
+    margin: 0;
+    font-size: 18px;
+    color: #4CAF50;
+}
+
+.notebook-modal-header-button {
+    padding: 6px 12px;
+    background: rgba(76, 175, 80, 0.1);
+    color: #4CAF50;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.2s;
+}
+
+.notebook-modal-header-button:hover {
+    background: rgba(76, 175, 80, 0.2);
+    border-color: #4CAF50;
+}
+
+.notebook-modal-close {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background: rgba(244, 67, 54, 0.1);
+    border: 1px solid #f44336;
+    border-radius: 4px;
+    color: #f44336;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.notebook-modal-close:hover {
+    background: rgba(244, 67, 54, 0.2);
+}
+
+.notebook-modal-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.notebook-modal-custom-content {
+    margin-bottom: 20px;
+    padding: 16px;
+    background: rgba(76, 175, 80, 0.05);
+    border: 1px solid rgba(76, 175, 80, 0.2);
+    border-radius: 4px;
+}
+
+.notebook-modal-custom-content:empty {
+    display: none;
+}
+
+.notebook-modal-notebook-section {
+    padding: 16px;
+    background: rgba(76, 175, 80, 0.05);
+    border: 1px solid rgba(76, 175, 80, 0.2);
+    border-radius: 4px;
+    max-height: 60vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.notebook-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 20px;
+    border-top: 1px solid #444;
+    background: #0a0a0a;
+    border-radius: 0 0 8px 8px;
+}
+
+.notebook-modal-button-cancel {
+    padding: 8px 24px;
+    background: transparent;
+    color: #888;
+    border: 1px solid #444;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.notebook-modal-button-cancel:hover {
+    background: rgba(255, 255, 255, 0.05);
+    color: #aaa;
+}
+
+.notebook-modal-button-apply {
+    padding: 8px 24px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    transition: background 0.2s;
+}
+
+.notebook-modal-button-apply:hover {
+    background: #45a049;
+}
+
+.notebook-modal-error {
+    display: none;
+    padding: 12px;
+    background: rgba(244, 67, 54, 0.1);
+    border: 1px solid #f44336;
+    border-radius: 4px;
+    color: #f44336;
+    font-size: 12px;
+    margin: 0 20px 12px 20px;
+}
+
+/* Field Equations Editor */
+.field-equations-editor-content {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.field-equations-dimension-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    background: rgba(76, 175, 80, 0.1);
+    border: 1px solid rgba(76, 175, 80, 0.3);
+    border-radius: 4px;
+}
+
+.field-equations-dimension-select {
+    padding: 6px 12px;
+    background: #1a1a1a;
+    color: #4CAF50;
+    border: 1px solid #444;
+    border-radius: 4px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.field-equations-dimension-select:hover {
+    border-color: #4CAF50;
+}
+
+.field-equations-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.field-equation-label {
+    font-size: 13px;
+    color: #4CAF50;
+    font-weight: bold;
+    margin-bottom: -8px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .notebook-modal-container {
+        width: 100%;
+        height: 100%;
+        border-radius: 0;
+    }
+
+    .notebook-modal-header {
+        border-radius: 0;
+    }
+
+    .notebook-modal-footer {
+        border-radius: 0;
+    }
+}

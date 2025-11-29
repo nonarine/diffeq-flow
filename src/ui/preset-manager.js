@@ -5,6 +5,7 @@
 
 import { CoordinateSystem, getCartesianSystem } from '../math/coordinate-systems.js';
 import { logger } from '../utils/debug-logger.js';
+import { FieldEquationWorkflow } from '../math/field-equation-workflow.js';
 
 // LocalStorage key for custom presets
 const CUSTOM_PRESETS_KEY = 'customPresets';
@@ -264,9 +265,25 @@ export function loadPreset(name, manager) {
         settings.integratorParams = { iterations: settings.implicitIterations };
     }
 
-    // Apply all settings at once (including bbox) to renderer
+    // Extract expressions from settings (will be applied via workflow)
+    const expressions = settings.expressions;
+    delete settings.expressions;
+
+    // Apply all settings EXCEPT expressions to renderer
     if (window.renderer) {
         window.renderer.updateConfig(settings);
+    }
+
+    // Apply expressions via automated workflow (validates, generates GLSL, applies)
+    if (expressions && expressions.length > 0 && window.renderer && window.notebook) {
+        try {
+            const workflow = new FieldEquationWorkflow();
+            workflow.executeAutomated(expressions, window.notebook, window.renderer);
+            logger.info(`Applied ${expressions.length} field equations via workflow`);
+        } catch (error) {
+            logger.error(`Failed to apply field equations from preset:`, error.message);
+            // Don't throw - preset partially applied, user can fix expressions manually
+        }
     }
 
     logger.info(`Preset ${preset.name || name} loaded successfully`);

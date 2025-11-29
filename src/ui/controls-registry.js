@@ -47,7 +47,9 @@ import { CoordinateSystem, getCartesianSystem } from '../math/coordinate-systems
 import { getDefaultGradient } from '../math/gradients.js';
 import { logger } from '../utils/debug-logger.js';
 import { resizeAccordion } from './accordion-utils.js';
+import { FieldEquationWorkflow } from '../math/field-equation-workflow.js';
 import { WebComponentControlRegistry } from './web-component-registry.js';
+import { equationOverlay } from './equation-overlay.js';
 import { AnimationController } from '../animation/animation-controller.js';
 import { ZIndex } from './utils/z-index.js';
 import { PanelManager } from './utils/panel-manager.js';
@@ -111,8 +113,28 @@ export function initControls(renderer, callback) {
                 previousDimensions = currentDimensions;
             }
 
-            // Apply settings directly to renderer
+            // Keep original expressions for equation overlay display (LaTeX should show user input, not algebraic expansion)
+            const originalExpressions = settings.expressions ? [...settings.expressions] : null;
+
+            // Extract expressions from settings (will be applied via workflow)
+            const expressions = settings.expressions;
+            delete settings.expressions;
+
+            // Apply all settings EXCEPT expressions to renderer
             renderer.updateConfig(settings);
+
+            // Apply expressions via automated workflow (validates, generates GLSL, applies)
+            if (expressions && expressions.length > 0 && window.notebook) {
+                try {
+                    const workflow = new FieldEquationWorkflow();
+                    workflow.executeAutomated(expressions, window.notebook, renderer);
+                    logger.info(`Applied ${expressions.length} field equations via workflow`);
+                } catch (error) {
+                    logger.error(`Failed to apply field equations:`, error.message);
+                    showError(`Failed to apply field equations: ${error.message}`);
+                    return; // Don't save settings if expressions failed
+                }
+            }
 
             // Update coordinate system (just updates variable names, doesn't rebuild DOM)
             if (renderer.coordinateSystem) {
@@ -120,6 +142,27 @@ export function initControls(renderer, callback) {
                 if (expressionsControl) {
                     expressionsControl.setCoordinateSystem(renderer.coordinateSystem, false);
                 }
+            }
+
+            // Update equation overlay if visible
+            if (equationOverlay.isVisible() && originalExpressions && renderer.coordinateSystem) {
+                const variables = renderer.coordinateSystem.getVariableNames();
+
+                // Expand custom functions for LaTeX rendering
+                // (Parser needs expanded form to handle function calls)
+                const expandedForLatex = originalExpressions.map(expr => {
+                    if (window.notebook) {
+                        try {
+                            return window.notebook.expandFunctions(expr);
+                        } catch (error) {
+                            logger.warn(`Failed to expand "${expr}" for LaTeX:`, error.message);
+                            return expr; // Fall back to original
+                        }
+                    }
+                    return expr;
+                });
+
+                equationOverlay.updateEquations(expandedForLatex, variables);
             }
 
             // Save to localStorage (including bbox and coordinate system)
@@ -342,6 +385,7 @@ export function initControls(renderer, callback) {
     // Checkboxes
     webComponentRegistry.register('check-box', 'velocity-log-scale');
     webComponentRegistry.register('check-box', 'show-grid');
+    webComponentRegistry.register('check-box', 'show-equations');
     webComponentRegistry.register('check-box', 'frame-limit-enabled');
     webComponentRegistry.register('check-box', 'use-hdr');
     webComponentRegistry.register('check-box', 'use-depth-test');
@@ -362,6 +406,23 @@ export function initControls(renderer, callback) {
                 window.renderer.frameLimitEnabled = frameLimitEnabledCheckbox.getValue();
             }
         });
+    }
+
+    // Show equations checkbox - wire up equation overlay
+    const showEquationsCheckbox = document.getElementById('show-equations');
+    if (showEquationsCheckbox) {
+
+        const cb = async () => {
+            const showEquations = showEquationsCheckbox.getValue();
+            equationOverlay.setVisible(showEquations);
+
+            // If showing for the first time, render current equations
+            if (showEquations) {
+                await equationOverlay.refresh();
+            }
+        };
+
+        showEquationsCheckbox.addEventListener('change', cb);
     }
 
     // === Theme control (special handling for immediate application) ===
@@ -577,6 +638,13 @@ export function initControls(renderer, callback) {
         }
     });
 
+    // Menu bar notebook button
+    $(document).on('click', '#menu-notebook', function() {
+        if (window.notebookEditor) {
+            window.notebookEditor.open();
+        }
+    });
+
     // Keyboard shortcut: Ctrl+, to open settings modal
     $(document).on('keydown', function(e) {
         if ((e.ctrlKey || e.metaKey) && e.key === ',') {
@@ -616,6 +684,9 @@ export function initControls(renderer, callback) {
 
     // First, initialize controls (creates DOM elements and attaches listeners)
     manager.initializeControls();
+
+    // Initialize equation overlay
+    equationOverlay.initialize('equation-overlay');
 
     // Then load and apply saved settings
     const savedSettings = loadSettingsFromURLOrStorage();
@@ -699,6 +770,21 @@ export function initControls(renderer, callback) {
             $('#implicit-iterations-group').toggle(isImplicit);
             $('#solution-method-group').toggle(isImplicit);
 
+            // Initialize equation overlay visibility
+            if (showEquationsCheckbox?.getValue && showEquationsCheckbox.getValue()) {
+                equationOverlay.setVisible(true);
+                // Get current equations and variables from renderer
+                if (renderer && renderer.coordinateSystem) {
+                    // Use renderer.expressions (already expanded during settings apply)
+                    // Don't use simple UI expressions which may have custom functions
+                    const expressions = renderer.expressions;
+                    if (expressions) {
+                        const variables = renderer.coordinateSystem.getVariableNames();
+                        equationOverlay.updateEquations(expressions, variables);
+                    }
+                }
+            }
+
             // Apply initial theme
             const theme = manager.get('theme-selector').getValue();
             if (theme === 'light') {
@@ -723,6 +809,57 @@ export function initControls(renderer, callback) {
 
         console.log('Unicode autocomplete enabled for all math inputs');
     }
+
+    // ========================================
+    // Sync UI from renderer state
+    // ========================================
+
+    /**
+     * Sync simple UI controls to match renderer's authoritative state
+     * Called after field equations editor applies changes
+     */
+    function syncUIFromRenderer() {
+        if (!renderer) return;
+
+        logger.info('Syncing UI from renderer state');
+
+        // Sync dimensions (web component)
+        const dimensionsElement = document.getElementById('dimensions');
+        if (dimensionsElement && dimensionsElement.setValue && renderer.dimensions !== undefined) {
+            const currentDimValue = dimensionsElement.getValue();
+            if (currentDimValue !== renderer.dimensions) {
+                logger.info(`Syncing dimensions: ${currentDimValue} → ${renderer.dimensions}`);
+                dimensionsElement.setValue(renderer.dimensions);
+            }
+        }
+
+        // Sync expression inputs
+        const expressionsControl = manager.get('dimension-inputs');
+        if (expressionsControl && renderer.expressions) {
+            logger.info('Syncing expressions from renderer:', renderer.expressions);
+            expressionsControl.setValue(renderer.expressions);
+        }
+
+        // Update equation overlay if visible
+        if (equationOverlay && equationOverlay.isVisible && equationOverlay.isVisible() &&
+            renderer.expressions && renderer.coordinateSystem) {
+            const variables = renderer.coordinateSystem.getVariableNames();
+
+            // renderer.expressions are already expanded (workflow does this)
+            // No need to expand again
+            equationOverlay.updateEquations(renderer.expressions, variables);
+            logger.info('Updated equation overlay with new expressions');
+        }
+
+        logger.info('UI sync complete');
+    }
+
+    // Make sync function globally available
+    window.syncUIFromRenderer = syncUIFromRenderer;
+
+    // Make manager globally available for field editor sync
+    window.manager = manager;
+    window.equationOverlay = equationOverlay;
 
     // ========================================
     // Create save function and callback

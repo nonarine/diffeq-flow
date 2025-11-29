@@ -16,6 +16,9 @@
     <link rel="stylesheet" href="src/ui/styles/controls.css">
     <link rel="stylesheet" href="src/ui/styles/panels.css">
     <link rel="stylesheet" href="src/ui/styles/mobile.css">
+    <link rel="stylesheet" href="src/ui/styles/equation-overlay.css">
+    <link rel="stylesheet" href="src/ui/styles/notebook-modal.css">
+    <link rel="stylesheet" href="src/ui/styles/notebook-cell.css">
 </head>
 <body>
     <!-- Menu Bar -->
@@ -23,6 +26,10 @@
         <div class="menu-item" id="menu-settings" title="Advanced Settings (Ctrl+,)">
             <span style="font-size: 16px; margin-right: 6px;">⚙️</span>
             <span>Settings</span>
+        </div>
+        <div class="menu-item" id="menu-notebook" title="Notebook (Function Definitions)">
+            <span style="font-size: 16px; margin-right: 6px;">📓</span>
+            <span>Notebook</span>
         </div>
         <div class="menu-item" id="menu-docs" title="Documentation">
             <span style="font-size: 16px; margin-right: 6px;">📚</span>
@@ -55,6 +62,9 @@
     </div>
 
     <canvas id="canvas"></canvas>
+
+    <!-- Equation Overlay (MathJax rendered equations) -->
+    <div id="equation-overlay"></div>
 
     <div id="controls">
         <button class="mobile-overlay-close" style="display: none;">&times;</button>
@@ -125,14 +135,14 @@
             </linear-slider>
         </div>
 
-        <h2>Vector Field Equations<span class="help-icon" onclick="window.appModal?.show('docs', 'vector-fields')" title="View documentation">📝</span></h2>
+        <h2>Vector Field Equations<span class="help-icon" onclick="showFieldEditor(event)" title="Advanced Editor">🔧</span><span class="help-icon" onclick="showDocs(event, 'vector-fields')" title="View documentation">📝</span></h2>
         <div class="accordion-section">
             <div id="dimension-inputs" class="dimension-inputs">
                 <!-- Dynamically generated -->
             </div>
         </div>
 
-        <h2>Integrator<span class="help-icon" onclick="window.appModal?.show('docs', 'integrators')" title="View documentation">📝</span></h2>
+        <h2>Integrator<span class="help-icon" onclick="showDocs(event, 'integrators')" title="View documentation">📝</span></h2>
         <div class="accordion-section">
             <div class="control-group">
                 <select-control
@@ -225,7 +235,7 @@
             </div>
         </div>
 
-        <h2>Domain Transform<span class="help-icon" onclick="window.appModal?.show('docs', 'domain-transforms')" title="View documentation">📝</span></h2>
+        <h2>Domain Transform<span class="help-icon" onclick="showDocs(event, 'domain-transforms')" title="View documentation">📝</span></h2>
         <div class="accordion-section">
             <div class="control-group">
                 <select-control
@@ -261,7 +271,7 @@
             </div>
         </div>
 
-        <h2>2D Projection<span class="help-icon" onclick="window.appModal?.show('docs', 'projection')" title="View documentation">📝</span></h2>
+        <h2>2D Projection<span class="help-icon" onclick="showDocs(event, 'projection')" title="View documentation">📝</span></h2>
         <div class="accordion-section">
             <div class="control-group">
                 <select-control
@@ -285,10 +295,10 @@
             </div>
         </div>
 
-        <h2>Rendering<span class="help-icon" onclick="window.appModal?.show('docs', 'particle-settings')" title="View documentation">📝</span></h2>
+        <h2>Rendering<span class="help-icon" onclick="showDocs(event, 'particle-settings')" title="View documentation">📝</span></h2>
         <div class="accordion-section">
             <div class="control-group">
-                <label>Color Mode:<span class="help-icon" onclick="window.appModal?.show('docs', 'color-modes')" title="View documentation">📝</span></label>
+                <label>Color Mode:<span class="help-icon" onclick="showDocs(event, 'color-modes')" title="View documentation">📝</span></label>
                 <select-control
                     id="color-mode"
                     settings-key="colorMode"
@@ -414,7 +424,7 @@
 
         </div>
 
-        <h2>Advanced<span class="help-icon" onclick="window.appModal?.show('docs', 'storage-strategy')" title="View documentation">📝</span></h2>
+        <h2>Advanced<span class="help-icon" onclick="showDocs(event, 'storage-strategy')" title="View documentation">📝</span></h2>
         <div class="accordion-section">
             <div class="control-group">
                 <label>Storage Strategy:</label>
@@ -451,7 +461,7 @@
 
     <div id="zoom-pan-controls">
         <button class="mobile-overlay-close" style="display: none;">&times;</button>
-        <h1>View<span class="help-icon" onclick="window.appModal?.show('docs', 'keyboard-shortcuts')" title="View documentation">📝</span></h1>
+        <h1>View<span class="help-icon" onclick="showDocs(event, 'keyboard-shortcuts')" title="View documentation">📝</span></h1>
 
         <!-- Pan controls in a 3x3 grid -->
         <div class="zoom-pan-grid">
@@ -475,7 +485,7 @@
 
     <div id="display-options">
         <button class="mobile-overlay-close" style="display: none;">&times;</button>
-        <h1>Display<span class="help-icon" onclick="window.appModal?.show('docs', 'display-options')" title="View documentation">📝</span></h1>
+        <h1>Display<span class="help-icon" onclick="showDocs(event, 'display-options')" title="View documentation">📝</span></h1>
 
         <div class="control-group">
             <check-box
@@ -483,6 +493,15 @@
                 settings-key="showGrid"
                 default="true"
                 label="Show coordinate grid">
+            </check-box>
+        </div>
+
+        <div class="control-group">
+            <check-box
+                id="show-equations"
+                settings-key="showEquations"
+                default="false"
+                label="Show equations overlay">
             </check-box>
         </div>
 
@@ -673,7 +692,7 @@
     <div id="gradient-panel" class="floating-panel" style="display: none;">
         <button class="floating-panel-close" style="display: none;">&times;</button>
         <div class="floating-panel-header">
-            <h3>Gradient Editor<span class="help-icon" onclick="window.appModal?.show('docs', 'color-modes')" title="View documentation">📝</span></h3>
+            <h3>Gradient Editor<span class="help-icon" onclick="showDocs(event, 'color-modes')" title="View documentation">📝</span></h3>
         </div>
         <div class="floating-panel-content">
             <div id="main-gradient-editor"></div>
@@ -685,7 +704,7 @@
     <div id="rendering-panel" class="floating-panel" style="display: none;">
         <button class="floating-panel-close" style="display: none;">&times;</button>
         <div class="floating-panel-header">
-            <h3>Rendering Effects<span class="help-icon" onclick="window.appModal?.show('docs', 'rendering-effects')" title="View documentation">📝</span></h3>
+            <h3>Rendering Effects<span class="help-icon" onclick="showDocs(event, 'rendering-effects')" title="View documentation">📝</span></h3>
         </div>
         <div class="floating-panel-content">
             <h4 style="margin: 0 0 12px 0; padding: 0; font-size: 14px; color: #4CAF50;">HDR Rendering</h4>
@@ -1196,6 +1215,28 @@
     </div>
 
     <!-- Nerdamer for symbolic differentiation (Jacobian computation) -->
+    <!-- MathJax for equation rendering -->
+    <script>
+        // MathJax v3 Configuration (must be defined before loading MathJax)
+        window.MathJax = {
+            tex: {
+                inlineMath: [['$', '$'], ['\\(', '\\)']],
+                displayMath: [['$$', '$$'], ['\\[', '\\]']],
+                processEscapes: true,
+                processEnvironments: true
+            },
+            svg: {
+                fontCache: 'global'
+            },
+            startup: {
+                ready: () => {
+                    console.log('MathJax is loaded and ready');
+                    MathJax.startup.defaultReady();
+                }
+            }
+        };
+    </script>
+    <script id="MathJax-script" async src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/nerdamer@latest/all.min.js"></script>
     <!-- JSZip for bundling animation frames -->
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>

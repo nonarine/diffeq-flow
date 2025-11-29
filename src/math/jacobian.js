@@ -5,6 +5,21 @@
 import { logger } from '../utils/debug-logger.js';
 
 /**
+ * Notebook instance (injected from main.js)
+ * @type {import('./notebook.js').Notebook}
+ */
+let notebook = null;
+
+/**
+ * Set the Notebook to use for Jacobian computation
+ * @param {import('./notebook.js').Notebook} nb
+ */
+export function setNotebook(nb) {
+    notebook = nb;
+    logger.info('Jacobian: Notebook set (CAS engine:', notebook.casEngine.getName() + ')');
+}
+
+/**
  * Variable names for each dimension (matches parser.js)
  */
 const VARIABLE_NAMES = ['x', 'y', 'z', 'w', 'u', 'v'];
@@ -63,54 +78,28 @@ export function computeSymbolicJacobian(expressions, dimensions) {
 
     logger.info('=== JACOBIAN COMPUTATION START ===');
     logger.info('Timestamp:', new Date().toISOString());
-    logger.info('Nerdamer loaded:', !!window.nerdamer);
-    logger.info('Nerdamer type:', typeof window.nerdamer);
-    logger.info('Nerdamer is function:', typeof window.nerdamer === 'function');
-    logger.info('Nerdamer.diff exists:', window.nerdamer && typeof window.nerdamer.diff === 'function');
-    logger.info('Nerdamer.clear exists:', window.nerdamer && typeof window.nerdamer.clear === 'function');
+    logger.info('Notebook:', notebook ? 'set' : 'not set');
+    logger.info('CAS Engine:', notebook ? notebook.casEngine.getName() : 'not available');
     logger.info('Input expressions:', expressions.toString());
     logger.info('Dimensions:', dimensions);
 
-    if (!window.nerdamer) {
-        logger.error('Nerdamer not loaded - cannot compute Jacobian');
+    if (!notebook) {
+        logger.error('Notebook not set - cannot compute Jacobian');
         return null;
     }
 
-    if (typeof window.nerdamer !== 'function') {
-        logger.error('Nerdamer is not a function - invalid state');
-        return null;
-    }
-
-    if (!window.nerdamer.diff) {
-        logger.error('Nerdamer.diff not available - incomplete initialization');
+    if (!notebook.casEngine.isReady()) {
+        logger.error('CAS engine not ready - cannot compute Jacobian');
         return null;
     }
 
     try {
-        // Clear Nerdamer's internal cache to avoid stale results
-        if (window.nerdamer && window.nerdamer.clear) {
-            logger.verbose('Clearing Nerdamer cache');
-            window.nerdamer.clear('all');
-        }
-
-        // Test consistency: differentiate a simple expression twice
-        logger.verbose('Testing Nerdamer consistency...');
-        try {
-            const testExpr = 'x*y';
-            const testVar = 'x';
-            const test1 = window.nerdamer.diff(window.nerdamer(testExpr), testVar).toString();
-            window.nerdamer.clear('all'); // Clear between tests
-            const test2 = window.nerdamer.diff(window.nerdamer(testExpr), testVar).toString();
-            logger.verbose(`Consistency test: d(${testExpr})/d${testVar}`);
-            logger.verbose(`  First result:  ${test1}`);
-            logger.verbose(`  Second result: ${test2}`);
-            logger.verbose(`  Consistent: ${test1 === test2}`);
-            if (test1 !== test2) {
-                logger.error('WARNING: Nerdamer is giving inconsistent results!');
-            }
-        } catch (e) {
-            logger.warn('Consistency test failed:', e.message);
-        }
+        // NOTE: We do NOT clear cache here because:
+        // 1. We parse expressions fresh on each differentiation call
+        // 2. No state is reused between Jacobian computations
+        // 3. The original cache clear was a workaround for a nerdamer initialization bug
+        //    that may no longer be necessary with proper async initialization
+        // If we see inconsistent results, we can add cache clearing back with proper justification
 
         // WORKAROUND: Nerdamer doesn't support atan2(y, x) differentiation
         // Replace atan2(A, B) with atan(A/B) for differentiation
@@ -140,21 +129,14 @@ export function computeSymbolicJacobian(expressions, dimensions) {
                 const variable = VARIABLE_NAMES[j];
 
                 try {
-                    // Compute symbolic derivative ∂f_i/∂x_j
-                    // Use nerdamer() to parse fresh each time
+                    // Compute symbolic derivative ∂f_i/∂x_j using Notebook
+                    // Notebook ensures context is applied before calling CAS engine
                     logger.verbose(`  Computing ∂(${expr})/∂${variable}...`);
-                    const derivative = window.nerdamer.diff(window.nerdamer(expr), variable).toString();
-                    logger.verbose(`  Raw derivative: ${derivative}`);
+                    const derivative = notebook.differentiate(expr, variable);
+                    logger.verbose(`  Derivative: ${derivative}`);
 
-                    // DON'T call simplify() - Nerdamer often makes things worse by:
-                    // - Introducing negative powers (x^(-1) instead of 1/x)
-                    // - Creating imaginary terms (sqrt(-y))
-                    // - Expanding expressions to be much longer
-                    // Just optimize power expressions and use the raw derivative
-                    let optimized = optimizePowerExpressions(derivative);
-                    logger.verbose(`  Optimized: ${optimized}`);
-
-                    row.push(optimized);
+                    // Note: differentiate() already handles optimization internally
+                    row.push(derivative);
                 } catch (error) {
                     logger.warn(`Failed to differentiate expression "${expr}" w.r.t. ${variable}: ${error.message}`);
                     // Default to zero if differentiation fails
@@ -254,6 +236,11 @@ export function invertJacobian(jacobian) {
         return null;
     }
 
+    if (!notebook) {
+        logger.error('Notebook not set - cannot invert Jacobian');
+        return null;
+    }
+
     const n = jacobian.length;
     if (n < 2 || n > 4) {
         logger.error(`Jacobian inversion only supported for 2x2, 3x3, and 4x4 matrices (got ${n}x${n})`);
@@ -261,32 +248,16 @@ export function invertJacobian(jacobian) {
     }
 
     try {
-        // Use Nerdamer's matrix inversion for all sizes
-        // matrix() takes rows as separate arguments: matrix([a,b],[c,d]), not matrix([[a,b],[c,d]])
-        const matrixArgs = jacobian.map(row => `[${row.join(',')}]`).join(',');
-        logger.verbose('Inverting Jacobian matrix:', `matrix(${matrixArgs})`);
+        logger.verbose('Inverting Jacobian matrix using', notebook.casEngine.getName());
 
-        // Invert the matrix using Nerdamer's invert function (once!)
-        window.nerdamer.setVar('J_temp', `matrix(${matrixArgs})`);
-        window.nerdamer.setVar('J_inv', 'invert(J_temp)');
+        // Use Notebook's matrix inversion (ensures context is applied)
+        const result = notebook.invertMatrix(jacobian);
 
-        // Extract result as array using matget() for each element
-        const result = [];
-        for (let i = 0; i < n; i++) {
-            const row = [];
-            for (let j = 0; j < n; j++) {
-                // Use matget to access matrix element (0-based indexing)
-                const element = window.nerdamer(`matget(J_inv, ${i}, ${j})`).toString();
-                // Don't simplify - it introduces imaginary numbers and timeouts
-                const optimized = optimizePowerExpressions(element);
-                row.push(optimized);
+        if (result) {
+            logger.verbose('Inverted Jacobian:');
+            for (let i = 0; i < result.length; i++) {
+                logger.verbose(`  Row ${i}: [${result[i].join(', ')}]`);
             }
-            result.push(row);
-        }
-
-        logger.verbose('Inverted Jacobian:');
-        for (let i = 0; i < result.length; i++) {
-            logger.verbose(`  Row ${i}: [${result[i].join(', ')}]`);
         }
 
         return result;

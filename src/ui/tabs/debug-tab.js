@@ -64,9 +64,13 @@ export class DebugTab extends Tab {
             </div>
 
             <div style="padding: 8px; margin-bottom: 12px; background: #1f1f1f; border-radius: 4px;">
-                <label style="display: flex; align-items: center; cursor: pointer; font-size: 11px;" title="Enable particle sampling and detailed logging (expensive GPU readback). Buffer stats for tone mapping are always enabled but optimized.">
+                <label style="display: flex; align-items: center; cursor: pointer; font-size: 11px; margin-bottom: 8px;" title="Enable particle sampling and detailed logging (expensive GPU readback). Buffer stats for tone mapping are always enabled but optimized.">
                     <input type="checkbox" id="debug-enable-stats" style="margin-right: 6px;">
                     <span>Enable Particle Sampling (expensive GPU readback)</span>
+                </label>
+                <label style="display: flex; align-items: center; cursor: pointer; font-size: 11px;" title="Show file name and line number for each log entry (extracts caller info from stack trace)">
+                    <input type="checkbox" id="debug-show-line-numbers" style="margin-right: 6px;">
+                    <span>Show Line Numbers (file:line)</span>
                 </label>
             </div>
 
@@ -99,6 +103,14 @@ export class DebugTab extends Tab {
 
         // Make logger output to this debug output div
         this.logger.setOutputElement(this.debugOutput);
+
+        // Restore line numbers preference from localStorage
+        const showLineNumbers = localStorage.getItem('debugShowLineNumbers') === 'true';
+        const lineNumbersCheckbox = content.querySelector('#debug-show-line-numbers');
+        if (lineNumbersCheckbox) {
+            lineNumbersCheckbox.checked = showLineNumbers;
+            this.logger.setShowLineNumbers(showLineNumbers);
+        }
 
         return content;
     }
@@ -172,6 +184,13 @@ export class DebugTab extends Tab {
         content.querySelector('#debug-clear-buffer').addEventListener('click', () => {
             this.logger.clearSilencedBuffer();
             this._updateBufferStatus();
+        });
+
+        // Toggle line numbers
+        content.querySelector('#debug-show-line-numbers').addEventListener('change', (e) => {
+            this.logger.setShowLineNumbers(e.target.checked);
+            this.logger.info('Line numbers ' + (e.target.checked ? 'enabled' : 'disabled'));
+            this.logger.updateUI(); // Refresh display to show/hide line numbers
         });
 
         // Shader logging buttons

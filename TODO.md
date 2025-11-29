@@ -91,9 +91,107 @@ Create a dedicated `<accordion-section>` web component with built-in MutationObs
 
 ---
 
+## GLSL Generator Migration 🔧
+
+### Field Equations Editor (Completed ✅)
+- ✅ `IGLSLGenerator` interface created
+- ✅ `GLSLWorkflow` base class for validation/generation/application
+- ✅ `FieldEquationGenerator` implements field equation GLSL generation
+- ✅ `FieldEquationWorkflow` orchestrates field equation workflow
+- ✅ `FieldEquationsEditor` modal with notebook integration
+- ✅ Interactive workflow (UI) integrated
+- ✅ Automated workflow (presets) integrated
+- ✅ Renderer uses pre-generated GLSL when available
+
+**Architecture:**
+- Math expressions saved to localStorage (persistent)
+- GLSL generated from math via notebook expansion + parser (ephemeral, cached)
+- Both interactive (modal) and automated (preset) workflows use same code path
+
+### Remaining GLSL Generators to Migrate
+
+**Priority**: These need to be migrated to the IGLSLGenerator pattern for consistency
+
+#### 1. Jacobian Matrix Generator (for Newton's Method)
+**Current**: Hardcoded in renderer, generated on-the-fly
+**Target**: `JacobianGenerator extends IGLSLGenerator`
+- Input: Field equations (math expressions)
+- Output: GLSL code for Jacobian matrix computation
+- Used by: Implicit integrators with Newton's method solver
+- UI: Add "Edit Jacobian" option to implicit integrator settings (advanced users)
+
+**Files to create:**
+- `src/math/jacobian-generator.js` - Generator implementation
+- `src/math/jacobian-workflow.js` - Workflow implementation (optional, auto-generate is fine)
+
+**Integration points:**
+- Renderer checks for pre-generated Jacobian GLSL
+- Fallback to automatic symbolic differentiation if not provided
+
+#### 2. Color Expression Generator
+**Current**: Parsed inline in renderer when `colorMode === 'expression'`
+**Target**: `ColorExpressionGenerator extends IGLSLGenerator`
+- Input: Math expression (e.g., `sqrt(x*x + y*y)`)
+- Output: GLSL code for color value computation
+- Used by: Custom color modes
+- UI: Color mode dropdown → "Custom Expression" → opens modal editor
+
+**Files to create:**
+- `src/math/color-expression-generator.js` - Generator implementation
+- `src/math/color-expression-workflow.js` - Workflow implementation
+- `src/ui/components/color-expression-editor.js` - Modal UI
+
+**Integration points:**
+- Renderer checks for pre-generated color GLSL
+- Fallback to parsing `colorExpression` field if not provided
+
+#### 3. Custom Mapper Generator
+**Current**: Parsed inline in renderer when `mapperType === 'custom'`
+**Target**: `CustomMapperGenerator extends IGLSLGenerator`
+- Input: Horizontal/Vertical expressions for 2D projection
+- Output: GLSL code for `vec2 project(vecN pos)` function
+- Used by: Custom 2D projection mappings
+- UI: Mapper dropdown → "Custom Mapper" → opens modal editor
+
+**Files to create:**
+- `src/math/custom-mapper-generator.js` - Generator implementation
+- `src/math/custom-mapper-workflow.js` - Workflow implementation
+- `src/ui/components/custom-mapper-editor.js` - Modal UI
+
+**Integration points:**
+- Renderer checks for pre-generated mapper GLSL
+- Fallback to parsing `mapperParams.horizontalExpr`/`verticalExpr` if not provided
+
+### Benefits of Migration
+1. **Consistency**: All user-editable GLSL uses same workflow pattern
+2. **Notebook Integration**: All expressions can use notebook functions
+3. **Validation**: Centralized validation and error handling
+4. **UI**: Consistent modal editing experience
+5. **Testing**: Each generator can be tested independently
+
+### Implementation Order
+1. ✅ Field Equations (COMPLETE - serves as reference implementation)
+2. Color Expression Generator (simple, single expression)
+3. Custom Mapper Generator (medium complexity, 2-3 expressions)
+4. Jacobian Generator (complex, symbolic differentiation)
+
+**Estimated Effort**:
+- Color Expression: ~2-3 hours
+- Custom Mapper: ~3-4 hours
+- Jacobian: ~4-6 hours (most complex)
+
+**Total**: ~10-13 hours to complete all migrations
+
+---
+
 ## Next Steps
 
 ### Immediate Tasks
+- [ ] Test field equations editor end-to-end
+  - [ ] Interactive workflow (UI modal)
+  - [ ] Automated workflow (preset loading)
+  - [ ] GLSL generation with notebook context
+  - [ ] Validation and error handling
 - [ ] Test all functionality after Phase 3 refactoring
   - [ ] Gradient panel opens/closes correctly
   - [ ] Rendering panel opens/closes correctly
@@ -105,6 +203,6 @@ Create a dedicated `<accordion-section>` web component with built-in MutationObs
 1. **Fix accordion auto-resize** - Apply AccordionAwareMixin universally
 2. **Fix gradient 360° discontinuity** - Ensure proper color wrapping
 
-### Future Refactoring (Phases 4-5)
-- Phase 4: Update remaining panel usage patterns
-- Phase 5: Cleanup and documentation
+### Future Refactoring
+- Migrate remaining GLSL generators (Color, Mapper, Jacobian)
+- Phase 4-5: Cleanup and documentation

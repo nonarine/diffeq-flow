@@ -12,10 +12,69 @@ class DebugLogger {
         this.originalConsole = {};
         this.outputElement = null; // Can be set to a specific element, defaults to $('#debug-output')
 
+        // Restore line numbers setting from localStorage
+        this.showLineNumbers = false;
+        try {
+            const saved = localStorage.getItem('debugShowLineNumbers');
+            this.showLineNumbers = saved === 'true';
+        } catch (e) {
+            // Ignore localStorage errors
+        }
+
         // Silent mode buffering
         this.silenced = false;
         this.silencedBuffer = [];
         this.maxSilencedLogs = 5000; // Buffer more logs during silent mode
+    }
+
+    /**
+     * Set whether to show line numbers
+     */
+    setShowLineNumbers(show) {
+        this.showLineNumbers = show;
+        // Persist to localStorage
+        try {
+            localStorage.setItem('debugShowLineNumbers', show ? 'true' : 'false');
+        } catch (e) {
+            // Ignore localStorage errors
+        }
+    }
+
+    /**
+     * Extract caller information from stack trace
+     * @returns {string|null} Formatted caller info like "renderer.js:123"
+     */
+    _getCallerInfo() {
+        if (!this.showLineNumbers) return null;
+
+        try {
+            const stack = new Error().stack;
+            if (!stack) return null;
+
+            // Split stack into lines
+            const lines = stack.split('\n');
+
+            // Find the first line that's NOT in debug-logger.js
+            // Stack typically looks like:
+            // Error
+            //   at DebugLogger.log (debug-logger.js:144)
+            //   at DebugLogger.info (debug-logger.js:200)
+            //   at SomeClass.someMethod (some-file.js:42)  <- This is the caller we want
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.includes('debug-logger.js')) continue; // Skip logger itself
+
+                // Extract file:line from stack line
+                // Format: "    at ClassName.methodName (http://localhost:8000/src/path/file.js:123:45)"
+                const match = line.match(/([^\/]+\.js):(\d+):\d+\)?$/);
+                if (match) {
+                    return `${match[1]}:${match[2]}`;
+                }
+            }
+            return null;
+        } catch (e) {
+            return null; // Stack trace extraction failed
+        }
     }
 
     /**
@@ -80,7 +139,8 @@ class DebugLogger {
         // Output all buffered logs to console
         const consoleMethod = this.consoleHooked ? this.originalConsole.log : console.log;
         for (const logEntry of this.silencedBuffer) {
-            const consoleMsg = `[${logEntry.timestamp}] ${logEntry.message}`;
+            const callerPrefix = logEntry.caller ? `[${logEntry.caller}] ` : '';
+            const consoleMsg = `[${logEntry.timestamp}] ${callerPrefix}${logEntry.message}`;
             if (logEntry.data) {
                 consoleMethod(consoleMsg, logEntry.data);
             } else {
@@ -146,6 +206,9 @@ class DebugLogger {
 
         const timestamp = new Date().toLocaleTimeString();
 
+        // Extract caller info (file:line)
+        const caller = this._getCallerInfo();
+
         // Extract stack trace for errors
         let stack = null;
         if (data instanceof Error) {
@@ -162,7 +225,8 @@ class DebugLogger {
             level,
             message,
             data,
-            stack
+            stack,
+            caller
         };
 
         // If in silent mode and this log is silenceable, buffer it instead of displaying
@@ -188,7 +252,8 @@ class DebugLogger {
 
         // Also log to console for debugging (use original console to avoid infinite loop)
         const consoleMethod = this.consoleHooked ? this.originalConsole.log : console.log;
-        const consoleMsg = `[${timestamp}] ${message}`;
+        const callerPrefix = caller ? `[${caller}] ` : '';
+        const consoleMsg = `[${timestamp}] ${callerPrefix}${message}`;
         if (data) {
             consoleMethod(consoleMsg, data);
         } else {
@@ -253,9 +318,22 @@ class DebugLogger {
             const timestamp = $('<span class="debug-timestamp"></span>')
                 .text(log.timestamp);
 
-            const message = $('<span></span>').text(log.message);
+            // Add caller info if available
+            if (log.caller) {
+                const caller = $('<span class="debug-caller"></span>')
+                    .text(`[${log.caller}] `)
+                    .css({
+                        'color': '#64B5F6',
+                        'font-family': 'monospace',
+                        'font-size': '11px'
+                    });
+                logDiv.append(timestamp).append(caller);
+            } else {
+                logDiv.append(timestamp);
+            }
 
-            logDiv.append(timestamp).append(message);
+            const message = $('<span></span>').text(log.message);
+            logDiv.append(message);
 
             if (log.data) {
                 const dataStr = typeof log.data === 'object' ?

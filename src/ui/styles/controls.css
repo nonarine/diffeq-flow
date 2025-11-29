@@ -165,10 +165,23 @@
 
 #controls h2 .help-icon {
     position: absolute;
-    right: 18px;
     top: 50%;
     transform: translateY(-50%);
     margin-left: 0;
+}
+
+/* Single icon: position at right edge */
+#controls h2 .help-icon:last-child {
+    right: 18px;
+}
+
+/* When there are multiple icons, space them out */
+#controls h2 .help-icon:nth-last-child(2) {
+    right: 40px;  /* Second-to-last icon */
+}
+
+#controls h2 .help-icon:nth-last-child(3) {
+    right: 62px;  /* Third-to-last icon (if needed) */
 }
 
 #controls h2::after {

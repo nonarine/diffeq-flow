@@ -7,7 +7,9 @@
 
 :root {
     /* Canvas layers */
+    --z-canvas: 0;
     --z-grid: 1;
+    --z-equation-overlay: 50;
     --z-counters: 10;
 
     /* Panels and overlays */
@@ -35,8 +37,16 @@
 }
 
 /* Apply z-index values */
+#canvas {
+    z-index: var(--z-canvas);
+}
+
 #grid-canvas {
     z-index: var(--z-grid);
+}
+
+#equation-overlay {
+    z-index: var(--z-equation-overlay);
 }
 
 #cursor-position,

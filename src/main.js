@@ -8,10 +8,16 @@ import { logger } from './utils/debug-logger.js';
 import { Animator } from './animation/animator.js';
 import { setCustomFunctions, getCustomFunctions } from './math/parser.js';
 import { initializeModal } from './ui/modal.js';
-import { CustomFunctionsTab } from './ui/tabs/custom-functions-tab.js';
+import { NotebookDebugTab } from './ui/tabs/notebook-debug-tab.js';
 import { DebugTab } from './ui/tabs/debug-tab.js';
 import { DocsTab } from './ui/tabs/docs-tab.js';
 import { registerControlElements } from './ui/web-components/index.js';
+import { notebookEditor } from './ui/notebook-editor.js';
+import { createCASEngine, getSelectedEngineType } from './math/cas/cas-factory.js';
+import { Notebook } from './math/notebook.js';
+import { setNotebook as setJacobianNotebook } from './math/jacobian.js';
+import { setNotebook as setInverseSolverNotebook } from './math/inverse-solver.js';
+import { FieldEquationsEditor } from './ui/components/field-equations-editor.js';
 
 // Expose MathParser API to window for use in UI controls
 window.MathParser = {
@@ -19,11 +25,22 @@ window.MathParser = {
     getCustomFunctions
 };
 
+// Helper functions for help icons (prevents accordion toggle when clicking icons)
+window.showDocs = function(event, section) {
+    event.stopPropagation();
+    window.appModal?.show('docs', section);
+};
+
+window.showFieldEditor = function(event) {
+    event.stopPropagation();
+    window.getFieldEquationsEditor?.()?.show();
+};
+
 // Register Web Components
 registerControlElements();
 
 // Initialize when DOM is ready
-$(document).ready(function() {
+$(document).ready(async function() {
     // Step 1: Initialize logger
     // Make logger globally available
     window.logger = logger;
@@ -32,6 +49,33 @@ $(document).ready(function() {
     logger.hookConsole();
 
     logger.info('Logger initialized');
+
+    // Step 1.5: Initialize CAS Engine and Notebook
+    try {
+        const engineType = getSelectedEngineType();
+        logger.info(`Initializing CAS engine: ${engineType}`);
+        const casEngine = await createCASEngine(engineType);
+
+        // Create Notebook with CAS engine
+        const notebook = new Notebook(casEngine);
+
+        // Load saved notebook from localStorage
+        notebook.load();
+
+        // Inject Notebook into math modules (they use notebook, not CAS directly)
+        setJacobianNotebook(notebook);
+        setInverseSolverNotebook(notebook);
+
+        // Make Notebook and CAS engine globally available
+        window.notebook = notebook;
+        window.casEngine = casEngine; // Keep for backward compatibility
+
+        logger.info(`Notebook initialized with ${casEngine.getName()} engine`);
+    } catch (error) {
+        logger.error('Failed to initialize math system:', error);
+        alert('Failed to initialize math engine: ' + error.message);
+        return; // Don't proceed if initialization fails
+    }
 
     // Step 2: Initialize renderer and canvas
     function initRenderer(callback) {
@@ -113,10 +157,9 @@ $(document).ready(function() {
             const debugTab = new DebugTab(logger);
             modal.registerTab(debugTab);
 
-            // Register Custom Functions tab
-            const debouncedApply = manager.debouncedApply.bind(manager);
-            const customFunctionsTab = new CustomFunctionsTab(window.MathParser, debouncedApply);
-            modal.registerTab(customFunctionsTab);
+            // Register Notebook Debug tab
+            const notebookDebugTab = new NotebookDebugTab();
+            modal.registerTab(notebookDebugTab);
 
             // Register Documentation tab
             const docsTab = new DocsTab();
@@ -124,6 +167,18 @@ $(document).ready(function() {
 
             // Make modal globally available
             window.appModal = modal;
+
+            // Make notebook editor globally available
+            window.notebookEditor = notebookEditor;
+
+            // Field equations editor will be created lazily when first opened
+            window.fieldEquationsEditor = null;
+            window.getFieldEquationsEditor = () => {
+                if (!window.fieldEquationsEditor) {
+                    window.fieldEquationsEditor = new FieldEquationsEditor(renderer);
+                }
+                return window.fieldEquationsEditor;
+            };
 
             logger.info('N-Dimensional Vector Field Renderer initialized!');
             logger.info('Available presets: ' + Object.keys(window.presets).join(', '));

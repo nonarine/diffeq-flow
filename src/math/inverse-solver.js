@@ -1,18 +1,33 @@
 /**
  * Symbolic Inverse Transform Solver
  *
- * Attempts to solve for inverse coordinate transforms using Nerdamer's symbolic equation solver.
+ * Attempts to solve for inverse coordinate transforms using symbolic equation solver.
  * Given forward transforms (Cartesian → Native), solves for reverse transforms (Native → Cartesian).
  */
 
 import { logger } from '../utils/debug-logger.js';
 
 /**
- * Attempt to solve for inverse transforms symbolically using Nerdamer
+ * Notebook instance (injected from main.js)
+ * @type {import('./notebook.js').Notebook}
+ */
+let notebook = null;
+
+/**
+ * Set the Notebook to use for inverse solving
+ * @param {import('./notebook.js').Notebook} nb
+ */
+export function setNotebook(nb) {
+    notebook = nb;
+    logger.info('Inverse Solver: Notebook set (CAS engine:', notebook.casEngine.getName() + ')');
+}
+
+/**
+ * Attempt to solve for inverse transforms symbolically using CAS engine
  *
  * Strategy:
  * 1. Set up equations: native_i = forwardTransform_i(cartesian vars)
- * 2. Use Nerdamer's solve() to isolate each Cartesian variable
+ * 2. Use CAS solve() to isolate each Cartesian variable
  * 3. Simplify results
  *
  * @param {string[]} forwardTransforms - Forward transform expressions (e.g., ['sqrt(x^2+y^2)', 'atan2(y,x)'])
@@ -27,16 +42,18 @@ export function solveInverseSymbolically(forwardTransforms, dimensions, cartesia
     logger.info('Cartesian vars:', cartesianVars);
     logger.info('Native vars:', nativeVars);
 
-    if (!window.nerdamer) {
-        logger.error('Nerdamer not loaded - cannot solve inverse symbolically');
+    if (!notebook) {
+        logger.error('Notebook not set - cannot solve inverse symbolically');
+        return null;
+    }
+
+    if (!notebook.casEngine.isReady()) {
+        logger.error('CAS engine not ready - cannot solve inverse symbolically');
         return null;
     }
 
     try {
-        // Clear Nerdamer cache
-        if (window.nerdamer.clear) {
-            window.nerdamer.clear('all');
-        }
+        // NOTE: No cache clear needed - Notebook handles context automatically
 
         const inverseTransforms = [];
 
@@ -92,12 +109,12 @@ export function solveInverseSymbolically(forwardTransforms, dimensions, cartesia
 
                 try {
                     // Set up equation: nativeVar = forwardExpr
-                    // Solve for cartesianVar
+                    // Solve for cartesianVar using Notebook (ensures context is applied)
                     const equation = `${nativeVar} - (${forwardExpr})`;
-                    const solutions = window.nerdamer.solve(equation, cartesianVar);
+                    const solutions = notebook.solve(equation, cartesianVar);
 
                     if (solutions) {
-                        const solStr = solutions.toString();
+                        const solStr = typeof solutions === 'string' ? solutions : solutions.toString();
                         logger.verbose(`Solved ${cartesianVar} from equation ${j}:`, solStr);
 
                         // Check if solution is valid (doesn't contain other Cartesian variables)

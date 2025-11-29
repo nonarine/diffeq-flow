@@ -477,17 +477,26 @@ export class Renderer {
             const coordinateVars = this.coordinateSystem.getVariableNames();
             const isCartesian = this.coordinateSystem.name.includes('Cartesian');
 
-            // Parse expressions to GLSL using coordinate system variables
-            // For non-Cartesian systems, use 'pos_native' as the GLSL variable name
-            const posVarName = isCartesian ? 'pos' : 'pos_native';
-            const velocityGLSL = parseVectorField(this.expressions, coordinateVars, posVarName);
-            logger.verbose('Generated velocity GLSL', {
-                expressions: this.expressions,
-                coordinateSystem: this.coordinateSystem.name,
-                variables: coordinateVars,
-                posVarName: posVarName,
-                glsl: velocityGLSL
-            });
+            // Use pre-generated GLSL if available, otherwise parse expressions
+            let velocityGLSL;
+            if (this.velocityGLSL) {
+                velocityGLSL = this.velocityGLSL;
+                logger.verbose('Using pre-generated velocity GLSL', {
+                    glsl: velocityGLSL
+                });
+            } else {
+                // Fallback: Parse expressions to GLSL using coordinate system variables
+                // For non-Cartesian systems, use 'pos_native' as the GLSL variable name
+                const posVarName = isCartesian ? 'pos' : 'pos_native';
+                velocityGLSL = parseVectorField(this.expressions, coordinateVars, posVarName);
+                logger.verbose('Generated velocity GLSL from expressions', {
+                    expressions: this.expressions,
+                    coordinateSystem: this.coordinateSystem.name,
+                    variables: coordinateVars,
+                    posVarName: posVarName,
+                    glsl: velocityGLSL
+                });
+            }
 
             // Generate coordinate system GLSL code (if not Cartesian)
             let coordinateSystemCode = null;
@@ -1820,7 +1829,7 @@ export class Renderer {
                     coordinateVars = ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, this.dimensions);
                 }
 
-                this.velocityEvaluators = createVelocityEvaluators(config.expressions, coordinateVars);
+                this.velocityEvaluators = createVelocityEvaluators(this.expressions, coordinateVars);
                 logger.verbose('Velocity evaluators created successfully', {
                     coordinateSystem: this.coordinateSystem ? this.coordinateSystem.name : 'unknown',
                     variables: coordinateVars
@@ -1831,6 +1840,13 @@ export class Renderer {
             }
             needsRecompile = true;
             logger.info('  needsRecompile flag set to true (expressions change)');
+        }
+
+        if (config.velocityGLSL !== undefined) {
+            logger.info('Updating pre-generated velocity GLSL', config.velocityGLSL);
+            this.velocityGLSL = config.velocityGLSL;
+            needsRecompile = true;
+            logger.info('  needsRecompile flag set to true (velocityGLSL change)');
         }
 
         if (config.integratorType !== undefined && config.integratorType !== this.integratorType) {

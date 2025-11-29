@@ -1,0 +1,19 @@
+/**
+ * Notebook Cell Styling
+ *
+ * Compact styling for notebook cells
+ */
+
+.notebook-cell-output {
+    /* Tighten MathJax spacing */
+}
+
+.notebook-cell-output mjx-container {
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+.notebook-cell-output mjx-math {
+    margin: 0 !important;
+    padding: 0 !important;
+}

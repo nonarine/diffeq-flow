@@ -2,7 +2,7 @@
 
 _Auto-generated from inline JSDoc documentation_
 
-_Generated: 2025-11-27T15:34:17.465Z_
+_Generated: 2025-11-29T00:04:33.960Z_
 
 ---
 
@@ -270,13 +270,25 @@ Create custom integrator from user GLSL code
 
 ### inverse-solver.js
 
+#### `transforms()`
+
+Notebook instance (injected from main.js)
+
+#### `transforms(nb)`
+
+Set the Notebook to use for inverse solving
+
+**Parameters:**
+
+- `nb` *import('./notebook.js').Notebook*
+
 #### `transforms(forwardTransforms, dimensions, cartesianVars, nativeVars)`
 
-Attempt to solve for inverse transforms symbolically using Nerdamer
+Attempt to solve for inverse transforms symbolically using CAS engine
 
 Strategy:
 1. Set up equations: native_i = forwardTransform_i(cartesian vars)
-2. Use Nerdamer's solve() to isolate each Cartesian variable
+2. Use CAS solve() to isolate each Cartesian variable
 3. Simplify results
 
 
@@ -288,47 +300,6 @@ Strategy:
 - `nativeVars` *string[]* - - Native variable names (e.g., ['r', 'theta', 'phi'])
 
 **Returns:** *string[]|null* - Inverse transform expressions or null if failed
-
-#### `transforms()`
-
-Check if forward transforms match standard 2D polar pattern
-
-
-### jacobian.js
-
-#### `pow(jacobian)`
-
-Test if a Jacobian matrix is valid (no undefined/null entries)
-
-
-**Parameters:**
-
-- `jacobian` *string[][]|null* - - Jacobian matrix to test
-
-**Returns:** *boolean* - True if valid
-
-#### `pow(jacobian)`
-
-Format Jacobian matrix for display
-
-
-**Parameters:**
-
-- `jacobian` *string[][]* - - Jacobian matrix
-
-**Returns:** *string* - Formatted string representation
-
-#### `pow(jacobian)`
-
-Invert a symbolic Jacobian matrix using Nerdamer
-Supports 2x2, 3x3, and 4x4 matrices
-
-
-**Parameters:**
-
-- `jacobian` *string[][]* - - Jacobian matrix to invert
-
-**Returns:** *string[][]|null* - Inverted matrix or null if failed
 
 
 ### mappers.js
@@ -351,6 +322,205 @@ Create custom mapper from user math expressions
 #### `index()`
 
 Get list of available mapper names
+
+
+### notebook.js
+
+#### `cells()`
+
+Generate unique cell ID
+
+#### `cells()`
+
+Notebook class - manages cells and provides context-aware CAS operations
+
+#### `cells(casEngine)`
+
+**Parameters:**
+
+- `casEngine` *import('./cas/cas-interface.js').CASEngine* - - CAS engine to use
+
+#### `cells(type, input)`
+
+Add a new cell to the notebook
+
+**Parameters:**
+
+- `type` *'code'|'markdown'* - - Cell type
+- `input` *string* - - Initial cell content
+
+**Returns:** *string* - Cell ID
+
+#### `cells(id, input)`
+
+Update cell content
+
+**Parameters:**
+
+- `id` *string* - - Cell ID
+- `input` *string* - - New cell content
+
+#### `cells(id)`
+
+Delete a cell
+
+**Parameters:**
+
+- `id` *string* - - Cell ID
+
+#### `management(id)`
+
+Move cell up in order
+
+**Parameters:**
+
+- `id` *string* - - Cell ID
+
+#### `management(id)`
+
+Move cell down in order
+
+**Parameters:**
+
+- `id` *string* - - Cell ID
+
+#### `management(id)`
+
+Evaluate a single cell
+
+**Parameters:**
+
+- `id` *string* - - Cell ID
+
+**Returns:** *Promise<{result: string, tex: string, error?: string}>*
+
+
+### parser.js
+
+#### `AST()`
+
+Native expression implementation using our internal AST
+
+#### `AST()`
+
+AST Node base class (internal - not part of public API)
+
+#### `AST()`
+
+Number literal node
+
+#### `display()`
+
+Variable reference node
+
+#### `display()`
+
+Binary operation node (+, -, *, /, ^, %)
+
+#### `display()`
+
+Unary operation node (currently just unary minus)
+
+#### `display()`
+
+Function call node
+
+#### `calls()`
+
+Tokenize an expression string
+
+#### `transformations()`
+
+Parse tokens into an AST using Shunting Yard algorithm
+
+#### `toGLSL(rpn)`
+
+Convert RPN token stream to AST
+
+**Parameters:**
+
+- `rpn` *Array* - - RPN token array from Shunting Yard
+
+**Returns:** *ASTNode* - Root node of AST
+
+#### `toGLSL(node)`
+
+Clone an AST (deep copy)
+
+**Parameters:**
+
+- `node` *ASTNode* - - AST node to clone
+
+**Returns:** *ASTNode* - node
+
+#### `toTeX(node, substitutions)`
+
+Substitute variables in an AST
+
+**Parameters:**
+
+- `node` *ASTNode* - - AST node
+- `substitutions` *Object* - - Map of variable name -> ASTNode
+
+**Returns:** *ASTNode* - AST with substitutions applied
+
+#### `toTeX(node, functionDefs)`
+
+Substitute function calls in AST with their definitions
+
+**Parameters:**
+
+- `node` *ASTNode* - - AST node
+- `functionDefs` *Object* - - Map of function name -> {params: string[], bodyAST: ASTNode}
+
+**Returns:** *ASTNode* - AST with function calls replaced by their bodies
+
+#### `toJS(node, indent)`
+
+Pretty-print AST tree for debugging
+
+**Parameters:**
+
+- `node` *ASTNode* - - AST node to print
+- `indent` *number* - - Indentation level
+
+**Returns:** *string* - tree
+
+#### `toJS(node, variables)`
+
+Convert AST to JavaScript code
+
+**Parameters:**
+
+- `node` *ASTNode* - - AST node
+- `variables` *string[]* - - Available variable names
+
+**Returns:** *string* - code
+
+#### `toGLSL(base, exponent)`
+
+GLSL optimization: expand small integer powers to multiplication
+e.g., x^2 -> x*x, x^3 -> x*x*x (avoids pow() call)
+
+**Parameters:**
+
+- `base` *string* - - Base expression (already GLSL code)
+- `exponent` *string* - - Exponent expression (already GLSL code)
+
+**Returns:** *string* - GLSL code
+
+#### `toGLSL(node, variables, useDirectMapping, posVarName)`
+
+Convert AST to GLSL code
+
+**Parameters:**
+
+- `node` *ASTNode* - - AST node
+- `variables` *string[]* - - Available variable names
+- `useDirectMapping` *boolean* - - Use direct variable mapping
+- `posVarName` *string* - - GLSL position variable name
+
+**Returns:** *string* - code
 
 
 ### tonemapping.js
@@ -515,6 +685,107 @@ Get all transform names
 #### `code()`
 
 Get transform list for UI
+
+
+## math/cas/
+
+### cas-factory.js
+
+#### `engines()`
+
+Available CAS engine types
+
+#### `engines(type)`
+
+Create and initialize a CAS engine
+
+
+**Parameters:**
+
+- `type` *string* - - Engine type (from CASEngineType)
+
+**Returns:** *Promise<CASEngine>* - Initialized CAS engine
+
+#### `engines()`
+
+Get the currently selected CAS engine type from settings
+
+
+**Returns:** *string* - Engine type from CASEngineType
+
+#### `engines(type)`
+
+Save CAS engine type preference to localStorage
+
+
+**Parameters:**
+
+- `type` *string* - - Engine type from CASEngineType
+
+
+### cas-interface.js
+
+#### `CAS()`
+
+CAS (Computer Algebra System) Engine Interface
+
+Abstract base class defining the interface that all CAS engines must implement.
+Supports notebook context management and symbolic computation operations.
+
+#### class `defining`
+
+Abstract base class for CAS engines
+All engines (Nerdamer, Maxima, etc.) must implement this interface
+
+#### class `defining`
+
+Initialize the CAS engine (async - may load WASM, scripts, etc.)
+
+**Returns:** *Promise<void>*
+
+#### class `defining`
+
+Check if engine is ready for use
+
+**Returns:** *boolean*
+
+#### class `defining`
+
+Parse an expression string into engine's internal representation
+
+**Parameters:**
+
+- `expr` *string* - - Expression to parse
+
+**Returns:** *any* - Engine-specific representation
+
+#### class `defining`
+
+Evaluate an expression and return result
+
+**Parameters:**
+
+- `expression` *string* - - Expression to evaluate
+
+**Returns:** *{result: string, tex: string, error?: string}* - Result with TeX representation
+
+#### class `defining`
+
+Compute symbolic derivative
+
+**Parameters:**
+
+- `expr` *string* - - Expression to differentiate
+- `variable` *string* - - Variable to differentiate with respect to
+
+**Returns:** *string* - Symbolic derivative as string
+
+
+### nerdamer-engine.js
+
+#### `pow()`
+
+Basic conversion of math expressions to TeX
 
 
 ## particles/
@@ -789,6 +1060,23 @@ Save to settings
 #### `getValue()`
 
 Restore from settings
+
+
+### equation-overlay.js
+
+#### class `EquationOverlay`
+
+Scale equations to fit container width if needed
+
+#### class `EquationOverlay`
+
+Re-render current equations (useful after showing overlay)
+
+#### class `EquationOverlay`
+
+Get current visibility state
+
+**Returns:** *boolean*
 
 
 ### modal.js
@@ -1078,6 +1366,21 @@ Hide all mobile panels
 
 
 ## ui/tabs/
+
+### custom-functions-tab.js
+
+#### `operations()`
+
+Render the tab content
+
+#### `operations()`
+
+Called when tab becomes active
+
+#### `operations()`
+
+Apply the custom functions
+
 
 ### debug-tab.js
 

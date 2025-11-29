@@ -1,14 +1,209 @@
 /**
  * Math expression parser that converts user expressions to GLSL code
  * Supports standard math operations and functions
+ *
+ * ARCHITECTURE:
+ * 1. Parse user input string to AST (Abstract Syntax Tree)
+ * 2. Keep original AST for display (LaTeX) - preserves user intent (x/y, not x*y^-1)
+ * 3. Clone AST for manipulation:
+ *    - Substitute custom function calls with their definitions
+ *    - Apply algebraic transformations (done externally via CAS)
+ * 4. Generate code from AST:
+ *    - toGLSL(): With GLSL-specific optimizations (x^2 → x*x)
+ *    - toTeX(): Preserves mathematical notation (x/y → \frac{x}{y})
+ *    - toJS(): Standard JavaScript Math library calls
+ *
+ * IMPORTANT:
+ * - Optimizations like integer power expansion are ONLY in toGLSL()
+ * - LaTeX and JS generation preserve the original expression structure
+ * - Function substitution happens on the AST before code generation
  */
 
+import { logger } from '../utils/debug-logger.js';
+
+// ============================================================================
+// Expression Interface
+// ============================================================================
+
+/**
+ * Abstract interface for mathematical expressions
+ * This allows us to swap implementations (native AST, Maxima, etc.)
+ * without changing calling code
+ */
+class IExpression {
+    /**
+     * Convert to GLSL code
+     * @param {string[]} variables - Available variable names
+     * @param {object} options - Options for code generation
+     * @returns {string} GLSL code
+     */
+    toGLSL(variables, options = {}) {
+        throw new Error('Must implement toGLSL()');
+    }
+
+    /**
+     * Convert to LaTeX notation
+     * @param {string[]} variables - Available variable names
+     * @returns {string} LaTeX code
+     */
+    toTeX(variables) {
+        throw new Error('Must implement toTeX()');
+    }
+
+    /**
+     * Convert to JavaScript code
+     * @param {string[]} variables - Available variable names
+     * @returns {string} JavaScript code
+     */
+    toJS(variables) {
+        throw new Error('Must implement toJS()');
+    }
+
+    /**
+     * Clone this expression (deep copy)
+     * @returns {IExpression} Cloned expression
+     */
+    clone() {
+        throw new Error('Must implement clone()');
+    }
+
+    /**
+     * Substitute custom function calls with their definitions
+     * @param {object} functionDefs - Map of function name -> IExpression
+     * @returns {IExpression} New expression with substitutions applied
+     */
+    substitute(functionDefs) {
+        throw new Error('Must implement substitute()');
+    }
+}
+
+// ============================================================================
+// Native Expression Implementation (wraps AST)
+// ============================================================================
+
+/**
+ * Native expression implementation using our internal AST
+ */
+class NativeExpression extends IExpression {
+    constructor(ast) {
+        super();
+        this.ast = ast;
+    }
+
+    toGLSL(variables, options = {}) {
+        return astToGLSL(this.ast, variables, options.useDirectMapping || false, options.posVarName || 'pos');
+    }
+
+    toTeX(variables) {
+        return astToTeX(this.ast, variables);
+    }
+
+    toJS(variables) {
+        return astToJS(this.ast, variables);
+    }
+
+    clone() {
+        return new NativeExpression(cloneAST(this.ast));
+    }
+
+    substitute(functionDefs) {
+        // Convert IExpression function definitions to AST format
+        const astFunctionDefs = {};
+        for (const [name, expr] of Object.entries(functionDefs)) {
+            if (expr instanceof NativeExpression) {
+                // Extract params from custom function registry
+                if (customFunctions[name]) {
+                    astFunctionDefs[name] = {
+                        params: customFunctions[name].params,
+                        bodyAST: expr.ast
+                    };
+                }
+            }
+        }
+
+        const substitutedAST = substituteAST(this.ast, astFunctionDefs);
+        return new NativeExpression(substitutedAST);
+    }
+}
+
+// ============================================================================
+// AST Node Definitions (Internal)
+// ============================================================================
+
+/**
+ * AST Node base class (internal - not part of public API)
+ */
+class ASTNode {
+    constructor(type) {
+        this.type = type;
+    }
+}
+
+/**
+ * Number literal node
+ */
+class NumberNode extends ASTNode {
+    constructor(value, isConstant = false) {
+        super('number');
+        this.value = value;
+        this.isConstant = isConstant;
+    }
+}
+
+/**
+ * Variable reference node
+ */
+class VariableNode extends ASTNode {
+    constructor(name) {
+        super('variable');
+        this.name = name;
+    }
+}
+
+/**
+ * Binary operation node (+, -, *, /, ^, %)
+ */
+class BinaryOpNode extends ASTNode {
+    constructor(operator, left, right) {
+        super('binaryOp');
+        this.operator = operator;
+        this.left = left;
+        this.right = right;
+    }
+}
+
+/**
+ * Unary operation node (currently just unary minus)
+ */
+class UnaryOpNode extends ASTNode {
+    constructor(operator, operand) {
+        super('unaryOp');
+        this.operator = operator;
+        this.operand = operand;
+    }
+}
+
+/**
+ * Function call node
+ */
+class FunctionCallNode extends ASTNode {
+    constructor(name, args) {
+        super('functionCall');
+        this.name = name;
+        this.args = args;
+    }
+}
+
+// ============================================================================
 // Tokenizer
+// ============================================================================
+
 const TOKEN_TYPES = {
     NUMBER: 'NUMBER',
     VARIABLE: 'VARIABLE',
     FUNCTION: 'FUNCTION',
     OPERATOR: 'OPERATOR',
+    UNARY_MINUS: 'UNARY_MINUS',
     LPAREN: 'LPAREN',
     RPAREN: 'RPAREN',
     COMMA: 'COMMA',
@@ -98,10 +293,15 @@ function tokenize(expr) {
             // Check if this is a unary minus
             if (char === '-' && (lastToken === null ||
                 lastToken.type === TOKEN_TYPES.OPERATOR ||
+                lastToken.type === TOKEN_TYPES.UNARY_MINUS ||
                 lastToken.type === TOKEN_TYPES.LPAREN ||
                 lastToken.type === TOKEN_TYPES.COMMA)) {
-                // Insert a 0 to make it binary: -x becomes 0-x
-                tokens.push({ type: TOKEN_TYPES.NUMBER, value: 0 });
+                // This is a unary minus
+                const token = { type: TOKEN_TYPES.UNARY_MINUS };
+                tokens.push(token);
+                lastToken = token;
+                i++;
+                continue;
             }
             const token = { type: TOKEN_TYPES.OPERATOR, value: char };
             tokens.push(token);
@@ -162,6 +362,20 @@ function parse(tokens) {
             output.push(token);
         } else if (token.type === TOKEN_TYPES.FUNCTION) {
             operators.push(token);
+        } else if (token.type === TOKEN_TYPES.UNARY_MINUS) {
+            // Unary minus has high precedence (higher than ^, right-associative)
+            // Pop operators with higher or equal precedence
+            while (operators.length > 0) {
+                const o2 = operators[operators.length - 1];
+                // Only pop other unary minus operators (right-associative)
+                // Don't pop binary operators or functions
+                if (o2.type === TOKEN_TYPES.UNARY_MINUS) {
+                    output.push(operators.pop());
+                } else {
+                    break;
+                }
+            }
+            operators.push(token);
         } else if (token.type === TOKEN_TYPES.COMMA) {
             while (operators.length > 0 && operators[operators.length - 1].type !== TOKEN_TYPES.LPAREN) {
                 output.push(operators.pop());
@@ -177,6 +391,20 @@ function parse(tokens) {
                         (op1.associativity === 'R' && op1.precedence < op2.precedence)) {
                         output.push(operators.pop());
                     } else {
+                        break;
+                    }
+                } else if (o2.type === TOKEN_TYPES.UNARY_MINUS) {
+                    // Unary minus has precedence 2.5 (between * and ^)
+                    // -x^2 should parse as -(x^2), so ^ has higher precedence
+                    // 2*-x should parse as 2*(-x), so * pops unary minus
+                    const op1 = OPERATORS[o1.value];
+                    if (op1.precedence <= 2) {
+                        // Current operator is + or - or * or /
+                        // Pop unary minus (it has higher precedence, so it evaluates first)
+                        output.push(operators.pop());
+                    } else {
+                        // Current operator is ^
+                        // Don't pop unary minus (^ binds tighter than unary minus)
                         break;
                     }
                 } else {
@@ -210,48 +438,31 @@ function parse(tokens) {
         output.push(op);
     }
 
-    return output;
+    return rpnToAST(output);
 }
 
 /**
- * Convert RPN AST to JavaScript code
+ * Convert RPN token stream to AST
+ * @param {Array} rpn - RPN token array from Shunting Yard
+ * @returns {ASTNode} - Root node of AST
  */
-function toJS(rpn, variables) {
+function rpnToAST(rpn) {
     const stack = [];
-    const varSet = new Set(variables);
-
-    // Add velocity variables to allowed set
-    const velocityVars = ['dx', 'dy', 'dz', 'dw', 'du', 'dv'];
-    velocityVars.forEach(v => varSet.add(v));
-
-    // Add animation alpha variable
-    varSet.add('a');
 
     for (const token of rpn) {
         if (token.type === TOKEN_TYPES.NUMBER) {
-            if (token.isConstant) {
-                // Constants like PI, E
-                const constMap = { 'PI': 'Math.PI', 'E': 'Math.E' };
-                stack.push(constMap[token.value] || token.value.toString());
-            } else {
-                stack.push(token.value.toString());
-            }
+            stack.push(new NumberNode(token.value, token.isConstant));
         } else if (token.type === TOKEN_TYPES.VARIABLE) {
-            if (varSet.has(token.value)) {
-                stack.push(token.value);
-            } else {
-                throw new Error(`Unknown variable: ${token.value}. Available: ${variables.join(', ')}, dx, dy, dz, dw, du, dv, a (animation alpha)`);
-            }
+            stack.push(new VariableNode(token.value));
+        } else if (token.type === TOKEN_TYPES.UNARY_MINUS) {
+            if (stack.length < 1) throw new Error('Invalid expression');
+            const operand = stack.pop();
+            stack.push(new UnaryOpNode('-', operand));
         } else if (token.type === TOKEN_TYPES.OPERATOR) {
             if (stack.length < 2) throw new Error('Invalid expression');
-            const b = stack.pop();
-            const a = stack.pop();
-
-            if (token.value === '^') {
-                stack.push(`Math.pow(${a}, ${b})`);
-            } else {
-                stack.push(`(${a} ${token.value} ${b})`);
-            }
+            const right = stack.pop();
+            const left = stack.pop();
+            stack.push(new BinaryOpNode(token.value, left, right));
         } else if (token.type === TOKEN_TYPES.FUNCTION) {
             const argCount = getFunctionArgCount(token.value);
             if (stack.length < argCount) throw new Error(`Not enough arguments for ${token.value}`);
@@ -260,16 +471,7 @@ function toJS(rpn, variables) {
             for (let i = 0; i < argCount; i++) {
                 args.unshift(stack.pop());
             }
-
-            // Map GLSL functions to JS Math functions
-            const funcMap = {
-                'mod': '%',
-                'fract': '(x => x - Math.floor(x))',
-                'mix': '(a, b, t) => a * (1 - t) + b * t'
-            };
-
-            const funcName = funcMap[token.value] || `Math.${token.value}`;
-            stack.push(`${funcName}(${args.join(', ')})`);
+            stack.push(new FunctionCallNode(token.value, args));
         }
     }
 
@@ -281,10 +483,223 @@ function toJS(rpn, variables) {
 }
 
 /**
- * Convert RPN AST to GLSL code
+ * Clone an AST (deep copy)
+ * @param {ASTNode} node - AST node to clone
+ * @returns {ASTNode} Cloned node
  */
-function toGLSL(rpn, variables, useDirectMapping = false, posVarName = 'pos') {
-    const stack = [];
+function cloneAST(node) {
+    if (node.type === 'number') {
+        return new NumberNode(node.value, node.isConstant);
+    } else if (node.type === 'variable') {
+        return new VariableNode(node.name);
+    } else if (node.type === 'unaryOp') {
+        return new UnaryOpNode(node.operator, cloneAST(node.operand));
+    } else if (node.type === 'binaryOp') {
+        return new BinaryOpNode(node.operator, cloneAST(node.left), cloneAST(node.right));
+    } else if (node.type === 'functionCall') {
+        return new FunctionCallNode(node.name, node.args.map(arg => cloneAST(arg)));
+    }
+    throw new Error(`Unknown node type: ${node.type}`);
+}
+
+/**
+ * Substitute variables in an AST
+ * @param {ASTNode} node - AST node
+ * @param {Object} substitutions - Map of variable name -> ASTNode
+ * @returns {ASTNode} New AST with substitutions applied
+ */
+function substituteVariables(node, substitutions) {
+    if (node.type === 'number') {
+        return cloneAST(node);
+    } else if (node.type === 'variable') {
+        // If this variable should be substituted, return the substitution (cloned)
+        if (substitutions[node.name]) {
+            return cloneAST(substitutions[node.name]);
+        } else {
+            return cloneAST(node);
+        }
+    } else if (node.type === 'unaryOp') {
+        return new UnaryOpNode(node.operator, substituteVariables(node.operand, substitutions));
+    } else if (node.type === 'binaryOp') {
+        return new BinaryOpNode(
+            node.operator,
+            substituteVariables(node.left, substitutions),
+            substituteVariables(node.right, substitutions)
+        );
+    } else if (node.type === 'functionCall') {
+        // Recursively substitute in arguments
+        const newArgs = node.args.map(arg => substituteVariables(arg, substitutions));
+        return new FunctionCallNode(node.name, newArgs);
+    }
+    throw new Error(`Unknown node type: ${node.type}`);
+}
+
+/**
+ * Substitute function calls in AST with their definitions
+ * @param {ASTNode} node - AST node
+ * @param {Object} functionDefs - Map of function name -> {params: string[], bodyAST: ASTNode}
+ * @returns {ASTNode} New AST with function calls replaced by their bodies
+ */
+function substituteAST(node, functionDefs) {
+    if (node.type === 'number' || node.type === 'variable') {
+        return cloneAST(node);
+    } else if (node.type === 'unaryOp') {
+        return new UnaryOpNode(node.operator, substituteAST(node.operand, functionDefs));
+    } else if (node.type === 'binaryOp') {
+        return new BinaryOpNode(
+            node.operator,
+            substituteAST(node.left, functionDefs),
+            substituteAST(node.right, functionDefs)
+        );
+    } else if (node.type === 'functionCall') {
+        // Check if this is a custom function that should be substituted
+        if (functionDefs[node.name]) {
+            const funcDef = functionDefs[node.name];
+
+            // Recursively substitute in the arguments first
+            const evalArgs = node.args.map(arg => substituteAST(arg, functionDefs));
+
+            // Build substitution map: parameter name -> argument AST
+            const substitutions = {};
+            funcDef.params.forEach((param, i) => {
+                substitutions[param] = evalArgs[i];
+            });
+
+            // Substitute parameters with arguments in the function body
+            return substituteVariables(funcDef.bodyAST, substitutions);
+        } else {
+            // Built-in function or unknown - just substitute in arguments
+            const newArgs = node.args.map(arg => substituteAST(arg, functionDefs));
+            return new FunctionCallNode(node.name, newArgs);
+        }
+    }
+    throw new Error(`Unknown node type: ${node.type}`);
+}
+
+/**
+ * Pretty-print AST tree for debugging
+ * @param {ASTNode} node - AST node to print
+ * @param {number} indent - Indentation level
+ * @returns {string} Pretty-printed tree
+ */
+function prettyPrintAST(node, indent = 0) {
+    const indentStr = '  '.repeat(indent);
+
+    if (node.type === 'number') {
+        if (node.isConstant) {
+            return `${indentStr}NumberNode(${node.value} [constant])`;
+        } else {
+            return `${indentStr}NumberNode(${node.value})`;
+        }
+    } else if (node.type === 'variable') {
+        return `${indentStr}VariableNode(${node.name})`;
+    } else if (node.type === 'unaryOp') {
+        const operandStr = prettyPrintAST(node.operand, indent + 1);
+        return `${indentStr}UnaryOpNode(${node.operator})\n${operandStr}`;
+    } else if (node.type === 'binaryOp') {
+        const leftStr = prettyPrintAST(node.left, indent + 1);
+        const rightStr = prettyPrintAST(node.right, indent + 1);
+        return `${indentStr}BinaryOpNode(${node.operator})\n${leftStr}\n${rightStr}`;
+    } else if (node.type === 'functionCall') {
+        const argsStr = node.args.map(arg => prettyPrintAST(arg, indent + 1)).join('\n');
+        return `${indentStr}FunctionCallNode(${node.name})\n${argsStr}`;
+    }
+    return `${indentStr}Unknown(${node.type})`;
+}
+
+/**
+ * Convert AST to JavaScript code
+ * @param {ASTNode} node - AST node
+ * @param {string[]} variables - Available variable names
+ * @returns {string} JavaScript code
+ */
+function astToJS(node, variables) {
+    const varSet = new Set(variables);
+    const velocityVars = ['dx', 'dy', 'dz', 'dw', 'du', 'dv'];
+    velocityVars.forEach(v => varSet.add(v));
+    varSet.add('a'); // Animation alpha
+
+    function walk(node) {
+        if (node.type === 'number') {
+            if (node.isConstant) {
+                const constMap = { 'PI': 'Math.PI', 'E': 'Math.E' };
+                return constMap[node.value] || node.value.toString();
+            } else {
+                return node.value.toString();
+            }
+        } else if (node.type === 'variable') {
+            if (varSet.has(node.name)) {
+                return node.name;
+            } else {
+                throw new Error(`Unknown variable: ${node.name}. Available: ${variables.join(', ')}, dx, dy, dz, dw, du, dv, a`);
+            }
+        } else if (node.type === 'unaryOp') {
+            const operand = walk(node.operand);
+            return `(-${operand})`;
+        } else if (node.type === 'binaryOp') {
+            const left = walk(node.left);
+            const right = walk(node.right);
+            if (node.operator === '^') {
+                return `Math.pow(${left}, ${right})`;
+            } else {
+                return `(${left} ${node.operator} ${right})`;
+            }
+        } else if (node.type === 'functionCall') {
+            const args = node.args.map(arg => walk(arg));
+            const funcMap = {
+                'mod': '%',
+                'fract': '(x => x - Math.floor(x))',
+                'mix': '(a, b, t) => a * (1 - t) + b * t'
+            };
+            const funcName = funcMap[node.name] || `Math.${node.name}`;
+            return `${funcName}(${args.join(', ')})`;
+        }
+        throw new Error(`Unknown node type: ${node.type}`);
+    }
+
+    return walk(node);
+}
+
+/**
+ * GLSL optimization: expand small integer powers to multiplication
+ * e.g., x^2 -> x*x, x^3 -> x*x*x (avoids pow() call)
+ * @param {string} base - Base expression (already GLSL code)
+ * @param {string} exponent - Exponent expression (already GLSL code)
+ * @returns {string} Optimized GLSL code
+ */
+function optimizeIntegerPower(base, exponent) {
+    // Check for negative exponents (convert back to division)
+    if (exponent === '(-1.0)' || exponent === '-1.0') {
+        // x^(-1) becomes (1.0 / x)
+        return `(1.0 / ${base})`;
+    }
+
+    // Check if exponent is a small integer literal
+    const expMatch = exponent.match(/^(\d+)\.0$/);
+    if (expMatch) {
+        const n = parseInt(expMatch[1]);
+        if (n === 0) {
+            return '1.0';
+        } else if (n === 1) {
+            return base;
+        } else if (n <= 4) {
+            // Expand x^n as x*x*... (faster than pow() for small n)
+            return `(${Array(n).fill(base).join(' * ')})`;
+        }
+    }
+    // Use pow() for non-integer or large exponents
+    return `pow(${base}, ${exponent})`;
+}
+
+/**
+ * Convert AST to GLSL code
+ * @param {ASTNode} node - AST node
+ * @param {string[]} variables - Available variable names
+ * @param {boolean} useDirectMapping - Use direct variable mapping
+ * @param {string} posVarName - GLSL position variable name
+ * @returns {string} GLSL code
+ */
+function astToGLSL(node, variables, useDirectMapping = false, posVarName = 'pos') {
     const varMap = {};
 
     if (useDirectMapping) {
@@ -319,79 +734,171 @@ function toGLSL(rpn, variables, useDirectMapping = false, posVarName = 'pos') {
         varMap['a'] = 'u_alpha';
     }
 
-    for (const token of rpn) {
-        if (token.type === TOKEN_TYPES.NUMBER) {
-            if (token.isConstant) {
+    function walk(node) {
+        if (node.type === 'number') {
+            if (node.isConstant) {
                 // Constants like PI, E
                 const constMap = { 'PI': '3.14159265359', 'E': '2.71828182846' };
-                stack.push(constMap[token.value] || token.value.toString());
+                return constMap[node.value] || node.value.toString();
             } else {
                 // Convert to GLSL float literal (ensure .0 suffix for integers)
-                let numStr = token.value.toString();
+                let numStr = node.value.toString();
                 if (!numStr.includes('.') && !numStr.includes('e') && !numStr.includes('E')) {
                     numStr += '.0';
                 }
-                stack.push(numStr);
+                return numStr;
             }
-        } else if (token.type === TOKEN_TYPES.VARIABLE) {
-            if (varMap.hasOwnProperty(token.value)) {
-                stack.push(varMap[token.value]);
+        } else if (node.type === 'variable') {
+            if (varMap.hasOwnProperty(node.name)) {
+                return varMap[node.name];
             } else {
-                throw new Error(`Unknown variable: ${token.value}. Available: ${variables.join(', ')}`);
+                throw new Error(`Unknown variable: ${node.name}. Available: ${variables.join(', ')}`);
             }
-        } else if (token.type === TOKEN_TYPES.OPERATOR) {
-            if (stack.length < 2) throw new Error('Invalid expression');
-            const b = stack.pop();
-            const a = stack.pop();
+        } else if (node.type === 'unaryOp') {
+            const operand = walk(node.operand);
+            return `(-${operand})`;
+        } else if (node.type === 'binaryOp') {
+            const left = walk(node.left);
+            const right = walk(node.right);
 
-            if (token.value === '^') {
-                // Optimize: expand small integer exponents instead of using pow()
-                const expMatch = b.match(/^(\d+)\.0$/);
-                if (expMatch) {
-                    const n = parseInt(expMatch[1]);
-                    if (n === 0) {
-                        stack.push('1.0');
-                    } else if (n === 1) {
-                        stack.push(a);
-                    } else if (n <= 4) {
-                        // Expand x^n as x*x*...
-                        stack.push(`(${Array(n).fill(a).join(' * ')})`);
-                    } else {
-                        stack.push(`pow(${a}, ${b})`);
-                    }
-                } else {
-                    stack.push(`pow(${a}, ${b})`);
-                }
-            } else if (token.value === '%') {
-                stack.push(`mod(${a}, ${b})`);
+            if (node.operator === '^') {
+                // GLSL-specific optimization: expand small integer powers
+                return optimizeIntegerPower(left, right);
+            } else if (node.operator === '%') {
+                return `mod(${left}, ${right})`;
             } else {
-                stack.push(`(${a} ${token.value} ${b})`);
+                return `(${left} ${node.operator} ${right})`;
             }
-        } else if (token.type === TOKEN_TYPES.FUNCTION) {
-            const argCount = getFunctionArgCount(token.value);
-            if (stack.length < argCount) throw new Error(`Not enough arguments for ${token.value}`);
-
-            const args = [];
-            for (let i = 0; i < argCount; i++) {
-                args.unshift(stack.pop());
-            }
+        } else if (node.type === 'functionCall') {
+            const args = node.args.map(arg => walk(arg));
 
             // Map function names to GLSL equivalents
-            let glslFunc = token.value;
-            if (token.value === 'atan2') {
+            let glslFunc = node.name;
+            if (node.name === 'atan2') {
                 // GLSL uses atan(y, x) instead of atan2(y, x)
                 glslFunc = 'atan';
             }
 
-            stack.push(`${glslFunc}(${args.join(', ')})`);
+            return `${glslFunc}(${args.join(', ')})`;
         }
+        throw new Error(`Unknown node type: ${node.type}`);
     }
 
-    if (stack.length !== 1) {
-        throw new Error('Invalid expression');
+    return walk(node);
+}
+
+/**
+ * Convert AST to LaTeX code
+ * @param {ASTNode} node - AST node
+ * @param {string[]} variables - Available variable names
+ * @returns {string} LaTeX code
+ */
+function astToTeX(node, variables) {
+    const varSet = new Set(variables);
+
+    // Add velocity variables to allowed set
+    const velocityVars = ['dx', 'dy', 'dz', 'dw', 'du', 'dv'];
+    velocityVars.forEach(v => varSet.add(v));
+
+    // Add animation alpha variable
+    varSet.add('a');
+
+    /**
+     * Check if a node needs parentheses when used as base of power
+     */
+    function needsParensForPower(node) {
+        // Binary operations and unary minus need parens: (x+2)^2, (-x)^2
+        // Simple values don't: x^2, sin(x)^2
+        return node.type === 'binaryOp' || node.type === 'unaryOp';
     }
 
-    return stack[0];
+    /**
+     * Check if a node needs parentheses for multiplication
+     * Addition/subtraction have lower precedence than multiplication
+     */
+    function needsParensForMultiply(node) {
+        return node.type === 'binaryOp' && (node.operator === '+' || node.operator === '-');
+    }
+
+    function walk(node) {
+        if (node.type === 'number') {
+            if (node.isConstant) {
+                // Constants like PI, E
+                const constMap = { 'PI': '\\pi', 'E': 'e' };
+                return constMap[node.value] || node.value.toString();
+            } else {
+                return node.value.toString();
+            }
+        } else if (node.type === 'variable') {
+            if (varSet.has(node.name)) {
+                return node.name;
+            } else {
+                throw new Error(`Unknown variable: ${node.name}`);
+            }
+        } else if (node.type === 'unaryOp') {
+            const operand = walk(node.operand);
+            // Wrap in parens if complex expression
+            if (operand.includes(' ') || operand.includes('+') || operand.includes('-')) {
+                return `-(${operand})`;
+            } else {
+                return `-${operand}`;
+            }
+        } else if (node.type === 'binaryOp') {
+            const left = walk(node.left);
+            const right = walk(node.right);
+
+            if (node.operator === '^') {
+                // Power: a^b
+                // Add parentheses around base if it's a complex expression
+                // e.g., (x+2)^2 not x+2^2
+                const base = needsParensForPower(node.left) ? `\\left(${left}\\right)` : left;
+                return `{${base}}^{${right}}`;
+            } else if (node.operator === '*') {
+                // Multiplication: use \cdot
+                // Add parentheses around operands with lower precedence (addition/subtraction)
+                const leftParen = needsParensForMultiply(node.left) ? `\\left(${left}\\right)` : left;
+                const rightParen = needsParensForMultiply(node.right) ? `\\left(${right}\\right)` : right;
+                return `${leftParen} \\cdot ${rightParen}`;
+            } else if (node.operator === '/') {
+                // Division: use \frac
+                return `\\frac{${left}}{${right}}`;
+            } else if (node.operator === '-') {
+                // Subtraction
+                return `${left} - ${right}`;
+            } else if (node.operator === '+') {
+                // Addition
+                return `${left} + ${right}`;
+            } else {
+                // Other operators
+                return `${left} ${node.operator} ${right}`;
+            }
+        } else if (node.type === 'functionCall') {
+            const args = node.args.map(arg => walk(arg));
+
+            // Map functions to LaTeX notation
+            if (node.name === 'sqrt') {
+                return `\\sqrt{${args[0]}}`;
+            } else if (node.name === 'sin') {
+                return `\\sin(${args[0]})`;
+            } else if (node.name === 'cos') {
+                return `\\cos(${args[0]})`;
+            } else if (node.name === 'tan') {
+                return `\\tan(${args[0]})`;
+            } else if (node.name === 'exp') {
+                return `\\exp(${args[0]})`;
+            } else if (node.name === 'log') {
+                return `\\log(${args[0]})`;
+            } else if (node.name === 'abs') {
+                return `\\left|${args[0]}\\right|`;
+            } else {
+                // Other functions: use regular notation
+                return `${node.name}(${args.join(', ')})`;
+            }
+        }
+        throw new Error(`Unknown node type: ${node.type}`);
+    }
+
+    return walk(node);
 }
 
 /**
@@ -416,13 +923,13 @@ function generateGLSLFunctionDeclarations(availableVars) {
     let declarations = '';
 
     for (const [funcName, func] of Object.entries(customFunctions)) {
-        // Parse the function body
+        // Parse the function body into an AST
         const bodyTokens = tokenize(func.body);
-        const bodyRpn = parse(bodyTokens);
+        const bodyAST = parse(bodyTokens);
 
         // Convert body to GLSL using function parameters as variables
         // Use direct mapping so parameters are used as-is (not mapped to pos.x, etc.)
-        const bodyGLSL = toGLSL(bodyRpn, func.params, true);
+        const bodyGLSL = astToGLSL(bodyAST, func.params, true);
 
         // Generate GLSL function declaration
         declarations += `float ${funcName}(`;
@@ -436,7 +943,31 @@ function generateGLSLFunctionDeclarations(availableVars) {
 }
 
 /**
- * Main parser function
+ * Parse expression and return IExpression object
+ * @param {string} expression - Math expression to parse
+ * @param {number} dimensions - Number of dimensions
+ * @param {Array<string>} customVariables - Optional custom variable names
+ * @returns {IExpression} Expression object with toGLSL(), toTeX(), toJS() methods
+ */
+export function parseToExpression(expression, dimensions, customVariables = null) {
+    const variables = customVariables || ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, dimensions);
+
+    try {
+        const tokens = tokenize(expression);
+        const ast = parse(tokens);
+
+        // Verbose logging: output AST tree
+        logger.verbose(`Parsed expression: "${expression}"`);
+        logger.verbose('AST tree:\n' + prettyPrintAST(ast));
+
+        return new NativeExpression(ast);
+    } catch (error) {
+        throw new Error(`Parse error: ${error.message}`);
+    }
+}
+
+/**
+ * Main parser function - parses expression to GLSL
  * @param {string} expression - Math expression to parse
  * @param {number} dimensions - Number of dimensions
  * @param {Array<string>} customVariables - Optional custom variable names (e.g., ['r', 'theta'])
@@ -445,15 +976,8 @@ function generateGLSLFunctionDeclarations(availableVars) {
  */
 export function parseExpression(expression, dimensions, customVariables = null, posVarName = 'pos') {
     const variables = customVariables || ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, dimensions);
-
-    try {
-        const tokens = tokenize(expression);
-        const rpn = parse(tokens);
-        const glsl = toGLSL(rpn, variables, false, posVarName);
-        return glsl;
-    } catch (error) {
-        throw new Error(`Parse error: ${error.message}`);
-    }
+    const expr = parseToExpression(expression, dimensions, customVariables);
+    return expr.toGLSL(variables, { useDirectMapping: false, posVarName });
 }
 
 /**
@@ -496,8 +1020,8 @@ export function createVelocityEvaluators(expressions, customVariables = null) {
     return expressions.map((expr, i) => {
         try {
             const tokens = tokenize(expr.trim());
-            const rpn = parse(tokens);
-            const jsCode = toJS(rpn, variables);
+            const ast = parse(tokens);
+            const jsCode = astToJS(ast, variables);
 
             // Create a function that takes position components as arguments
             // e.g., for 2D: (x, y) => expression
@@ -507,6 +1031,19 @@ export function createVelocityEvaluators(expressions, customVariables = null) {
             throw new Error(`Error creating evaluator for dimension ${i}: ${error.message}`);
         }
     });
+}
+
+/**
+ * Parse expression and convert to LaTeX notation
+ * @param {string} expression - Math expression to parse
+ * @param {number} dimensions - Number of dimensions
+ * @param {Array<string>} customVariables - Optional custom variable names (e.g., ['r', 'theta'])
+ * @returns {string} LaTeX code
+ */
+export function parseExpressionToTeX(expression, dimensions, customVariables = null) {
+    const variables = customVariables || ['x', 'y', 'z', 'w', 'u', 'v'].slice(0, dimensions);
+    const expr = parseToExpression(expression, dimensions, customVariables);
+    return expr.toTeX(variables);
 }
 
 /**
