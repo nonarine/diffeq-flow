@@ -32,7 +32,7 @@ The n-dimensional vector field flow renderer uses a sophisticated WebGL shader p
 
 ### Key Statistics
 
-- **6 shader programs**: Update (1 pair), Draw (1 pair), Fade (1 pair), Tonemap, Bloom (3 optional)
+- **6 shader programs**: Update (1 pair), Draw (1 pair), Fade (1 pair), Tonemap
 - **N texture pairs** for N-dimensional systems (e.g., 8 textures for 4D)
 - **Pure GPU pipeline**: Zero CPU particle updates after initialization
 - **HDR rendering**: Unbounded color accumulation with tone mapping
@@ -82,12 +82,11 @@ The draw shader:
 
 ### 3. Screen Composition Pipeline
 
-**Purpose**: Create motion trails, tone map HDR to LDR, apply bloom.
+**Purpose**: Create motion trails, tone map HDR to LDR
 
 **Shaders**:
 - `fadeShader` - Motion trail effect (multiply previous frame)
 - `tonemapShader` - HDR→LDR conversion with artistic controls
-- `bloomShaders` - Bright pass extraction, blur, combine (optional)
 
 **Files**: `src/webgl/shaders.js:545-705`
 
@@ -1373,11 +1372,6 @@ The renderer uses High Dynamic Range (HDR) rendering with tone mapping for reali
 │     ├─ Color: RGB * intensity (unbounded values)        │
 │     └─ Write: HDR buffer (accumulated)                  │
 │                                                          │
-│  3. BLOOM (optional, WIP)                                │
-│     ├─ Bright Pass: Extract pixels > threshold          │
-│     ├─ Gaussian Blur: Separate H/V passes               │
-│     └─ Combine: Add bloom back to HDR buffer            │
-│                                                          │
 │  4. TONEMAP SHADER                                       │
 │     ├─ Read: HDR buffer (float values, possibly > 1.0)  │
 │     ├─ Apply: Tone mapping operator (Reinhard, ACES...) │
@@ -1543,10 +1537,6 @@ vec3 tonemap(vec3 x) {
     return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
 }
 ```
-
-### Bloom Effect (WIP)
-
-**Status**: Implemented but disabled (UI hidden, `bloomEnabled = false` by default)
 
 **Pipeline**:
 

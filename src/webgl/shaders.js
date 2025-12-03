@@ -710,10 +710,6 @@ vec3 applyGamma(vec3 color) {
 precision highp float;
 
 uniform sampler2D u_screen;
-uniform sampler2D u_bloom;
-uniform float u_bloom_intensity;
-uniform float u_bloom_alpha;
-uniform bool u_bloom_enabled;
 uniform float u_exposure;
 uniform float u_gamma;
 uniform float u_whitePoint;
@@ -758,13 +754,6 @@ ${tonemapCode}
 void main() {
     // Read HDR color from framebuffer
     vec3 hdrColor = texture2D(u_screen, v_texcoord).rgb;
-
-    // Blend bloom if enabled (before tone mapping)
-    if (u_bloom_enabled) {
-        vec3 bloomColor = texture2D(u_bloom, v_texcoord).rgb * u_bloom_intensity;
-        // Alpha blend: mix base color with bloom using alpha
-        hdrColor = mix(hdrColor, hdrColor + bloomColor, u_bloom_alpha);
-    }
 
     // Calculate HDR brightness once for both effects (Rec. 709 luminance)
     float hdrBrightness = dot(hdrColor, vec3(0.2126, 0.7152, 0.0722));
@@ -833,104 +822,6 @@ void main() {
     vec3 ldrColor = tonemap(compressed);
 
     gl_FragColor = vec4(ldrColor, 1.0);
-}
-`;
-}
-
-/**
- * Generate bloom bright pass fragment shader
- * Extracts pixels above threshold for bloom layer
- */
-export function generateBloomBrightPassShader() {
-    return `
-precision highp float;
-
-uniform sampler2D u_screen;
-uniform float u_threshold;
-
-varying vec2 v_texcoord;
-
-void main() {
-    vec3 color = texture2D(u_screen, v_texcoord).rgb;
-
-    // Calculate luminance
-    float brightness = dot(color, vec3(0.2126, 0.7152, 0.0722));
-
-    // Extract bright regions above threshold
-    // Use smooth step for soft transition
-    float contribution = smoothstep(u_threshold * 0.8, u_threshold * 1.2, brightness);
-
-    // Output bright pixels only
-    gl_FragColor = vec4(color * contribution, 1.0);
-}
-`;
-}
-
-/**
- * Generate bloom blur fragment shader
- * Two-pass separable Gaussian blur with bilinear optimization
- * @param {boolean} horizontal - True for horizontal pass, false for vertical
- * @param {number} radius - Blur radius (1.0 = standard, higher = wider blur)
- */
-export function generateBloomBlurShader(horizontal = true, radius = 1.0) {
-    const direction = horizontal ? 'vec2(1.0, 0.0)' : 'vec2(0.0, 1.0)';
-
-    return `
-precision highp float;
-
-uniform sampler2D u_texture;
-uniform vec2 u_texel_size;
-uniform float u_radius;
-
-varying vec2 v_texcoord;
-
-void main() {
-    vec2 direction = ${direction};
-    vec3 result = vec3(0.0);
-
-    // Bilinear-optimized 13-tap Gaussian blur
-    // Uses hardware linear filtering to sample between pixels for smoother results
-    // This reduces the blocky appearance by effectively sampling at sub-pixel positions
-
-    vec2 off1 = vec2(1.3846153846) * direction * u_texel_size * u_radius;
-    vec2 off2 = vec2(3.2307692308) * direction * u_texel_size * u_radius;
-    vec2 off3 = vec2(5.0769230769) * direction * u_texel_size * u_radius;
-
-    result += texture2D(u_texture, v_texcoord).rgb * 0.2270270270;
-    result += texture2D(u_texture, v_texcoord + off1).rgb * 0.3162162162;
-    result += texture2D(u_texture, v_texcoord - off1).rgb * 0.3162162162;
-    result += texture2D(u_texture, v_texcoord + off2).rgb * 0.0702702703;
-    result += texture2D(u_texture, v_texcoord - off2).rgb * 0.0702702703;
-    result += texture2D(u_texture, v_texcoord + off3).rgb * 0.0162162162;
-    result += texture2D(u_texture, v_texcoord - off3).rgb * 0.0162162162;
-
-    gl_FragColor = vec4(result, 1.0);
-}
-`;
-}
-
-/**
- * Generate bloom combine fragment shader
- * Combines base HDR with bloom layer
- */
-export function generateBloomCombineShader() {
-    return `
-precision highp float;
-
-uniform sampler2D u_base;
-uniform sampler2D u_bloom;
-uniform float u_bloom_intensity;
-
-varying vec2 v_texcoord;
-
-void main() {
-    vec3 baseColor = texture2D(u_base, v_texcoord).rgb;
-    vec3 bloomColor = texture2D(u_bloom, v_texcoord).rgb;
-
-    // Add bloom to base with intensity control
-    vec3 result = baseColor + bloomColor * u_bloom_intensity;
-
-    gl_FragColor = vec4(result, 1.0);
 }
 `;
 }

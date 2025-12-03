@@ -4,7 +4,6 @@
 
 import { TextureManager } from './textures.js';
 import { FramebufferManager } from './framebuffer.js';
-import { BloomManager } from './bloom.js';
 import { BilateralFilterManager } from './bilateral.js';
 import { SMAAManager } from './smaa.js';
 import { BufferStatsManager } from './buffer-stats.js';
@@ -19,10 +18,7 @@ import {
     generateScreenVertexShader,
     generateScreenFadeFragmentShader,
     generateScreenCopyFragmentShader,
-    generateTonemapFragmentShader,
-    generateBloomBrightPassShader,
-    generateBloomBlurShader,
-    generateBloomCombineShader
+    generateTonemapFragmentShader
 } from './shaders.js';
 import { parseVectorField, createVelocityEvaluators, parseExpression } from '../math/parser.js';
 import { getIntegrator } from '../math/integrators.js';
@@ -129,13 +125,6 @@ export class Renderer {
         this.colorSaturation = config.colorSaturation !== undefined ? config.colorSaturation : 1.0; // 0.0 = grayscale, 1.0 = full saturation
         this.brightnessDesaturation = config.brightnessDesaturation !== undefined ? config.brightnessDesaturation : 0.0; // 0.0 = no desat, 1.0 = full desat at bright areas
         this.brightnessSaturation = config.brightnessSaturation !== undefined ? config.brightnessSaturation : 0.0; // 0.0 = no effect, 1.0 = dim areas fully desaturated
-
-        // Bloom settings (disabled by default - WIP)
-        this.bloomEnabled = config.bloomEnabled !== undefined ? config.bloomEnabled : false;
-        this.bloomIntensity = config.bloomIntensity !== undefined ? config.bloomIntensity : 0.3;
-        this.bloomRadius = config.bloomRadius !== undefined ? config.bloomRadius : 1.0;
-        this.bloomAlpha = config.bloomAlpha !== undefined ? config.bloomAlpha : 1.0;
-        this.currentBloomTexture = null; // Stores bloom texture for current frame
 
         // SMAA settings (morphological antialiasing)
         this.smaaEnabled = config.smaaEnabled !== undefined ? config.smaaEnabled : true;
@@ -257,35 +246,6 @@ export class Renderer {
         if (this.useHDR && !hdrSupport.supported) {
             logger.warn('HDR rendering requested but not supported by device. Using LDR fallback.');
         }
-
-        if (hdrSupport.enabled && !hdrSupport.hasLinearFiltering) {
-            logger.warn('Linear filtering not available for HDR textures. Bloom quality will be affected.');
-        }
-
-        // Create bloom manager (uses white point as threshold)
-        logger.info('Initializing bloom system...', {
-            enabled: this.bloomEnabled,
-            intensity: this.bloomIntensity,
-            threshold: this.whitePoint
-        });
-
-        this.bloomManager = new BloomManager(
-            gl,
-            this.renderWidth,
-            this.renderHeight,
-            {
-                enabled: this.bloomEnabled && hdrSupport.enabled,
-                intensity: this.bloomIntensity,
-                threshold: this.whitePoint,
-                radius: this.bloomRadius
-            }
-        );
-
-        logger.info('Bloom system initialized', {
-            enabled: this.bloomManager.isEnabled(),
-            bloomSize: this.bloomManager.isEnabled() ?
-                `${this.bloomManager.getBloomSize().width}x${this.bloomManager.getBloomSize().height}` : 'N/A'
-        });
 
         // Create SMAA manager
         this.smaaManager = new SMAAManager(
@@ -659,25 +619,6 @@ export class Renderer {
             this.screenFadeProgram = createProgram(gl, screenVertexShader, fadeFragmentShader);
             this.tonemapProgram = createProgram(gl, screenVertexShader, tonemapFragmentShader);
 
-            // Compile bloom shaders if bloom is enabled
-            if (this.bloomManager.isEnabled()) {
-                const bloomBrightPassShader = generateBloomBrightPassShader();
-                const bloomBlurHorizontalShader = generateBloomBlurShader(true, this.bloomRadius);
-                const bloomBlurVerticalShader = generateBloomBlurShader(false, this.bloomRadius);
-                const bloomCombineShader = generateBloomCombineShader();
-
-                this.bloomBrightPassProgram = createProgram(gl, screenVertexShader, bloomBrightPassShader);
-                this.bloomBlurHProgram = createProgram(gl, screenVertexShader, bloomBlurHorizontalShader);
-                this.bloomBlurVProgram = createProgram(gl, screenVertexShader, bloomBlurVerticalShader);
-                this.bloomCombineProgram = createProgram(gl, screenVertexShader, bloomCombineShader);
-
-                logger.verbose('Bloom shaders compiled', {
-                    threshold: this.whitePoint,
-                    intensity: this.bloomIntensity,
-                    radius: this.bloomRadius
-                });
-            }
-
             // Store shader source for debugging
             this.shaderSource.screenFade = fadeFragmentShader;
             this.shaderSource.tonemap = tonemapFragmentShader;
@@ -1001,79 +942,6 @@ export class Renderer {
     }
 
     /**
-     * Apply bloom effect
-     * Extracts bright regions, blurs them, and combines with base image
-     */
-    applyBloom() {
-        if (!this.bloomManager.isEnabled()) return;
-
-        const gl = this.gl;
-        const bloomSize = this.bloomManager.getBloomSize();
-
-        // Step 1: Extract bright pass (pixels above white point threshold)
-        gl.bindFramebuffer(gl.FRAMEBUFFER, this.bloomManager.getBrightFBO());
-        gl.viewport(0, 0, bloomSize.width, bloomSize.height);
-        gl.disable(gl.BLEND);
-
-        gl.useProgram(this.bloomBrightPassProgram);
-        const aPosLoc1 = gl.getAttribLocation(this.bloomBrightPassProgram, 'a_pos');
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
-        gl.enableVertexAttribArray(aPosLoc1);
-        gl.vertexAttribPointer(aPosLoc1, 2, gl.FLOAT, false, 0, 0);
-
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.framebufferManager.getCurrentTexture());
-        gl.uniform1i(gl.getUniformLocation(this.bloomBrightPassProgram, 'u_screen'), 0);
-        gl.uniform1f(gl.getUniformLocation(this.bloomBrightPassProgram, 'u_threshold'), this.whitePoint);
-
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-        // Step 2: Blur horizontally
-        const blurFBOs = this.bloomManager.getBlurFBOs();
-        const blurTextures = this.bloomManager.getBlurTextures();
-
-        gl.bindFramebuffer(gl.FRAMEBUFFER, blurFBOs[0]);
-        gl.useProgram(this.bloomBlurHProgram);
-
-        const aPosLoc2 = gl.getAttribLocation(this.bloomBlurHProgram, 'a_pos');
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
-        gl.enableVertexAttribArray(aPosLoc2);
-        gl.vertexAttribPointer(aPosLoc2, 2, gl.FLOAT, false, 0, 0);
-
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, this.bloomManager.getBrightTexture());
-        gl.uniform1i(gl.getUniformLocation(this.bloomBlurHProgram, 'u_texture'), 0);
-        gl.uniform2f(gl.getUniformLocation(this.bloomBlurHProgram, 'u_texel_size'),
-                    1.0 / bloomSize.width, 1.0 / bloomSize.height);
-        gl.uniform1f(gl.getUniformLocation(this.bloomBlurHProgram, 'u_radius'), this.bloomRadius);
-
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-        // Step 3: Blur vertically
-        gl.bindFramebuffer(gl.FRAMEBUFFER, blurFBOs[1]);
-        gl.useProgram(this.bloomBlurVProgram);
-
-        const aPosLoc3 = gl.getAttribLocation(this.bloomBlurVProgram, 'a_pos');
-        gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
-        gl.enableVertexAttribArray(aPosLoc3);
-        gl.vertexAttribPointer(aPosLoc3, 2, gl.FLOAT, false, 0, 0);
-
-        gl.activeTexture(gl.TEXTURE0);
-        gl.bindTexture(gl.TEXTURE_2D, blurTextures[0]);
-        gl.uniform1i(gl.getUniformLocation(this.bloomBlurVProgram, 'u_texture'), 0);
-        gl.uniform2f(gl.getUniformLocation(this.bloomBlurVProgram, 'u_texel_size'),
-                    1.0 / bloomSize.width, 1.0 / bloomSize.height);
-        gl.uniform1f(gl.getUniformLocation(this.bloomBlurVProgram, 'u_radius'), this.bloomRadius);
-
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
-
-        // DON'T combine bloom back to HDR buffer - that causes accumulation
-        // Instead, we'll pass the bloom texture to the tone mapping shader
-        // Store bloom texture for later use in tone mapping
-        this.currentBloomTexture = blurTextures[1];
-    }
-
-    /**
      * Resample scaled render to canvas
      * Uses bilinear filtering for smooth resampling (both up and down)
      */
@@ -1146,9 +1014,6 @@ export class Renderer {
             gl.disable(gl.DEPTH_TEST);
         }
 
-        // Apply bloom effect (extract bright regions, blur, combine)
-        this.applyBloom();
-
         // Render tone mapping to dedicated LDR framebuffer
         gl.bindFramebuffer(gl.FRAMEBUFFER, this.ldrFramebuffer);
         gl.viewport(0, 0, this.renderWidth, this.renderHeight);
@@ -1168,18 +1033,6 @@ export class Renderer {
         gl.activeTexture(gl.TEXTURE0);
         gl.bindTexture(gl.TEXTURE_2D, this.framebufferManager.getCurrentTexture());
         gl.uniform1i(gl.getUniformLocation(this.tonemapProgram, 'u_screen'), 0);
-
-        // Bloom texture (if enabled)
-        if (this.bloomManager.isEnabled() && this.currentBloomTexture) {
-            gl.activeTexture(gl.TEXTURE1);
-            gl.bindTexture(gl.TEXTURE_2D, this.currentBloomTexture);
-            gl.uniform1i(gl.getUniformLocation(this.tonemapProgram, 'u_bloom'), 1);
-            gl.uniform1i(gl.getUniformLocation(this.tonemapProgram, 'u_bloom_enabled'), 1);
-            gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_bloom_intensity'), this.bloomIntensity);
-            gl.uniform1f(gl.getUniformLocation(this.tonemapProgram, 'u_bloom_alpha'), this.bloomAlpha);
-        } else {
-            gl.uniform1i(gl.getUniformLocation(this.tonemapProgram, 'u_bloom_enabled'), 0);
-        }
 
         // Get cached buffer stats
         const stats = this.bufferStatsManager.getCached();
@@ -1754,7 +1607,6 @@ export class Renderer {
         });
 
         this.framebufferManager.resize(this.renderWidth, this.renderHeight);
-        this.bloomManager.resize(this.renderWidth, this.renderHeight);
         this.bilateralManager.resize(this.renderWidth, this.renderHeight);
         this.smaaManager.resize(this.renderWidth, this.renderHeight);
 
@@ -2010,8 +1862,6 @@ export class Renderer {
             logger.verbose(`White point: ${this.whitePoint} → ${config.whitePoint}`);
             this.whitePoint = config.whitePoint;
             needsRecompile = true; // White point is baked into shader
-            // White point is used as bloom threshold
-            this.bloomManager.updateConfig({ threshold: config.whitePoint });
         }
         if (config.tonemapOperator !== undefined && config.tonemapOperator !== this.tonemapOperator) {
             logger.info(`Tone mapping operator: ${this.tonemapOperator} → ${config.tonemapOperator}`);
@@ -2050,27 +1900,7 @@ export class Renderer {
             logger.verbose(`Depth testing: ${this.useDepthTest} → ${config.useDepthTest}`);
             this.useDepthTest = config.useDepthTest;
         }
-        if (config.bloomEnabled !== undefined) {
-            logger.verbose(`Bloom enabled: ${this.bloomEnabled} → ${config.bloomEnabled}`);
-            this.bloomEnabled = config.bloomEnabled;
-            this.bloomManager.updateConfig({ enabled: config.bloomEnabled });
-        }
-        if (config.bloomIntensity !== undefined) {
-            logger.verbose(`Bloom intensity: ${this.bloomIntensity} → ${config.bloomIntensity}`);
-            this.bloomIntensity = config.bloomIntensity;
-            this.bloomManager.updateConfig({ intensity: config.bloomIntensity });
-        }
-        if (config.bloomRadius !== undefined) {
-            logger.verbose(`Bloom radius: ${this.bloomRadius} → ${config.bloomRadius}`);
-            this.bloomRadius = config.bloomRadius;
-            this.bloomManager.updateConfig({ radius: config.bloomRadius });
-            // Radius change requires shader recompile
-            needsRecompile = true;
-        }
-        if (config.bloomAlpha !== undefined) {
-            logger.verbose(`Bloom alpha: ${this.bloomAlpha} → ${config.bloomAlpha}`);
-            this.bloomAlpha = config.bloomAlpha;
-        }
+
         if (config.smaaEnabled !== undefined) {
             logger.verbose(`SMAA enabled: ${this.smaaEnabled} → ${config.smaaEnabled}`);
             this.smaaEnabled = config.smaaEnabled;

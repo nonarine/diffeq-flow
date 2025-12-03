@@ -194,7 +194,6 @@ src/
     shaders.js                  # Dynamic shader generation
     textures.js                 # Texture ping-pong manager
     framebuffer.js              # HDR render target management
-    bloom.js                    # Bloom effect (WIP)
     coordinate-strategy.js      # Base class for storage strategies
     strategies/
       float-strategy.js         # Float texture storage (default)
@@ -309,7 +308,7 @@ dw/dt = z
 **Major Features (2024-2025):**
 - ✅ **Non-Cartesian Coordinate Systems**: Polar, cylindrical, spherical, custom
 - ✅ **Implicit Integrators**: Full parity with explicit methods + multiple solver strategies
-- ✅ **HDR Rendering Pipeline**: Float framebuffers, tone mapping, bloom
+- ✅ **HDR Rendering Pipeline**: Float framebuffers, tone mapping
 - ✅ **Advanced Rendering**: Bilateral filtering, SMAA, supersampling
 - ✅ **Animation System**: Parameter interpolation, frame capture, video export
 - ✅ **Domain Transforms**: Spatially-varying timesteps for multi-scale systems

@@ -349,7 +349,6 @@ export function initControls(renderer, callback) {
     webComponentRegistry.register('linear-slider', 'particles');
     webComponentRegistry.register('linear-slider', 'drop');
     webComponentRegistry.register('linear-slider', 'supersample-factor');
-    webComponentRegistry.register('linear-slider', 'bloom-radius');
     webComponentRegistry.register('linear-slider', 'bilateral-spatial');
     webComponentRegistry.register('linear-slider', 'bilateral-intensity');
 
@@ -375,8 +374,6 @@ export function initControls(renderer, callback) {
     // Percent sliders
     webComponentRegistry.register('percent-slider', 'smaa-intensity');
     webComponentRegistry.register('percent-slider', 'smaa-threshold');
-    webComponentRegistry.register('percent-slider', 'bloom-intensity');
-    webComponentRegistry.register('percent-slider', 'bloom-alpha');
     webComponentRegistry.register('percent-slider', 'color-saturation');
     webComponentRegistry.register('percent-slider', 'brightness-desat');
     webComponentRegistry.register('percent-slider', 'saturation-buildup');
@@ -388,10 +385,8 @@ export function initControls(renderer, callback) {
     webComponentRegistry.register('check-box', 'show-equations');
     webComponentRegistry.register('check-box', 'frame-limit-enabled');
     webComponentRegistry.register('check-box', 'use-hdr');
-    webComponentRegistry.register('check-box', 'use-depth-test');
     webComponentRegistry.register('check-box', 'smaa-enabled');
     webComponentRegistry.register('check-box', 'bilateral-enabled');
-    webComponentRegistry.register('check-box', 'bloom-enabled');
     webComponentRegistry.register('check-box', 'animation-clear-particles');
     webComponentRegistry.register('check-box', 'animation-clear-screen');
     webComponentRegistry.register('check-box', 'animation-smooth-timing');

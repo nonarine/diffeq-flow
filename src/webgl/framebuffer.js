@@ -96,10 +96,6 @@ export class FramebufferManager {
                 this.linearExt = this.halfFloatLinearExt;
                 logger.info('Selected RGBA16F (half float) for HDR framebuffers');
             }
-
-            if (!this.linearExt) {
-                logger.warn('Linear filtering not supported for float textures. Bloom quality may be affected.');
-            }
         } else {
             logger.verbose('Using LDR (RGBA8) framebuffers');
         }

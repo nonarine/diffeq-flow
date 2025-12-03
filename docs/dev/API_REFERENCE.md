@@ -1687,42 +1687,6 @@ Resize resources
 
 Clean up WebGL resources
 
-
-### bloom.js
-
-#### class `BloomManager`
-
-Check framebuffer completeness
-
-#### class `BloomManager`
-
-Get bright extraction framebuffer
-
-#### class `BloomManager`
-
-Get bright extraction texture
-
-#### class `BloomManager`
-
-Get blur framebuffers
-
-#### class `BloomManager`
-
-Get blur textures
-
-#### class `BloomManager`
-
-Get bloom dimensions
-
-#### class `BloomManager`
-
-Update bloom parameters
-
-#### `constructor()`
-
-Resize bloom framebuffers
-
-
 ### buffer-stats.js
 
 #### `constructor()`

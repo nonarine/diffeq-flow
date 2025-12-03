@@ -50,7 +50,7 @@ Adjusts brightness only, preserving hue. Applied after regular gamma. Fine contr
 
 Range: 1.0 - 10.0
 
-Brightest value that maps to white. Also used as bloom threshold. Higher values compress highlights more.
+Brightest value that maps to white. Higher values compress highlights more.
 
 ### Depth Occlusion
 
@@ -89,12 +89,6 @@ Desaturates bright regions to prevent fully saturated colors in dense attractor 
 Range: 0.0 - 1.0
 
 Desaturates dim regions, saturates bright regions. Sparse trails look washed out, dense accumulations pop with full color. Higher values = more aggressive effect.
-
-## Bloom Effect (Currently Disabled)
-
-Extracts pixels above white point threshold, blurs them, and adds glow.
-
-Currently hidden in UI pending aesthetic tuning. Implementation is complete but needs visual refinement for production use.
 
 ## Typical Settings
 
