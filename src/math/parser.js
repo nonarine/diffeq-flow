@@ -668,26 +668,29 @@ function astToJS(node, variables) {
  * @returns {string} Optimized GLSL code
  */
 function optimizeIntegerPower(base, exponent) {
-    // Check for negative exponents (convert back to division)
-    if (exponent === '(-1.0)' || exponent === '-1.0') {
-        // x^(-1) becomes (1.0 / x)
-        return `(1.0 / ${base})`;
-    }
+
+    const expMatch = exponent.match(/^\(*(\-?[\d]+)\.?0?\)*$/);
 
     // Check if exponent is a small integer literal
-    const expMatch = exponent.match(/^(\d+)\.0$/);
     if (expMatch) {
+
         const n = parseInt(expMatch[1]);
+
         if (n === 0) {
             return '1.0';
         } else if (n === 1) {
             return base;
-        } else if (n <= 4) {
+        } else if (n === -1) {
+            return `1.0 / base`;
+        }else {
+            // convert negative exponent to division
+            const neg = (n < 0);
+
             // Expand x^n as x*x*... (faster than pow() for small n)
-            return `(${Array(n).fill(base).join(' * ')})`;
+            return `${(neg ? '1.0/' : '')}(${Array(Math.abs(n)).fill(base).join(' * ')})`;
         }
     }
-    // Use pow() for non-integer or large exponents
+    // Use pow() for non-integer
     return `pow(${base}, ${exponent})`;
 }
 
