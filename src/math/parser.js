@@ -681,7 +681,7 @@ function optimizeIntegerPower(base, exponent) {
         } else if (n === 1) {
             return base;
         } else if (n === -1) {
-            return `1.0 / base`;
+            return `1.0 / ${base}`;
         }else {
             // convert negative exponent to division
             const neg = (n < 0);

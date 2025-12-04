@@ -2,7 +2,7 @@
 
 _Auto-generated from inline JSDoc documentation_
 
-_Generated: 2025-11-29T00:04:33.960Z_
+_Generated: 2025-12-04T02:47:50.704Z_
 
 ---
 
@@ -234,6 +234,150 @@ Deserialize from JSON
 #### `space()`
 
 Preset coordinate systems
+
+
+### field-equation-generator.js
+
+#### `equations()`
+
+Field Equation Generator
+
+Generates GLSL code for vector field equations (dx/dt, dy/dt, etc.)
+
+NOTE: This generator handles ONLY vector field equations. Other GLSL generation
+that currently happens in the renderer needs to be migrated to IGLSLGenerator
+implementations:
+- Jacobian matrix generation (for Newton's method in implicit integrators)
+- Color expression generation (custom color modes)
+- Custom mapper expressions (2D projection)
+- Any other user-editable GLSL expressions
+
+These should be user-editable in modals similar to FieldEquationsEditor.
+See TODO.md for migration tasks.
+
+Usage Pattern (same for UI and automation):
+
+Interactive (UI):
+  const glslArray = controls.map(ctrl => ctrl.getGLSL());
+  renderer.updateConfig({ expressions: glslArray });
+
+Automated (presets):
+  const glslArray = expressions.map((expr, i) =>
+      generator.generate(expr, notebook, { dimension: i, totalDims: N })
+  );
+  renderer.updateConfig({ expressions: glslArray });
+
+#### `equations()`
+
+Generator for vector field equations
+Converts math expressions to GLSL velocity field code
+
+#### `generation()`
+
+Get default variable names for N dimensions
+
+
+### field-equation-workflow.js
+
+#### class `with`
+
+Workflow for field equation generation and application
+
+#### class `with`
+
+Get generation context for field equations
+
+
+**Parameters:**
+
+- `index` *number* - - Dimension index
+- `totalCount` *number* - - Total dimensions
+
+**Returns:** *Object* - with dimension and totalDims
+
+#### class `with`
+
+Apply field equations to renderer
+
+
+**Parameters:**
+
+- `glslArray` *string[]* - - Generated GLSL expressions
+- `renderer` *Renderer* - - Renderer instance
+- `expressions` *string[]* - - Original math expressions
+
+#### class `with`
+
+Display errors with dimension labels
+
+
+### glsl-generator.js
+
+#### `UI()`
+
+Base interface for GLSL generation
+
+Subclasses implement specific generation logic (field equations, color expressions, etc.)
+
+#### `UI(mathExpr, notebook, context)`
+
+Generate GLSL code from math expression
+
+
+**Parameters:**
+
+- `mathExpr` *string|string[]* - - Math expression(s)
+- `notebook` *Notebook* - - Notebook instance with function definitions
+- `context` *Object* - - Additional context (dimensions, variables, etc.)
+
+**Returns:** *string* - GLSL code
+
+#### `UI(mathExpr, context)`
+
+Validate math expression before generation
+
+
+**Parameters:**
+
+- `mathExpr` *string|string[]* - - Math expression(s)
+- `context` *Object* - - Additional context
+
+**Returns:** *{valid: boolean, error?: string}* - result
+
+#### `UI()`
+
+Get a user-friendly description of what this generator does
+
+
+**Returns:** *string*
+
+#### `UI()`
+
+Get placeholder text for the math input
+
+
+**Returns:** *string* - text
+
+#### `UI()`
+
+Get placeholder text for the GLSL output
+
+
+**Returns:** *string* - text
+
+#### `UI()`
+
+Example generator for demonstration
+Wraps a single expression in a GLSL function
+
+
+### glsl-workflow.js
+
+#### `expressions()`
+
+Display errors in modal
+Can be overridden by subclasses for custom error formatting
+
 
 
 ### gradients.js
@@ -509,19 +653,6 @@ e.g., x^2 -> x*x, x^3 -> x*x*x (avoids pow() call)
 
 **Returns:** *string* - GLSL code
 
-#### `toGLSL(node, variables, useDirectMapping, posVarName)`
-
-Convert AST to GLSL code
-
-**Parameters:**
-
-- `node` *ASTNode* - - AST node
-- `variables` *string[]* - - Available variable names
-- `useDirectMapping` *boolean* - - Use direct variable mapping
-- `posVarName` *string* - - GLSL position variable name
-
-**Returns:** *string* - code
-
 
 ### tonemapping.js
 
@@ -782,6 +913,10 @@ Compute symbolic derivative
 
 
 ### nerdamer-engine.js
+
+#### `pow()`
+
+Clean up quirks in Nerdamer's LaTeX output
 
 #### `pow()`
 
@@ -1100,6 +1235,15 @@ Should be called after DOM is ready
 Attach drag handlers to thumbs
 
 
+### preset-manager.js
+
+#### `loadPresets()`
+
+Load custom presets from localStorage
+
+**Returns:** *Object* - of preset names to preset objects
+
+
 ### settings-manager.js
 
 #### `sharing(settings)`
@@ -1163,6 +1307,111 @@ Validates dimension matching and falls back to Cartesian on error
 #### `letters()`
 
 Convert ASCII names in a string to Unicode symbols
+
+
+## ui/components/
+
+### field-equations-editor.js
+
+#### `definitions(dimensions, expressions)`
+
+Update controls for new dimension count
+
+**Parameters:**
+
+- `dimensions` *number* - - Number of dimensions
+- `expressions` *string[]* - - Optional expressions to use (if not provided, reads from renderer)
+
+
+### math-to-glsl-control.js
+
+#### `input(config, config.generator, config.onGenerate, config.context, config.mathPlaceholder, config.glslPlaceholder, config.initialMath, config.initialGLSL, config.readonly)`
+
+**Parameters:**
+
+- `config` *Object* - - Configuration
+- `config.generator` *IGLSLGenerator* - - GLSL generator instance (REQUIRED if no custom onGenerate)
+- `config.onGenerate` *Function* - - Custom generator: (mathExpr, notebook, context) => glslCode
+- `config.context` *Object* - - Additional context passed to generator
+- `config.mathPlaceholder` *string* - - Placeholder for math input
+- `config.glslPlaceholder` *string* - - Placeholder for GLSL output
+- `config.initialMath` *string* - - Initial math expression
+- `config.initialGLSL` *string* - - Initial GLSL code
+- `config.readonly` *boolean* - - Make both fields readonly
+
+#### `input()`
+
+Create the UI elements
+
+#### `code()`
+
+Generate GLSL from math expression
+
+
+### notebook-cell.js
+
+#### class `NotebookCell`
+
+Evaluate the cell
+
+#### class `NotebookCell`
+
+Update cell output after evaluation
+
+
+### notebook-modal.js
+
+#### `area(config, config.title, config.customContent, config.onApply, config.onCancel, config.applyButtonText, config.showNotebook, config.showExport)`
+
+**Parameters:**
+
+- `config` *Object* - - Modal configuration
+- `config.title` *string* - - Modal title
+- `config.customContent` *HTMLElement|string* - - Custom HTML content or element
+- `config.onApply` *Function* - - Apply callback: (notebook, customFields) => {success: bool, error?: string}
+- `config.onCancel` *Function* - - Cancel callback (optional)
+- `config.applyButtonText` *string* - - Apply button text (default: "Apply")
+- `config.showNotebook` *boolean* - - Show notebook section (default: true)
+- `config.showExport` *boolean* - - Show export/import in notebook (default: true)
+
+#### `area()`
+
+Create the modal UI
+
+
+### notebook-repl.js
+
+#### class `NotebookREPL`
+
+Evaluate all cells in sequence
+
+**Returns:** *Promise<void>*
+
+#### class `NotebookREPL`
+
+Export notebook as JSON file
+
+#### class `NotebookREPL`
+
+Import notebook from JSON file
+
+#### class `NotebookREPL`
+
+Refresh the REPL (re-render all cells)
+
+#### class `NotebookREPL`
+
+Clean up empty cells (cells with no input)
+
+#### class `NotebookREPL`
+
+Get the DOM element
+
+**Returns:** *HTMLElement*
+
+#### `use()`
+
+Destroy the REPL and clean up
 
 
 ## ui/mixins/
@@ -1367,24 +1616,9 @@ Hide all mobile panels
 
 ## ui/tabs/
 
-### custom-functions-tab.js
-
-#### `operations()`
-
-Render the tab content
-
-#### `operations()`
-
-Called when tab becomes active
-
-#### `operations()`
-
-Apply the custom functions
-
-
 ### debug-tab.js
 
-#### `super()`
+#### `elements()`
 
 Update buffer status display
 
@@ -1642,19 +1876,17 @@ Override restoreFromSettings to prevent restoring (not managed by ControlManager
 
 #### class `DebugLogger`
 
-Set the output element for log display
-
-#### class `DebugLogger`
-
-Set whether logging is enabled
+Set whether to show line numbers
 
 #### `constructor()`
 
-Set verbosity level
+Extract caller information from stack trace
 
-#### `constructor()`
+**Returns:** *string|null* - caller info like "renderer.js:123"
 
-Enter silent mode (buffer logs instead of displaying)
+#### `getItem()`
+
+Unhook browser console methods (restore original behavior)
 
 
 ## webgl/
@@ -1686,6 +1918,7 @@ Resize resources
 #### `generateBilateralFilterShader()`
 
 Clean up WebGL resources
+
 
 ### buffer-stats.js
 
@@ -1910,10 +2143,6 @@ Reads the framebuffer pixels and computes min/max/avg values
 
 #### `FloatStrategy()`
 
-Log draw shader (contains color computations)
-
-#### `FloatStrategy()`
-
 Log screen shader (contains tone mapping)
 
 #### `FloatStrategy()`
@@ -1958,26 +2187,6 @@ Generate tone mapping fragment shader
 **Parameters:**
 
 - `tonemapCode` *string* - - GLSL code for tone mapping operator (from tonemapping.js)
-
-#### `getProgramInfoLog()`
-
-Generate bloom bright pass fragment shader
-Extracts pixels above threshold for bloom layer
-
-#### `getProgramInfoLog(horizontal, radius)`
-
-Generate bloom blur fragment shader
-Two-pass separable Gaussian blur with bilinear optimization
-
-**Parameters:**
-
-- `horizontal` *boolean* - - True for horizontal pass, false for vertical
-- `radius` *number* - - Blur radius (1.0 = standard, higher = wider blur)
-
-#### `deleteProgram()`
-
-Generate bloom combine fragment shader
-Combines base HDR with bloom layer
 
 
 ### smaa.js
